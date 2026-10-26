@@ -102,6 +102,7 @@ export default function MapViewer({
   incidents = [],
   onLocationSelect,
   selectedLocation = null,
+  compact = false,
 }) {
   const [boundary, setBoundary] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -206,40 +207,18 @@ export default function MapViewer({
       </div>
 
       <MapContainer
-        center={[14.75, 121.02]}
+        center={[14.7305, 121.0155]}
         zoom={15}
         minZoom={13}
         maxZoom={19}
         scrollWheelZoom={true}
         maxBoundsViscosity={1}
-        className="h-125 w-full"
+        className={`${compact ? "h-[300px] sm:h-[340px]" : "h-[500px]"} w-full`}
         style={{ background: "#f3f4f6" }}
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
-
-        <GeoJSON
-          key={"mask-" + JSON.stringify(boundary)}
-          data={{
-            type: "Feature",
-            geometry: {
-              type: "Polygon",
-              coordinates: [
-                [[-180, -90], [180, -90], [180, 90], [-180, 90], [-180, -90]],
-                ...(boundary.type === "FeatureCollection"
-                  ? boundary.features.map((f) => f.geometry.coordinates[0])
-                  : [boundary.features?.[0]?.geometry?.coordinates[0] ?? boundary.geometry?.coordinates[0]]),
-              ],
-            },
-          }}
-          style={{
-            color: "transparent",
-            weight: 0,
-            fillColor: "#1f2937",
-            fillOpacity: 0.7,
-          }}
         />
 
         <GeoJSON
@@ -311,9 +290,8 @@ export default function MapViewer({
       </MapContainer>
 
       <div className="bg-white px-4 py-2 text-xs text-gray-500">
-        Click inside the green boundary to select an
-        incident location. Locations outside the
-        boundary are rejected.
+        Barangay 167 (Llano), Caloocan City · Click inside the green boundary
+        to select an incident location.
       </div>
     </div>
   );
