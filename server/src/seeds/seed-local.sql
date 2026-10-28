@@ -1,0 +1,33 @@
+INSERT OR IGNORE INTO users (
+    public_id,
+    full_name,
+    email,
+    password,
+    role,
+    is_verified
+)
+VALUES
+(
+    'usr_demo_admin_001',
+    'Admin',
+    'admin@gmail.com',
+    '$2b$12$JR1vp6bRLpq3RWPYfEbXoO8oexk8LiDdRuEbYB5JR4RohAYLl5Kg.',
+    'admin',
+    1
+),
+(
+    'usr_demo_resident_001',
+    'Resident',
+    'resident@gmail.com',
+    '$2b$12$JR1vp6bRLpq3RWPYfEbXoO8oexk8LiDdRuEbYB5JR4RohAYLl5Kg.',
+    'resident',
+    1
+),
+(
+    'usr_demo_responder_001',
+    'Responder',
+    'responder@gmail.com',
+    '$2b$12$JR1vp6bRLpq3RWPYfEbXoO8oexk8LiDdRuEbYB5JR4RohAYLl5Kg.',
+    'responder',
+    1
+);
