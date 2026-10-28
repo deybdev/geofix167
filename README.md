@@ -60,9 +60,9 @@ Frontend runs at `http://localhost:5173`.
 
 | Role      | Email                  | Password    |
 |-----------|------------------------|-------------|
-| Admin     | admin@gmail.com        | password123 |
-| Resident  | resident@gmail.com     | password123 |
-| Responder | responder@gmail.com    | password123 |
+| Admin     | admin@gmail.com        | password    |
+| Resident  | resident@gmail.com     | password    |
+| Responder | responder@gmail.com    | password    |
 
 ## Notes
 
