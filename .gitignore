@@ -1,5 +1,45 @@
+
+# ==========================================
+# Dependencies
+# ==========================================
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# ==========================================
+# Build Outputs and Coverage
+# ==========================================
+dist/
+dist-ssr/
+build/
+coverage/
+*.tsbuildinfo
+
+# ==========================================
+# Environment Variables and Secrets
+# ==========================================
+.env
+.env.*
+!.env.example
+!.env.*.example
+.vscode/
+
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+
+# Local configuration files
+*.local
+
+# Session cookies and credentials
+cookies.txt
+*.pem
+*.key
+
+# ==========================================
 # Logs
-logs
+# ==========================================
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -7,19 +47,35 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-.env
-node_modules
-dist
-dist-ssr
-*.local
+# ==========================================
+# Cloudflare Wrangler
+# ==========================================
+.wrangler/
 
-# Editor directories and files
+# ==========================================
+# Editor Directories and Files
+# ==========================================
 .vscode/*
 !.vscode/extensions.json
-.idea
-.DS_Store
+!.vscode/settings.json
+.idea/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+*.code-workspace
+
+# ==========================================
+# Operating System Files
+# ==========================================
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ==========================================
+# Temporary and Backup Files
+# ==========================================
+*.tmp
+*.bak
+*.old
