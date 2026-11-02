@@ -58,11 +58,11 @@ Frontend runs at `http://localhost:5173`.
 
 ## Demo Accounts
 
-| Role      | Email                  | Password    |
+| Role      | Mobile                 | Password    |
 |-----------|------------------------|-------------|
-| Admin     | admin@gmail.com        | password    |
-| Resident  | resident@gmail.com     | password    |
-| Responder | responder@gmail.com    | password    |
+| Admin     | 09123123213            | password    |
+| Resident  | 09246246246            | password    |
+| Responder | 09369369369            | password    |
 
 ## Notes
 
