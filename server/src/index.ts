@@ -4,6 +4,7 @@ import { cors } from "hono/cors";
 
 import type { AppEnv } from "./types/env";
 import authRoutes from "./routes/auth.route";
+import communicationRoutes from "./routes/communication.route";
 
 const app = new Hono<AppEnv>();
 
@@ -26,5 +27,6 @@ app.use(
 // GET  /api/auth/me
 // POST /api/auth/logout
 app.route("/api/auth", authRoutes);
+app.route("/api/communication", communicationRoutes);
 
 export default app;

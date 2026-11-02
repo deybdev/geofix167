@@ -2,7 +2,7 @@
 import bcrypt from "bcryptjs";
 import type { AppEnv, AuthUser } from "../types/env";
 import {
-  findUserByEmail,
+  findUserByMobileNumber,
   type UserRecord,
 } from "../repositories/user.repository";
 import {
@@ -48,13 +48,13 @@ function createToken(): string {
 
 export async function login(
   db: Database,
-  email: string,
+  mobileNumber: string,
   password: string,
 ): Promise<LoginResult> {
-  const user: UserRecord | null = await findUserByEmail(db, email);
+  const user: UserRecord | null = await findUserByMobileNumber(db, mobileNumber);
 
   if (!user || !(await bcrypt.compare(password, user.password))) {
-    throw new AuthError("Invalid email or password.", 401);
+    throw new AuthError("Invalid mobile number or password.", 401);
   }
 
   if (user.is_verified !== 1) {
@@ -79,7 +79,7 @@ export async function login(
       id: user.id,
       public_id: user.public_id,
       full_name: user.full_name,
-      email: user.email,
+      mobile_number: user.mobile_number,
       role: user.role,
     },
   };

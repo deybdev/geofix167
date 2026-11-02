@@ -21,8 +21,8 @@ export function AuthProvider({ children }) {
     return () => clearInterval(interval);
   }, []);
 
-  const signIn = async (email, password) => {
-    const { data } = await login(email, password);
+  const signIn = async (mobileNumber, password) => {
+    const { data } = await login(mobileNumber, password);
     setUser(data.user);
     return data.user;
   };

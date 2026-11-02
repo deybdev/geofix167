@@ -9,7 +9,7 @@ export function meController(c: Context<AppEnv>) {
     user: {
       id: user.public_id,
       full_name: user.full_name,
-      email: user.email,
+      mobile_number: user.mobile_number,
       role: user.role,
     },
   });
