@@ -15,13 +15,13 @@
 		{
 			"binding": "geofix167_db",
 			"database_name": "geofix167-db",
-			"database_id": "4dd0f87e-6cfa-466e-94af-11fcbcb5c976"
+			"database_id": "4dd0f87e-6cfa-466e-94af-11fcbcb5c976",
+			"migrations_dir": "src/migrations"
 		}
 	],
 
 	"vars": {
-    	"FRONTEND_ORIGIN": "http://localhost:5173"
-		
+    	"FRONTEND_ORIGIN": "http://localhost:5173",
   	}
 	/**
 	 * Smart Placement

@@ -9,16 +9,26 @@ import {
 import { AuthProvider } from "../shared/context/AuthProvider";
 import ProtectedRoute from "../shared/components/ProtectedRoute";
 
-import LoginForm from "../features/auth/LoginForm";
+import Login from "../features/auth/Login";
+import Register from "../features/auth/Register";
+import VerificationCode from "../features/auth/VerifyCode";
+import ChangeMobile from "../features/auth/ChangeMobile";
+import ForgotPassword from "../features/auth/ForgotPassword";
+import PasswordResetOtp from "../features/auth/PasswordResetOtp";
+import AdminLogin from "../features/auth/AdminLogin";
 import HomePage from "../pages/Home";
 import NotFoundPage from "../pages/NotFound";
 import UnauthorizedPage from "../pages/Unauthorized";
+import TestPage from "../pages/Test";
+import PrivacyPolicy from "../pages/PrivacyPolicy";
+import TermsOfService from "../pages/TermsOfService";
 
 import ResidentLayout from "../layouts/ResidentLayout";
 import AdminLayout from "../layouts/AdminLayout";
 import ResponderLayout from "../layouts/ResponderLayout";
+import AuthLayout from "../layouts/AuthLayout";
 
-import ResidentDashboard from "../features/resident/ResidentDashboard";
+import ResidentDashboard from "../features/resident/Home";
 import AdminDashboard from "../features/admin/AdminDashboard";
 import ResponderDashboard from "../features/responder/ResponderDashboard";
 
@@ -29,11 +39,24 @@ export default function AppRouter() {
         <Routes>
           {/* Public pages */}
           <Route path="/" element={<HomePage />} />
-          <Route path="/login" element={<LoginForm />} />
+          <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+          <Route path="/terms-of-service" element={<TermsOfService />} />
+          <Route path="/admin-login" element={<AdminLogin />} />
+          <Route path="/test" element={<TestPage />} />
           <Route
             path="/unauthorized"
             element={<UnauthorizedPage />}
           />
+
+          {/* Auth pages (shared AuthLayout) */}
+          <Route element={<AuthLayout />}>
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/change-mobile" element={<ChangeMobile />} />
+            <Route path="/verify" element={<VerificationCode />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<PasswordResetOtp />} />
+          </Route>
 
           {/* Any authenticated user */}
           <Route element={<ProtectedRoute />}>
@@ -48,7 +71,7 @@ export default function AppRouter() {
           {/* Admin only */}
           <Route
             element={
-              <ProtectedRoute allowedRoles={["admin"]} />
+              <ProtectedRoute allowedRoles={["admin"]} loginPath="/admin/login" />
             }
           >
             <Route path="/admin" element={<AdminLayout />}>

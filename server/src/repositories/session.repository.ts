@@ -24,7 +24,7 @@ export async function findUserBySession(
 ): Promise<AuthUser | null> {
   return db
     .prepare(
-      `SELECT u.id, u.public_id, u.full_name, u.email, u.role
+      `SELECT u.id, u.public_id, u.full_name, u.mobile_number, u.role
        FROM sessions s
        INNER JOIN users u ON u.id = s.user_id
        WHERE s.token_hash = ?

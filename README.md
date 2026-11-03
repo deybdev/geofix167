@@ -58,14 +58,15 @@ Frontend runs at `http://localhost:5173`.
 
 ## Demo Accounts
 
-| Role      | Email                  | Password    |
+| Role      | Mobile                 | Password    |
 |-----------|------------------------|-------------|
-| Admin     | admin@gmail.com        | password123 |
-| Resident  | resident@gmail.com     | password123 |
-| Responder | responder@gmail.com    | password123 |
+| Admin     | 09123123123            | password    |
+| Resident  | 09246246246            | password    |
+| Responder | 09369369369            | password    |
 
 ## Notes
 
 - Keep both terminals running while developing.
 - The `--local` flag keeps the database on your machine — nothing is sent to Cloudflare.
 - Never commit `.wrangler/` or any `.env` files to GitHub.
+- Run `npx wrangler d1 migrations apply geofix167-db --local` inside `server/` whenever you add a new migration.

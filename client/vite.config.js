@@ -3,6 +3,7 @@ import { defineConfig } from 'vite'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 
+
 export default defineConfig({
   plugins: [
     react(),
@@ -15,7 +16,7 @@ export default defineConfig({
   },
   server: {
     host: true,
-    allowedHosts: ['all'],
+    allowedHosts: true,
     proxy: {
       '/api': {
         target: 'http://localhost:8787',

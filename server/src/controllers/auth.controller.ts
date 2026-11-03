@@ -20,7 +20,7 @@ export async function loginController(c: Context<AppEnv>) {
 
   if (!validation.success) {
     return c.json(
-      { error: "Please provide a valid email and password." },
+      { error: "Please provide a valid mobile number and password." },
       400,
     );
   }
@@ -28,7 +28,7 @@ export async function loginController(c: Context<AppEnv>) {
   try {
     const result = await login(
       c.env.geofix167_db,
-      validation.data.email,
+      validation.data.mobile_number,
       validation.data.password,
     );
 
@@ -44,7 +44,7 @@ export async function loginController(c: Context<AppEnv>) {
       user: {
         id: result.user.public_id,
         full_name: result.user.full_name,
-        email: result.user.email,
+        mobile_number: result.user.mobile_number,
         role: result.user.role,
       },
     });

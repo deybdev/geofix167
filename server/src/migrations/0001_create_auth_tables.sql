@@ -1,9 +1,8 @@
-
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     public_id TEXT NOT NULL UNIQUE,
     full_name TEXT NOT NULL,
-    email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    mobile_number TEXT NOT NULL UNIQUE COLLATE NOCASE,
     password TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'resident'
         CHECK (role IN ('admin', 'responder', 'resident')),
@@ -29,5 +28,5 @@ CREATE TABLE IF NOT EXISTS sessions (
         ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_sessions_user_id
-ON sessions(user_id);
+ALTER TABLE users
+RENAME COLUMN email TO mobile_number;

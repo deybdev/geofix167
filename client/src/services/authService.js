@@ -5,8 +5,8 @@ const api = axios.create({
   withCredentials: true,
 });
 
-export const login = (email, password) =>
-  api.post("/auth/login", { email, password });
+export const login = (mobileNumber, password) =>
+  api.post("/auth/login", { mobile_number: mobileNumber, password });
 
 export const getMe = () => api.get("/auth/me");
 

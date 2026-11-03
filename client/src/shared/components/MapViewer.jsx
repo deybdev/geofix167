@@ -1,11 +1,10 @@
-
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
-  MapContainer,
-  TileLayer,
   GeoJSON,
+  MapContainer,
   Marker,
-  Popup,
+  TileLayer,
   useMap,
   useMapEvents,
 } from "react-leaflet";
@@ -13,286 +12,543 @@ import L from "leaflet";
 import booleanPointInPolygon from "@turf/boolean-point-in-polygon";
 import "leaflet/dist/leaflet.css";
 
-// Fix default Leaflet marker icons in Vite
-import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
-import markerIcon from "leaflet/dist/images/marker-icon.png";
-import markerShadow from "leaflet/dist/images/marker-shadow.png";
+const BOUNDARY_URL = "/barangay-167.geojson";
+const DEFAULT_ZOOM = 15.5; // opening zoom (higher = closer)
+const MAX_ZOOM = 22;
 
-delete L.Icon.Default.prototype._getIconUrl;
+const BASEMAPS = {
+  street: {
+    label: "Map",
+    url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    credit: "&copy; OpenStreetMap contributors",
+  },
+  satellite: {
+    label: "Satellite",
+    url:
+      "https://server.arcgisonline.com/ArcGIS/rest/services" +
+      "/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    credit: "Tiles &copy; Esri",
+  },
+};
 
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: markerIcon2x,
-  iconUrl: markerIcon,
-  shadowUrl: markerShadow,
+/* Glyphs are 24x24 outline icons, drawn in white on the pin. */
+const CATEGORIES = {
+  // Fire -> fire truck (ladder on the roof)
+  fire: {
+    color: "#dc2626",
+    label: "Fire",
+    glyph:
+      '<path d="M14 18V9H3a1 1 0 0 0-1 1v7a1 1 0 0 0 1 1h2M9 18h6"/>' +
+      '<path d="M14 12h4l3 3.5V17a1 1 0 0 1-1 1h-1M4 5h9M6 5v4M11 5v4"/>' +
+      '<circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>',
+  },
+  // Incident -> ambulance
+  incident: {
+    color: "#2563eb",
+    label: "Incident",
+    glyph:
+      '<path d="M10 10H6M8 8v4M9 18h6"/>' +
+      '<path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/>' +
+      '<path d="M19 18h2a1 1 0 0 0 1-1v-3.28a1 1 0 0 0-.684-.948l-1.923' +
+      "-.641a1 1 0 0 1-.578-.502l-1.539-3.076A1 1 0 0 0 16.382 8H14" +
+      '"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>',
+  },
+  // Crime -> police shield with a star
+  crime: {
+    color: "#7c3aed",
+    label: "Crime",
+    glyph:
+      '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>' +
+      '<path fill="#fff" stroke-width="1" d="M12 7.8l.82 2.07 2.22.14' +
+      "-1.71 1.42.55 2.16L12 12.4l-1.88 1.19.55-2.16-1.71-1.42 2.22" +
+      '-.14z"/>',
+  },
+  infrastructure: {
+    color: "#d97706",
+    label: "Infrastructure",
+    glyph:
+      '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77' +
+      "-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91" +
+      'a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
+  },
+};
+
+const STATUSES = {
+  pending: { color: "#f59e0b", label: "Pending" },
+  ongoing: { color: "#3b82f6", label: "Ongoing" },
+  resolved: { color: "#16a34a", label: "Resolved" },
+};
+
+const STATUS_MATCH = [
+  ["ongoing", /progress|ongoing|responding|assigned/],
+  ["resolved", /resolv|done|complete|closed/],
+  ["rejected", /reject|invalid|declin/],
+];
+
+// Older data may still say "emergency"; it maps to "incident"
+const CATEGORY_ALIASES = { emergency: "incident" };
+
+function getCategory(value) {
+  const name = String(value).toLowerCase();
+  const alias = CATEGORY_ALIASES[name] ?? name;
+  const key = alias in CATEGORIES ? alias : "incident";
+  return { key, ...CATEGORIES[key] };
+}
+
+function getStatus(value) {
+  const text = String(value || "").toLowerCase();
+  const match = STATUS_MATCH.find(([, regex]) => regex.test(text));
+  const key = match ? match[0] : "pending";
+  return { key, ...STATUSES[key] };
+}
+
+export { getCategory, getStatus };
+
+/* ------------------------------ Geo helpers ------------------------------ */
+
+const getFeatures = (boundary) =>
+  boundary.type === "FeatureCollection" ? boundary.features : [boundary];
+
+const isInside = (lat, lng, boundary) =>
+  Number.isFinite(lat) &&
+  Number.isFinite(lng) &&
+  getFeatures(boundary).some(
+    (f) => f.geometry && booleanPointInPolygon([lng, lat], f),
+  );
+
+// A world-sized polygon with the barangay cut out, used to dim the outside
+function makeMask(boundary) {
+  const world = [[-180, -90], [180, -90], [180, 90], [-180, 90], [-180, -90]];
+  const holes = getFeatures(boundary).flatMap(({ geometry: g }) =>
+    g.type === "Polygon" ? g.coordinates : g.coordinates.flat(),
+  );
+  return { type: "Polygon", coordinates: [world, ...holes] };
+}
+
+/* ------------------------------ Marker icons ------------------------------ */
+
+const iconCache = {};
+
+// Push pin = round head in the category color with the glyph on it, a collar,
+// and a steel needle whose tip sits exactly on the incident location.
+// A status-colored dot sits on the head's corner.
+// When `selected`, the pin is larger and gets a glow ring plus a pulse
+// at the needle tip so it stands out.
+function pinIcon(category, status, selected = false) {
+  const id = `${category.key}-${status.key}${selected ? "-sel" : ""}`;
+
+  // SVG viewBox is 44x52; the needle tip is at (22, 50)
+  const w = selected ? 52 : 44;
+  const h = selected ? 62 : 52;
+  const tipY = Math.round((h * 50) / 52);
+
+  iconCache[id] ??= L.divIcon({
+    className: "",
+    iconSize: [w, h],
+    iconAnchor: [w / 2, tipY],
+    popupAnchor: [0, -(tipY - 4)],
+    html: `
+      <span style="width:${w}px;height:${h}px;display:block;position:relative;">
+        ${
+          selected
+            ? `<span class="animate-ping rounded-full"
+                     style="position:absolute;left:50%;top:${tipY}px;
+                            width:26px;height:12px;margin:-6px 0 0 -13px;
+                            background:#10b98166"></span>`
+            : ""
+        }
+        <svg width="${w}" height="${h}" viewBox="0 0 44 52" style="
+             position:relative;overflow:visible;
+             filter:drop-shadow(0 2px 2px #0005)${
+               selected ? " drop-shadow(0 0 8px #10b981aa)" : ""
+             }">
+          <!-- contact shadow where the needle enters the ground -->
+          <ellipse cx="22" cy="50" rx="5" ry="1.8" fill="#0006"/>
+          <!-- needle -->
+          <path d="M20.6 33 L22 50 L23.4 33z" fill="#94a3b8"
+                stroke="#475569" stroke-width="0.8" stroke-linejoin="round"/>
+          <!-- collar -->
+          <rect x="14" y="28" width="16" height="6" rx="3"
+                fill="${category.color}" stroke="${
+                  selected ? "#10b981" : "#fff"
+                }" stroke-width="2"/>
+          <!-- head -->
+          <circle cx="22" cy="16" r="14" fill="${category.color}"
+                  stroke="${selected ? "#10b981" : "#fff"}" stroke-width="2.5"/>
+          <!-- soft highlight for a 3D feel -->
+          <path d="M12.5 11a11 11 0 0 1 8-6" fill="none" stroke="#fff"
+                stroke-opacity=".45" stroke-width="2" stroke-linecap="round"/>
+          <svg x="11" y="5" width="22" height="22" viewBox="0 0 24 24"
+               fill="none" stroke="#fff" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            ${category.glyph}
+          </svg>
+          <circle cx="37" cy="6" r="6" fill="${status.color}"
+                  stroke="#fff" stroke-width="2"/>
+        </svg>
+      </span>`,
+  });
+
+  return iconCache[id];
+}
+
+// Selected spot: a pulsing green dot
+const selectedIcon = L.divIcon({
+  className: "",
+  iconSize: [40, 40],
+  iconAnchor: [20, 20],
+  html: `
+    <span class="relative flex h-10 w-10 items-center justify-center">
+      <span class="absolute h-7 w-7 animate-ping rounded-full
+                   bg-emerald-500/60"></span>
+      <span class="relative h-5 w-5 rounded-full border-[3px] border-white
+                   bg-emerald-600 shadow-lg"></span>
+    </span>`,
 });
 
-const BOUNDARY_URL = "/barangay-167.geojson";
+/* ------------------------------ Map behavior ------------------------------ */
 
-// Automatically focus the map on Barangay 167
-function FitBarangay({ boundary }) {
+// Start zoomed in, stop zooming out at the whole barangay, lock panning
+function FitBarangay({ boundary, fitRef }) {
   const map = useMap();
 
   useEffect(() => {
-    if (!boundary) return;
-
-    const boundaryLayer = L.geoJSON(boundary);
-    const bounds = boundaryLayer.getBounds();
-
+    const bounds = L.geoJSON(boundary).getBounds();
     if (!bounds.isValid()) return;
 
-    map.fitBounds(bounds, {
-      padding: [15, 15],
-      maxZoom: 17,
-    });
+    const fullZoom = map.getBoundsZoom(bounds, false, L.point(20, 20));
+    const zoom = Math.max(DEFAULT_ZOOM, fullZoom);
 
-    // Keep the map around the barangay
-    map.setMaxBounds(bounds.pad(0.05));
-    map.setMinZoom(map.getBoundsZoom(bounds));
+    map.setMaxBounds(bounds.pad(0.15));
+    map.setMinZoom(fullZoom);
+    map.setView(bounds.getCenter(), zoom, { animate: false });
 
-    map.setMaxZoom(19);
-  }, [boundary, map]);
+    fitRef.current = () => map.flyToBounds(bounds, { padding: [20, 20] });
+  }, [boundary, map, fitRef]);
 
   return null;
 }
 
-// Only accept map clicks inside the barangay polygon
-function BarangayClickHandler({ boundary, onLocationSelect }) {
+// Only accept clicks inside the barangay
+function ClickHandler({ boundary, onSelect }) {
   useMapEvents({
-    click(event) {
-      if (!boundary || !onLocationSelect) return;
-
-      const point = {
-        type: "Feature",
-        properties: {},
-        geometry: {
-          type: "Point",
-          coordinates: [
-            event.latlng.lng,
-            event.latlng.lat,
-          ],
-        },
-      };
-
-      const features =
-        boundary.type === "FeatureCollection"
-          ? boundary.features
-          : [boundary];
-
-      const inside = features.some((feature) => {
-        if (!feature.geometry) return false;
-
-        return booleanPointInPolygon(point, feature);
-      });
-
-      if (inside) {
-        onLocationSelect({
-          lat: event.latlng.lat,
-          lng: event.latlng.lng,
-        });
-      } else {
-        alert("Please select a location inside Barangay 167.");
-      }
+    click({ latlng: { lat, lng } }) {
+      if (isInside(lat, lng, boundary)) onSelect?.({ lat, lng });
     },
   });
 
   return null;
 }
 
+// Gently center the map on the selected incident pin
+function FlyToIncident({ incident }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (incident) {
+      map.flyTo([incident.lat, incident.lng], Math.max(map.getZoom(), 17), {
+        duration: 0.6,
+      });
+    }
+  }, [incident, map]);
+
+  return null;
+}
+
+/* -------------------------------- Component -------------------------------- */
+
+const BTN =
+  "pointer-events-auto flex h-11 w-11 items-center justify-center " +
+  "rounded-xl shadow-lg ring-1 ring-black/5";
+const CARD = "rounded-xl bg-white/95 shadow-lg ring-1 ring-black/5";
+
+const Dot = ({ color }) => (
+  <span className="h-3 w-3 rounded-full" style={{ background: color }} />
+);
+
+// Small round badge with the category icon, used in the legend
+const Badge = ({ color, glyph }) => (
+  <span
+    className="flex h-6 w-6 items-center justify-center rounded-full"
+    style={{ background: color }}
+  >
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="#fff"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      dangerouslySetInnerHTML={{ __html: glyph }}
+    />
+  </span>
+);
+
 export default function MapViewer({
   incidents = [],
   onLocationSelect,
   selectedLocation = null,
   compact = false,
+  onIncidentSelect,
+  selectedIncident = null,
 }) {
+  const navigate = useNavigate();
   const [boundary, setBoundary] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [basemap, setBasemap] = useState("street");
+  const [legendOpen, setLegendOpen] = useState(false);
+  const [map, setMap] = useState(null);
+  const fitRef = useRef(null);
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function loadBoundary() {
-      try {
-        const response = await fetch(BOUNDARY_URL);
-
-        if (!response.ok) {
-          throw new Error(
-            "Cannot load barangay-167.geojson."
-          );
-        }
-
-        const data = await response.json();
-
-        const features =
-          data.type === "FeatureCollection"
-            ? data.features
-            : [data];
-
-        const validBoundary = features.some(
-          (feature) =>
-            feature.geometry &&
-            ["Polygon", "MultiPolygon"].includes(
-              feature.geometry.type
-            )
-        );
-
-        if (!validBoundary) {
-          throw new Error(
-            "GeoJSON must contain a Polygon or MultiPolygon."
-          );
-        }
-
-        if (!cancelled) {
-          setBoundary(data);
-          setError("");
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err.message);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
-
-    loadBoundary();
-
-    return () => {
-      cancelled = true;
-    };
+    fetch(BOUNDARY_URL)
+      .then((res) => res.json())
+      .then(setBoundary)
+      .catch((err) => console.error("Barangay boundary error:", err));
   }, []);
 
-  if (loading) {
-    return (
-      <div className="flex h-96 items-center justify-center rounded-xl bg-gray-100">
-        Loading Barangay 167 map...
-      </div>
-    );
-  }
+  const mask = useMemo(() => boundary && makeMask(boundary), [boundary]);
 
-  if (error || !boundary) {
-    return (
-      <div className="rounded-xl border border-red-300 bg-red-50 p-4 text-red-700">
-        <p className="font-semibold">
-          Unable to load Barangay 167 boundary
-        </p>
-        <p className="mt-1 text-sm">
-          {error || "Boundary data is unavailable."}
-        </p>
-        <p className="mt-2 text-sm">
-          Check public/barangay-167.geojson and run
-          the application using npm run dev.
-        </p>
-      </div>
-    );
-  }
+  const visible = useMemo(
+    () =>
+      boundary
+        ? incidents.filter((i) => isInside(i.lat, i.lng, boundary))
+        : [],
+    [incidents, boundary],
+  );
+
+  if (!boundary) return null;
+
+  const base = BASEMAPS[basemap];
+  const showSelected =
+    selectedLocation &&
+    isInside(selectedLocation.lat, selectedLocation.lng, boundary);
 
   return (
-    <div className="w-full overflow-hidden rounded-xl border border-gray-300">
-      <div className="flex items-center justify-between bg-white px-4 py-3">
-        <div>
-          <h2 className="font-semibold text-gray-800">
-            Barangay 167
-          </h2>
-          <p className="text-xs text-gray-500">
-            Caloocan City · Incident and maintenance map
-          </p>
-        </div>
-
-        <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-800">
-          Barangay scope
-        </span>
-      </div>
-
+    <div className="relative h-full w-full overflow-hidden">
       <MapContainer
+        ref={setMap}
         center={[14.7305, 121.0155]}
-        zoom={15}
-        minZoom={13}
-        maxZoom={19}
-        scrollWheelZoom={true}
+        zoom={DEFAULT_ZOOM}
+        maxZoom={MAX_ZOOM}
+        zoomSnap={0.5}
+        zoomControl={false}
         maxBoundsViscosity={1}
-        className={`${compact ? "h-[300px] sm:h-[340px]" : "h-[500px]"} w-full`}
-        style={{ background: "#f3f4f6" }}
+        className={`${compact ? "h-[300px] sm:h-[340px]" : "h-full"} w-full`}
+        style={{ background: "#e5e7eb" }}
       >
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          key={basemap}
+          url={base.url}
+          attribution={base.credit}
+          maxNativeZoom={19}
+          maxZoom={MAX_ZOOM}
+        />
+
+        <GeoJSON
+          data={mask}
+          interactive={false}
+          style={{ weight: 0, fillColor: "#0f172a", fillOpacity: 0.5 }}
         />
 
         <GeoJSON
           key={JSON.stringify(boundary)}
           data={boundary}
+          interactive={false}
           style={{
-            color: "#15803d",
+            color: basemap === "satellite" ? "#86efac" : "#15803d",
             weight: 3,
-            opacity: 1,
             fillColor: "#22c55e",
-            fillOpacity: 0.15,
+            fillOpacity: 0.08,
+            dashArray: "8 6",
           }}
         />
 
-        <FitBarangay boundary={boundary} />
+        <FitBarangay boundary={boundary} fitRef={fitRef} />
+        <ClickHandler boundary={boundary} onSelect={onLocationSelect} />
+        <FlyToIncident incident={selectedIncident} />
 
-        <BarangayClickHandler
-          boundary={boundary}
-          onLocationSelect={onLocationSelect}
-        />
+        {showSelected && (
+          <Marker
+            position={[selectedLocation.lat, selectedLocation.lng]}
+            icon={selectedIcon}
+            zIndexOffset={2000}
+            interactive={false}
+          />
+        )}
 
-        {incidents.map((incident) => {
-          if (
-            typeof incident.lat !== "number" ||
-            typeof incident.lng !== "number"
-          ) {
-            return null;
-          }
-
-          const point = {
-            type: "Feature",
-            properties: {},
-            geometry: {
-              type: "Point",
-              coordinates: [incident.lng, incident.lat],
-            },
-          };
-
-          const features =
-            boundary.type === "FeatureCollection"
-              ? boundary.features
-              : [boundary];
-
-          const inside = features.some(
-            (feature) =>
-              feature.geometry &&
-              booleanPointInPolygon(point, feature)
-          );
-
-          if (!inside) return null;
+        {visible.map((incident) => {
+          const category = getCategory(incident.category);
+          const status = getStatus(incident.status);
+          const isPinned = incident.id === selectedIncident?.id;
 
           return (
             <Marker
               key={incident.id}
               position={[incident.lat, incident.lng]}
-            >
-              <Popup>
-                <strong>
-                  {incident.title || "Reported incident"}
-                </strong>
-                <br />
-                Status: {incident.status || "Pending"}
-              </Popup>
-            </Marker>
+              icon={pinIcon(category, status, isPinned)}
+              eventHandlers={{
+                click: () => onIncidentSelect?.(incident),
+              }}
+              zIndexOffset={isPinned ? 1500 : 0}
+            />
           );
         })}
-
-
       </MapContainer>
 
-      <div className="bg-white px-4 py-2 text-xs text-gray-500">
-        Barangay 167 (Llano), Caloocan City · Click inside the green boundary
-        to select an incident location.
+      {/* Top left: title + legend button */}
+      <div
+        className="pointer-events-none absolute left-3 top-3 z-[1000]
+                   flex flex-col items-start gap-2"
+      >
+        <div className="flex gap-2">
+          <button
+            type="button"
+            aria-label="Back to resident home"
+            onClick={() => navigate("/resident")}
+            className={`${BTN} bg-white/95 text-gray-700`}
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+          </button>
+          <div className={`${CARD} px-3 py-2`}>
+            <p className="text-sm font-bold leading-tight">Barangay 167</p>
+            <p className="text-[11px] text-gray-500">
+              {visible.length} report{visible.length === 1 ? "" : "s"}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            aria-label="Show legend"
+            onClick={() => setLegendOpen(!legendOpen)}
+            className={`${BTN} h-auto ${
+              legendOpen
+                ? "bg-emerald-600 text-white"
+                : "bg-white/95 text-gray-700"
+            }`}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <circle cx="12" cy="5" r="2" />
+              <circle cx="12" cy="12" r="2" />
+              <circle cx="12" cy="19" r="2" />
+            </svg>
+          </button>
+        </div>
+
+        {legendOpen && (
+          <div className={`${CARD} pointer-events-auto space-y-2 p-3`}>
+            {[
+              ["Type", CATEGORIES],
+              ["Status badge", STATUSES],
+            ].map(([title, items]) => (
+              <div key={title} className="space-y-1">
+                <p className="text-[10px] font-semibold uppercase text-gray-400">
+                  {title}
+                </p>
+                {Object.values(items).map(({ label, color, glyph }) => (
+                  <div
+                    key={label}
+                    className="flex items-center gap-2 text-xs text-gray-700"
+                  >
+                    {glyph ? (
+                      <Badge color={color} glyph={glyph} />
+                    ) : (
+                      <Dot color={color} />
+                    )}
+                    {label}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
+
+      {/* Top right: basemap switch + show whole barangay */}
+      <div
+        className="pointer-events-none absolute right-3 top-3 z-[1000]
+                   flex flex-col items-end gap-2"
+      >
+        <div
+          className="pointer-events-auto flex rounded-xl bg-white p-1
+                     text-xs font-semibold shadow-lg ring-1 ring-black/5"
+        >
+          {Object.entries(BASEMAPS).map(([key, { label }]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setBasemap(key)}
+              className={`rounded-lg px-3 py-2 ${
+                basemap === key ? "bg-emerald-600 text-white" : "text-gray-600"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          aria-label="Show entire barangay"
+          onClick={() => fitRef.current?.()}
+          className={`${BTN} bg-white text-gray-700`}
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" />
+          </svg>
+        </button>
+
+        <div
+          className="pointer-events-auto flex flex-col overflow-hidden
+                     rounded-xl bg-white text-xl text-gray-700 shadow-lg
+                     ring-1 ring-black/5"
+        >
+          <button
+            type="button"
+            aria-label="Zoom in"
+            onClick={() => map?.zoomIn()}
+            className="flex h-11 w-11 items-center justify-center"
+          >
+            +
+          </button>
+          <div className="h-px bg-gray-200" />
+          <button
+            type="button"
+            aria-label="Zoom out"
+            onClick={() => map?.zoomOut()}
+            className="flex h-11 w-11 items-center justify-center"
+          >
+            &minus;
+          </button>
+        </div>
+      </div>
+      {onLocationSelect && (
+        <div className="absolute bottom-0 left-0 right-0 z-[1000] bg-white px-4 py-2 text-xs text-gray-500">
+          Barangay 167 (Llano), Caloocan City · Click inside the green boundary
+          to select an incident location.
+        </div>
+      )}
     </div>
   );
 }

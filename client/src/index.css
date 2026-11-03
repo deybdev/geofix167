@@ -2,6 +2,29 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Bottom sheet pop up / pop down */
+@keyframes sheet-pop-up {
+  from {
+    opacity: 0;
+    transform: translateY(48px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes sheet-pop-down {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(48px) scale(0.94);
+  }
+}
+
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: sans-serif;
