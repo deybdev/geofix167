@@ -1,4 +1,5 @@
 export const PATHS = {
+  // Public routes
   home: "/",
   privacy: "/privacy-policy",
   terms: "/terms-of-service",
@@ -6,6 +7,7 @@ export const PATHS = {
   unauthorized: "/unauthorized",
   test: "/test",
 
+  // Auth routes
   login: "/login",
   register: "/register",
   changeMobile: "/change-mobile",
@@ -19,4 +21,9 @@ export const PATHS = {
   resident: "/resident",
   responder: "/responder",
   admin: "/admin",
+
+  // Resident routes
+  map: "/resident/map",
+  report: "/resident/report",
+  photoCapture: "/resident/photo-capture",
 };
