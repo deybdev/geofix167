@@ -4,26 +4,29 @@ import {
   CheckSquare,
   ClipboardList,
   Grid2X2,
-  Map,
   Settings,
   ShieldCheck,
   Users,
   X,
 } from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { PATHS } from "../../router/paths";
 
 const navigation = [
-  { label: "Dashboard", icon: Grid2X2, active: true },
-  { label: "Incident Reports", icon: ClipboardList },
-  { label: "Map View", icon: Map },
-  { label: "Dispatch & Tasks", icon: ShieldCheck },
-  { label: "Resolution Verification", icon: CheckSquare },
-  { label: "Accomplishment Log", icon: BookOpen },
-  { label: "Users & Roles", icon: Users },
-  { label: "Reports & Analytics", icon: BarChart3 },
-  { label: "Settings", icon: Settings },
+  { label: "Dashboard", icon: Grid2X2, path: PATHS.admin },
+  { label: "Incident Reports", icon: ClipboardList, path: PATHS.adminIncidentReports },
+  { label: "Maintenance Tasks", icon: ShieldCheck, path: PATHS.adminMaintenanceTasks },
+  { label: "Resolution Verification", icon: CheckSquare, path: PATHS.adminResolutionVerification },
+  { label: "Accomplishment Log", icon: BookOpen, path: PATHS.adminAccomplishmentLog },
+  { label: "Residents", icon: Users, path: PATHS.adminResidents },
+  { label: "Reports & Analytics", icon: BarChart3, path: PATHS.adminReportsAnalytics },
+  { label: "Settings", icon: Settings, path: PATHS.adminSettings },
 ];
 
 export default function AdminSidebar({ open = false, onClose }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+
   return (
     <>
       {open && (
@@ -54,10 +57,17 @@ export default function AdminSidebar({ open = false, onClose }) {
           </button>
         </div>
         <nav className="space-y-1">
-          {navigation.map(({ label, icon: Icon, active }) => (
+          {navigation.map(({ label, icon: Icon, path }) => {
+            const active = path && (path === PATHS.admin ? location.pathname === path : location.pathname.startsWith(path));
+            return (
             <button
               key={label}
-              className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-[10px] font-medium ${
+              type="button"
+              onClick={() => {
+                if (path) navigate(path);
+                onClose?.();
+              }}
+              className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-[10px] font-medium ${
                 active
                   ? "bg-[#2e8b57] text-white"
                   : "text-[#263246] hover:bg-[#edf6f1]"
@@ -65,7 +75,8 @@ export default function AdminSidebar({ open = false, onClose }) {
             >
               <Icon size={14} strokeWidth={1.8} /> {label}
             </button>
-          ))}
+            );
+          })}
         </nav>
         <div className="absolute bottom-4 left-3 right-3 flex items-center gap-2 rounded-md border border-[#e5eaed] bg-[#f8fafb] p-2">
           <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#2e8b57] text-[9px] font-bold text-white">
