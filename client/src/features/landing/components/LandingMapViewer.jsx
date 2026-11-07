@@ -237,7 +237,7 @@ export default function LandingMapViewer({
   };
 
   return (
-    <div className="relative h-full w-full overflow-hidden rounded-2xl border border-slate-200/90 bg-slate-100 shadow-md">
+    <div className="relative z-0 isolate h-full w-full overflow-hidden rounded-2xl border border-slate-200/90 bg-slate-100 shadow-md">
       {/* Interactive notification if in location picking mode */}
       {isPickingLocation && (
         <div className="absolute top-3 inset-x-3 z-[1000] mx-auto flex max-w-md items-center justify-between rounded-xl bg-slate-900/90 px-4 py-2.5 text-xs font-semibold text-white shadow-xl backdrop-blur">

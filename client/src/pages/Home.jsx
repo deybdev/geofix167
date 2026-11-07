@@ -74,7 +74,7 @@ export default function HomePage() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
             
             {/* Left Column: Interactive Map of Barangay 167 (~62% width on desktop) */}
-            <div className="lg:col-span-7 xl:col-span-8 h-[480px] sm:h-[540px] lg:h-[620px] flex flex-col">
+            <div className="relative z-0 isolate lg:col-span-7 xl:col-span-8 h-[480px] sm:h-[540px] lg:h-[620px] flex flex-col">
               <LandingMapViewer
                 reports={reports}
                 bdrrmoUnits={bdrrmoUnits}
