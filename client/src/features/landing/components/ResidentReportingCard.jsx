@@ -27,8 +27,8 @@ export default function ResidentReportingCard({
 }) {
   // Quick Report Form state
   const [formData, setFormData] = useState({
-    type: "maintenance",
-    category: "Drainage / Flooding",
+    type: "sudden",
+    category: "Fire Incident",
     street: "Molave St.",
     description: "",
     urgency: "High",
@@ -210,27 +210,27 @@ export default function ResidentReportingCard({
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={() => handleTypeChange("maintenance")}
-                className={`flex items-center justify-center gap-1.5 rounded-lg border py-2 text-xs font-bold transition-all ${
-                  formData.type === "maintenance"
-                    ? "border-amber-500 bg-amber-50 text-amber-900"
-                    : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                }`}
-              >
-                <span>Maintenance Issue</span>
-              </button>
-
-              <button
-                type="button"
                 onClick={() => handleTypeChange("sudden")}
                 className={`flex items-center justify-center gap-1.5 rounded-lg border py-2 text-xs font-bold transition-all ${
                   formData.type === "sudden"
-                    ? "border-red-500 bg-red-50 text-red-900"
+                    ? "border-red-500 bg-red-50 text-red-900 shadow-sm"
                     : "border-slate-200 text-slate-600 hover:bg-slate-50"
                 }`}
               >
                 <ShieldAlert size={14} className="text-red-600" />
                 <span>Sudden Incident</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleTypeChange("maintenance")}
+                className={`flex items-center justify-center gap-1.5 rounded-lg border py-2 text-xs font-bold transition-all ${
+                  formData.type === "maintenance"
+                    ? "border-amber-500 bg-amber-50 text-amber-900 shadow-sm"
+                    : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                <span>Maintenance Issue</span>
               </button>
             </div>
           </div>

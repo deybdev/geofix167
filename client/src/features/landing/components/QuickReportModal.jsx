@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { X, Send, MapPin, Camera, AlertTriangle, ShieldCheck } from "lucide-react";
+import { X, Send, MapPin, Camera, AlertTriangle, ShieldCheck, ShieldAlert } from "lucide-react";
 import { PATHS } from "../../../router/paths";
 import { toast } from "../../../shared/components/ui/toast";
 
@@ -108,13 +108,14 @@ export default function QuickReportModal({
               <button
                 type="button"
                 onClick={() => handleTypeChange("sudden")}
-                className={`py-2 px-3 rounded-lg text-xs font-bold border transition ${
+                className={`flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-bold border transition ${
                   reportType === "sudden"
                     ? "border-red-500 bg-red-50 text-red-900 shadow-sm"
                     : "border-slate-200 text-slate-600 hover:bg-slate-50"
                 }`}
               >
-                Sudden Emergency
+                <ShieldAlert size={14} className="text-red-600" />
+                <span>Sudden Incident</span>
               </button>
               <button
                 type="button"
