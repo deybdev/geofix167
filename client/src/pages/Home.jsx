@@ -130,6 +130,22 @@ export default function HomePage() {
       {/* 8. Footer */}
       <LandingFooter />
 
+      {/* Mobile Floating Emergency Button (always within thumb reach on phone/tablet) */}
+      <div className="fixed bottom-5 right-4 z-30 md:hidden">
+        <button
+          type="button"
+          onClick={handleTriggerReport}
+          aria-label="Report emergency incident"
+          className="flex items-center gap-2 rounded-full bg-gradient-to-r from-[#ea580c] to-[#dc2626] px-4 py-3 text-xs font-black tracking-wider text-white shadow-xl shadow-red-700/40 active:scale-95 transition-all ring-2 ring-white/90"
+        >
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75"></span>
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-white"></span>
+          </span>
+          <span>REPORT INCIDENT</span>
+        </button>
+      </div>
+
       {/* Quick Report Modal */}
       <QuickReportModal
         isOpen={isQuickReportOpen}
