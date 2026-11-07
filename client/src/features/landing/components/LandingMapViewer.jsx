@@ -149,12 +149,13 @@ function MapAutoBounds({ boundary, selectedLocation }) {
   const map = useMap();
 
   useEffect(() => {
+    map.invalidateSize();
     if (!boundary) return;
     try {
       const geoLayer = L.geoJSON(boundary);
       const bounds = geoLayer.getBounds();
       if (bounds.isValid()) {
-        map.fitBounds(bounds, { padding: [30, 30] });
+        map.fitBounds(bounds, { padding: [20, 20] });
         map.setMinZoom(14);
       }
     } catch (e) {

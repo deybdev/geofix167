@@ -4,7 +4,7 @@ import { ACCOMPLISHMENTS, CAPSTONE_STATS } from "../data/landingData";
 export default function AccomplishmentsSection() {
   return (
     <section id="accomplishments" className="py-16 sm:py-20 bg-white border-t border-slate-200/80">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div className="w-full px-4 sm:px-8 lg:px-10 xl:px-12">
         
         {/* Header */}
         <div className="text-center max-w-2xl mx-auto mb-12">

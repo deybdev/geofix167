@@ -23,7 +23,7 @@ export default function AboutSection() {
 
   return (
     <section id="about" className="py-16 sm:py-20 bg-white">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div className="w-full px-4 sm:px-8 lg:px-10 xl:px-12">
         
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
           

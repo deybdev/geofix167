@@ -5,7 +5,7 @@ import { PATHS } from "../../../router/paths";
 export default function LandingFooter() {
   return (
     <footer className="border-t border-slate-200 bg-white py-10 text-xs text-slate-600">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div className="w-full px-4 sm:px-8 lg:px-10 xl:px-12">
         
         {/* Main Footer Row: Matching the 3 columns in Screenshot */}
         <div className="flex flex-col md:flex-row items-center justify-between gap-6 text-center md:text-left">

@@ -10,7 +10,7 @@ export default function GetInvolvedSection({
 
   return (
     <section className="py-10 bg-slate-50/70 border-y border-slate-200/80">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div className="w-full px-4 sm:px-8 lg:px-10 xl:px-12">
         
         {/* Section Heading matching screenshot */}
         <div className="text-center mb-7">

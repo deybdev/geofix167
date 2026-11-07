@@ -68,13 +68,13 @@ export default function HomePage() {
       <BarangayStatusBanner />
 
       {/* 3. Main Live Dashboard Section (Map + Cards Matching Screenshot) */}
-      <section id="map-section" className="py-6 sm:py-8">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <section id="map-section" className="py-5 sm:py-7">
+        <div className="w-full px-4 sm:px-8 lg:px-10 xl:px-12">
           
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 xl:gap-8 items-start">
             
             {/* Left Column: Interactive Map of Barangay 167 (~62% width on desktop) */}
-            <div className="relative z-0 isolate lg:col-span-7 xl:col-span-8 h-[480px] sm:h-[540px] lg:h-[620px] flex flex-col">
+            <div className="relative z-0 isolate lg:col-span-7 xl:col-span-7 2xl:col-span-8 h-[500px] sm:h-[580px] lg:h-[680px] xl:h-[720px] flex flex-col">
               <LandingMapViewer
                 reports={reports}
                 bdrrmoUnits={bdrrmoUnits}
@@ -87,7 +87,7 @@ export default function HomePage() {
             </div>
 
             {/* Right Column: Resident Dashboard & Announcements (~38% width on desktop) */}
-            <div className="lg:col-span-5 xl:col-span-4 flex flex-col gap-5">
+            <div className="lg:col-span-5 xl:col-span-5 2xl:col-span-4 flex flex-col gap-5">
               
               {/* Resident Reporting Dashboard Card */}
               <ResidentReportingCard
