@@ -325,7 +325,7 @@ export default function MapViewer({
     isInside(selectedLocation.lat, selectedLocation.lng, boundary);
 
   return (
-    <div className="relative h-full w-full overflow-hidden">
+    <div className="relative z-0 isolate h-full w-full overflow-hidden">
       <MapContainer
         ref={setMap}
         center={[14.75, 121.02]}
