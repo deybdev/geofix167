@@ -27,6 +27,3 @@ CREATE TABLE IF NOT EXISTS sessions (
     FOREIGN KEY (user_id) REFERENCES users(id)
         ON DELETE CASCADE
 );
-
-ALTER TABLE users
-RENAME COLUMN email TO mobile_number;
