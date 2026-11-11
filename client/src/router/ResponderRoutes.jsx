@@ -13,7 +13,12 @@ import SceneAssessment from "../features/responder/SceneAssessment";
 import IncidentNotLocated from "../features/responder/IncidentNotLocated";
 import EmergencySupport from "../features/responder/EmergencySupport";
 import NonEmergencySupport from "../features/responder/NonEmergencySupport";
-import ResponderUpdates from "../features/responder/ResponderUpdates";
+import ResponseReview from "../features/responder/updates/ResponseReview";
+import HandoverDecision from "../features/responder/updates/HandoverDecision";
+import NoOfficialHandover from "../features/responder/updates/NoOfficialHandover";
+import HandoverDetails from "../features/responder/updates/HandoverDetails";
+import ReceiverNotReady from "../features/responder/updates/ReceiverNotReady";
+import RecordSubmitted from "../features/responder/updates/RecordSubmitted";
 import ResponderProfile from "../features/responder/ResponderProfile";
 import MarkUnavailable from "../features/responder/MarkUnavailable";
 import UnavailabilitySubmitted from "../features/responder/UnavailabilitySubmitted";
@@ -35,7 +40,13 @@ export const responderRoutes = (
       <Route path="assignment" element={<ResponderAssignment />} />
       <Route path="dashboard" element={<NewDispatchNotif />} />
       <Route path="route" element={<EmergencyRouting />} />
-      <Route path="updates" element={<ResponderUpdates />} />
+      {/* Keep the update workflow in the requested order. Each screen owns its URL. */}
+      <Route path="updates" element={<ResponseReview />} />
+      <Route path="updates/handover-decision" element={<HandoverDecision />} />
+      <Route path="updates/no-official-handover" element={<NoOfficialHandover />} />
+      <Route path="updates/handover-details" element={<HandoverDetails />} />
+      <Route path="updates/receiver-not-ready" element={<ReceiverNotReady />} />
+      <Route path="updates/record-submitted" element={<RecordSubmitted />} />
       <Route path="profile" element={<ResponderProfile />} />
       <Route path="scene-assessment" element={<SceneAssessment />} />
       <Route path="incident-not-located" element={<IncidentNotLocated />} />

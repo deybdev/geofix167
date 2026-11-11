@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { setResponderMeta } from "./responderMeta";
 
 const cardClass = "rounded-[20px] border-2 border-slate-200 bg-white px-5 py-5";
 const googleMapsUrl =
@@ -43,22 +44,26 @@ export default function EmergencyRouting() {
   }
 
   useEffect(() => {
+    setResponderMeta(
+      "Emergency Route & Incident Tracking",
+      "Track the active responder location, confirm the incident, and review the safest route to the scene.",
+    );
     updateResponderLocation();
   }, []);
 
   return (
-    <div className="min-h-screen bg-white">
-      <header className="flex items-center justify-between border-b border-slate-200 px-5 pb-5 pt-7">
+    <div className="assignment-dashboard min-h-screen bg-slate-50">
+      <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 pb-5 pt-6 sm:px-7 sm:pt-9">
         <div className="flex items-center gap-4">
           <Link to="/responder/route" aria-label="Go back" className="text-primary"><ArrowLeft size={38} strokeWidth={1.8} /></Link>
           <h1 className="text-[25px] font-bold text-primary">Emergency Routing</h1>
         </div>
         <span className="flex size-14 items-center justify-center rounded-full bg-primary text-xl font-bold text-white">R</span>
       </header>
-      <main className="space-y-4 px-5 py-6 pb-10">
-        <p className="text-[20px] text-slate-500">GF-006 • Responding / En Route • 9:48 AM</p>
-        <h2 className="text-[29px] font-bold">Accident on Rizal Street</h2>
-        <p className="text-[20px] text-slate-500">Department: Traffic/Road Response<br />GF-006 • Traffic/Road Response Team A</p>
+      <main className="space-y-4 px-4 py-5 pb-8 sm:space-y-5 sm:px-7 sm:py-6">
+        <p className="text-base leading-6 text-slate-500">GF-006 • Responding / En Route • 9:48 AM</p>
+        <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">Accident on Rizal Street</h2>
+        <p className="text-base leading-6 text-slate-500">Department: Traffic/Road Response<br />GF-006 • Traffic/Road Response Team A</p>
         <section className="overflow-hidden rounded-[22px] border-2 border-slate-200 bg-white">
           <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-4">
             <div className="flex items-center gap-3">
