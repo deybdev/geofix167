@@ -15,12 +15,20 @@ import EmergencySupport from "../features/responder/EmergencySupport";
 import NonEmergencySupport from "../features/responder/NonEmergencySupport";
 import ResponderUpdates from "../features/responder/ResponderUpdates";
 import ResponderProfile from "../features/responder/ResponderProfile";
+import MarkUnavailable from "../features/responder/MarkUnavailable";
+import UnavailabilitySubmitted from "../features/responder/UnavailabilitySubmitted";
+import ReassignmentPending from "../features/responder/ReassignmentPending";
+import ReassignmentConfirmed from "../features/responder/ReassignmentConfirmed";
 
 export const responderRoutes = (
   <Route element={<ProtectedRoute allowedRoles={["responder"]} />}>
     <Route path={PATHS.responder} element={<ResponderLayout />}>
       <Route index element={<NewDispatchNotif />} />
       <Route path="assignment-offer" element={<AssignmentOffer />} />
+      <Route path="mark-unavailable" element={<MarkUnavailable />} />
+      <Route path="unavailability-submitted" element={<UnavailabilitySubmitted />} />
+      <Route path="reassignment-pending" element={<ReassignmentPending />} />
+      <Route path="reassignment-confirmed" element={<ReassignmentConfirmed />} />
       <Route path="acceptance" element={<Acceptance />} />
       <Route path="confirmation" element={<ConfirmationAcceptance />} />
       <Route path="new-dispatch" element={<NewDispatchNotif />} />

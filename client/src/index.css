@@ -19,31 +19,31 @@
     opacity: 1;
     transform: translateY(0) scale(1);
   }
-
-  @keyframes responder-page-in {
-    from {
-      opacity: 0;
-      transform: translateY(8px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  @keyframes responder-nav-in {
-    from {
-      opacity: 0;
-      transform: translateY(10px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
   to {
     opacity: 0;
     transform: translateY(48px) scale(0.94);
+  }
+}
+
+@keyframes responder-page-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes responder-nav-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
@@ -172,8 +172,30 @@
   }
 }
 
-<<<<<<< HEAD
 @media (max-width: 640px) {
+  .assignment-dashboard header {
+    min-height: 5.75rem;
+  }
+
+  .assignment-dashboard main {
+    padding-top: 1.25rem;
+    padding-bottom: 1.5rem;
+  }
+
+  .assignment-dashboard main > section,
+  .assignment-dashboard main > form > section {
+    scroll-margin-top: 1rem;
+  }
+
+  .assignment-dashboard h1 {
+    letter-spacing: -0.02em;
+  }
+
+  .assignment-dashboard h2,
+  .assignment-dashboard h3 {
+    letter-spacing: -0.015em;
+  }
+
   .responder-page {
     animation: responder-page-in 280ms ease-out both;
   }
@@ -290,7 +312,6 @@
     transition: none;
   }
 }
-=======
 /* Polished Leaflet popup & controls */
 .leaflet-popup-content-wrapper {
   border-radius: 14px !important;
@@ -322,4 +343,3 @@
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
->>>>>>> 6e1658b290eaadc053055796649d405ec80e41d6

@@ -17,7 +17,10 @@ const ResponderLayout = () => {
         location.pathname.startsWith(`${PATHS.responder}/assignment`) ||
         location.pathname.startsWith(`${PATHS.responder}/acceptance`) ||
         location.pathname.startsWith(`${PATHS.responder}/confirmation`) ||
-        location.pathname.startsWith(`${PATHS.responder}/new-dispatch`),
+        location.pathname.startsWith(`${PATHS.responder}/new-dispatch`) ||
+        location.pathname.startsWith(`${PATHS.responder}/mark-unavailable`) ||
+        location.pathname.startsWith(`${PATHS.responder}/unavailability-submitted`) ||
+        location.pathname.startsWith(`${PATHS.responder}/reassignment-`),
     },
     {
       label: "Route",
