@@ -46,8 +46,8 @@ const DATASETS = {
 };
 
 const WEEK_STATUSES = ["Emergency", "Electrical", "Road", "Sanitation"];
-const WEEK_COLORS = ["#dc2626", "#e69500", "#7184a0", "#2e8b57"];
-const BAR_COLORS = ["#2e8b57", "#e69500", "#7184a0", "#b45309"];
+const WEEK_COLORS = ["#dc2626", "#e69500", "#7184a0", "var(--gf-green)"];
+const BAR_COLORS = ["var(--gf-green)", "#e69500", "#7184a0", "#b45309"];
 
 export default function ReportsAnalytics() {
   const [period, setPeriod] = useState("This Month");
@@ -59,27 +59,27 @@ export default function ReportsAnalytics() {
   return (
     <div className="space-y-3">
       <section className="flex flex-wrap items-center gap-3 rounded-lg border border-[#e2e8eb] bg-white p-4">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#e7f4ed] text-[#2e8b57]"><TrendingUp size={18} /></div>
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-(--gf-green-tint) text-(--gf-green)"><TrendingUp size={18} /></div>
         <div className="min-w-0 flex-1">
-          <h2 className="text-[13px] font-bold text-[#2e8b57]">Reports &amp; Analytics</h2>
+          <h2 className="text-[13px] font-bold text-(--gf-green)">Reports &amp; Analytics</h2>
           <p className="text-[9px] text-[#60738f]">Organization performance of Barangay 167 operations — reports, resolutions, and response efficiency.</p>
         </div>
         <div className="flex rounded-md border border-[#dfe5e8] p-0.5">
           {Object.keys(DATASETS).map((option) => (
             <button key={option} type="button" aria-pressed={period === option} onClick={() => setPeriod(option)}
-              className={`rounded px-2.5 py-1 text-[9px] font-bold ${period === option ? "bg-[#2e8b57] text-white" : "text-[#60738f] hover:bg-[#f3faf6]"}`}>
+              className={`rounded px-2.5 py-1 text-[9px] font-bold ${period === option ? "bg-(--gf-green) text-white" : "text-[#60738f] hover:bg-(--gf-green-soft)"}`}>
               {option}
             </button>
           ))}
         </div>
-        <button type="button" onClick={() => toast.add({ title: "Export ready", description: `Analytics summary for ${period.toLowerCase()} exported.`, type: "success" })} className="flex items-center gap-1 rounded-md border border-[#d9e8df] px-2.5 py-2 text-[9px] font-semibold text-[#2e8b57]"><Download size={11} /> Export Report</button>
+        <button type="button" onClick={() => toast.add({ title: "Export ready", description: `Analytics summary for ${period.toLowerCase()} exported.`, type: "success" })} className="flex items-center gap-1 rounded-md border border-(--gf-green-border) px-2.5 py-2 text-[9px] font-semibold text-(--gf-green)"><Download size={11} /> Export Report</button>
       </section>
 
       <section className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {dataset.summary.map(({ label, value, delta, icon: Icon }) => (
           <article key={label} className="rounded-lg border border-[#e2e8eb] bg-white p-4">
             <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#f3faf6] text-[#2e8b57]"><Icon size={14} /></div>
+              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-(--gf-green-soft) text-(--gf-green)"><Icon size={14} /></div>
               <p className="text-[9px] font-bold uppercase tracking-wide text-[#60738f]">{label}</p>
             </div>
             <p className="mt-2 text-[20px] font-bold text-[#263246]">{value}</p>
@@ -90,7 +90,7 @@ export default function ReportsAnalytics() {
 
       <section className="grid gap-3 lg:grid-cols-2">
         <article className="rounded-lg border border-[#e2e8eb] bg-white p-4">
-          <h3 className="text-[11px] font-bold text-[#2e8b57]">Reports by Category</h3>
+          <h3 className="text-[11px] font-bold text-(--gf-green)">Reports by Category</h3>
           <div className="mt-3 grid gap-2.5">
             {dataset.categories.map(([label, value], index) => (
               <div key={label}>
@@ -104,7 +104,7 @@ export default function ReportsAnalytics() {
         </article>
 
         <article className="rounded-lg border border-[#e2e8eb] bg-white p-4">
-          <h3 className="text-[11px] font-bold text-[#2e8b57]">Weekly Report Volume</h3>
+          <h3 className="text-[11px] font-bold text-(--gf-green)">Weekly Report Volume</h3>
           <div className="mt-3 flex h-[150px] items-end justify-between gap-3 px-1">
             {dataset.weekly.map(([week, values]) => {
               const total = values.reduce((sum, value) => sum + value, 0);

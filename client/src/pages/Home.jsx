@@ -14,12 +14,12 @@ export default function HomePage() {
 
       {/* Nav */}
       <nav className="fixed inset-x-0 top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white/80 px-6 py-3 backdrop-blur">
-        <div className="flex items-center gap-2 font-bold text-[#2E8B57]">
+        <div className="flex items-center gap-2 font-bold text-primary">
           <MapPin size={20} /> GeoFix 167
         </div>
         <Link
           to="/login"
-          className="rounded-lg bg-[#2E8B57] px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+          className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
         >
           Sign in
         </Link>
@@ -27,13 +27,13 @@ export default function HomePage() {
 
       {/* Hero */}
       <section className="flex min-h-screen flex-col items-center justify-center px-6 pt-16 text-center">
-        <span className="mb-4 rounded-full border border-[#2E8B57]/30 bg-[#2E8B57]/10 px-3 py-1 text-xs font-medium text-[#2E8B57]">
+        <span className="mb-4 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
           Barangay 167 · Caloocan · Community Safety Platform
         </span>
 
         <h1 className="text-5xl font-extrabold tracking-tight sm:text-6xl">
           Report. Dispatch.{" "}
-          <span className="text-[#2E8B57]">Resolve.</span>
+          <span className="text-primary">Resolve.</span>
         </h1>
 
         <p className="mt-5 max-w-lg text-lg text-gray-500">
@@ -43,7 +43,7 @@ export default function HomePage() {
 
         <Link
           to="/login"
-          className="mt-8 inline-flex items-center gap-2 rounded-xl bg-[#2E8B57] px-7 py-3.5 text-sm font-semibold text-white shadow-lg shadow-[#2E8B57]/30 hover:opacity-90"
+          className="mt-8 inline-flex items-center gap-2 rounded-xl bg-primary px-7 py-3.5 text-sm font-semibold text-white shadow-lg shadow-primary/30 hover:opacity-90"
         >
           Get started <ArrowRight size={16} />
         </Link>
@@ -55,7 +55,7 @@ export default function HomePage() {
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {FEATURES.map(({ icon: Icon, title, desc }) => (
             <div key={title} className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
-              <Icon size={22} className="mb-3 text-[#2E8B57]" />
+              <Icon size={22} className="mb-3 text-primary" />
               <p className="font-semibold">{title}</p>
               <p className="mt-1 text-sm text-gray-500">{desc}</p>
             </div>

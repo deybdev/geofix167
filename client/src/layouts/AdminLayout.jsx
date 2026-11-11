@@ -61,15 +61,15 @@ const AdminLayout = () => {
               <Search size={14} />
               <input aria-label="Search report or location" placeholder="Search report or location..." className="w-full outline-none placeholder:text-slate-400" />
             </label>
-            <button type="button" className="relative rounded-full border border-[#dfe5e8] p-1.5 text-[#2e8b57]" aria-label="Notifications">
+            <button type="button" className="relative rounded-full border border-[#dfe5e8] p-1.5 text-(--gf-green)" aria-label="Notifications">
               <Bell size={14} />
               <span className="absolute right-0 top-0 h-1.5 w-1.5 rounded-full bg-[#f59e0b]" />
             </button>
             <div className="hidden items-center gap-2 sm:flex">
-              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#2e8b57] text-[8px] font-bold text-white">AM</div>
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-(--gf-green) text-[8px] font-bold text-white">AM</div>
               <div className="text-[9px]"><strong className="block">Admin Moreno</strong><span className="text-slate-400">Brgy 167 Lead Officer</span></div>
             </div>
-            <button type="button" onClick={() => setIsSignOutDialogOpen(true)} className="hidden text-[10px] text-slate-400 hover:text-[#2e8b57] lg:block">Sign out</button>
+            <button type="button" onClick={() => setIsSignOutDialogOpen(true)} className="hidden text-[10px] text-slate-400 hover:text-(--gf-green) lg:block">Sign out</button>
           </div>
         </header>
         <main className="p-5 md:p-6"><Outlet /></main>

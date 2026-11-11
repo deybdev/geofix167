@@ -15,7 +15,7 @@ import {
 const toast = ToastPrimitive.createToastManager();
 
 const toastTypeStyles = {
-  success: "border-[#2e8b57]/40",
+  success: "border-(--gf-green-border)",
   error: "border-red-500/40",
   warning: "border-amber-500/50",
   info: "border-blue-500/40",
@@ -144,7 +144,7 @@ function ToastIcon({ type }) {
   const iconStyles = {
     success: {
       icon: <CircleCheckIcon aria-hidden="true" />,
-      color: "text-[#2e8b57]",
+      color: "text-(--gf-green)",
     },
     info: {
       icon: <InfoIcon aria-hidden="true" />,

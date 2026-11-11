@@ -42,10 +42,10 @@ export default function AdminSidebar({ open = false, onClose }) {
         }`}
       >
         <div className="mb-7 flex items-center gap-2 px-2">
-          <div className="flex h-6 w-6 items-center justify-center rounded-full border-[4px] border-[#2e8b57] text-[8px] font-bold text-[#2e8b57]">
+          <div className="flex h-6 w-6 items-center justify-center rounded-full border-[4px] border-(--gf-green) text-[8px] font-bold text-(--gf-green)">
             G
           </div>
-          <div className="text-[11px] font-bold leading-tight text-[#2e8b57]">
+          <div className="text-[11px] font-bold leading-tight text-(--gf-green)">
             GeoFix <span className="block text-[8px]">Barangay 167</span>
           </div>
           <button
@@ -69,8 +69,8 @@ export default function AdminSidebar({ open = false, onClose }) {
               }}
               className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-[10px] font-medium ${
                 active
-                  ? "bg-[#2e8b57] text-white"
-                  : "text-[#263246] hover:bg-[#edf6f1]"
+                  ? "bg-(--gf-green) text-white"
+                  : "text-[#263246] hover:bg-(--gf-green-soft)"
               }`}
             >
               <Icon size={14} strokeWidth={1.8} /> {label}
@@ -79,7 +79,7 @@ export default function AdminSidebar({ open = false, onClose }) {
           })}
         </nav>
         <div className="absolute bottom-4 left-3 right-3 flex items-center gap-2 rounded-md border border-[#e5eaed] bg-[#f8fafb] p-2">
-          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#2e8b57] text-[9px] font-bold text-white">
+          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-(--gf-green) text-[9px] font-bold text-white">
             BA
           </div>
           <div className="min-w-0 text-[9px]">
