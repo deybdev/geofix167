@@ -23,7 +23,6 @@ export default function ResponderAssignment() {
           <h1 className="text-[30px] font-bold tracking-tight text-primary">My Assignment</h1>
         </div>
         <span className="flex size-16 items-center justify-center rounded-full bg-primary text-2xl font-bold text-white">
-          R
         </span>
       </header>
 

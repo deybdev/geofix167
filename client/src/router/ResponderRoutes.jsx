@@ -13,6 +13,8 @@ import SceneAssessment from "../features/responder/SceneAssessment";
 import IncidentNotLocated from "../features/responder/IncidentNotLocated";
 import EmergencySupport from "../features/responder/EmergencySupport";
 import NonEmergencySupport from "../features/responder/NonEmergencySupport";
+import ResponderUpdates from "../features/responder/ResponderUpdates";
+import ResponderProfile from "../features/responder/ResponderProfile";
 
 export const responderRoutes = (
   <Route element={<ProtectedRoute allowedRoles={["responder"]} />}>
@@ -25,6 +27,8 @@ export const responderRoutes = (
       <Route path="assignment" element={<ResponderAssignment />} />
       <Route path="dashboard" element={<NewDispatchNotif />} />
       <Route path="route" element={<EmergencyRouting />} />
+      <Route path="updates" element={<ResponderUpdates />} />
+      <Route path="profile" element={<ResponderProfile />} />
       <Route path="scene-assessment" element={<SceneAssessment />} />
       <Route path="incident-not-located" element={<IncidentNotLocated />} />
       <Route path="emergency-support" element={<EmergencySupport />} />

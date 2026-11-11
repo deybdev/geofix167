@@ -19,6 +19,28 @@
     opacity: 1;
     transform: translateY(0) scale(1);
   }
+
+  @keyframes responder-page-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes responder-nav-in {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
   to {
     opacity: 0;
     transform: translateY(48px) scale(0.94);
@@ -146,5 +168,123 @@
   }
   html {
     @apply font-sans;
+  }
+}
+
+@media (max-width: 640px) {
+  .responder-page {
+    animation: responder-page-in 280ms ease-out both;
+  }
+
+  .responder-page > * > * {
+    animation: responder-page-in 320ms ease-out both;
+  }
+
+  .responder-page > * > *:nth-child(2) {
+    animation-delay: 35ms;
+  }
+
+  .responder-page > * > *:nth-child(3) {
+    animation-delay: 70ms;
+  }
+
+  .responder-page > * > *:nth-child(4) {
+    animation-delay: 105ms;
+  }
+
+  .responder-nav-item {
+    animation: responder-nav-in 320ms ease-out both;
+    transition:
+      color 180ms ease,
+      background-color 180ms ease,
+      transform 180ms ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .responder-nav-item:active {
+    transform: scale(0.94);
+  }
+
+  .responder-shell button,
+  .responder-shell a {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .responder-shell button:active,
+  .responder-shell a:active {
+    transform: scale(0.985);
+  }
+
+  .responder-nav-item[aria-current="page"] {
+    background-color: rgb(226 242 235 / 0.7);
+  }
+
+  .responder-nav-item[aria-current="page"] svg {
+    animation: responder-nav-in 220ms ease-out both;
+  }
+
+  .responder-shell main {
+    padding-bottom: 6.5rem;
+  }
+
+  .responder-shell [class~="px-7"] {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .responder-shell [class~="px-8"] {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .responder-shell [class~="pt-9"] {
+    padding-top: 1.25rem;
+  }
+
+  .responder-shell [class~="pb-10"] {
+    padding-bottom: 1.5rem;
+  }
+
+  .responder-shell [class~="text-[31px]"],
+  .responder-shell [class~="text-[30px]"],
+  .responder-shell [class~="text-[29px]"] {
+    font-size: 1.5rem;
+    line-height: 1.2;
+  }
+
+  .responder-shell [class~="text-[28px]"],
+  .responder-shell [class~="text-[27px]"],
+  .responder-shell [class~="text-[26px]"],
+  .responder-shell [class~="text-[25px]"] {
+    font-size: 1.25rem;
+    line-height: 1.3;
+  }
+
+  .responder-shell [class~="text-[24px]"],
+  .responder-shell [class~="text-[23px]"],
+  .responder-shell [class~="text-[22px]"],
+  .responder-shell [class~="text-[21px]"],
+  .responder-shell [class~="text-[20px]"] {
+    font-size: 1rem;
+    line-height: 1.45;
+  }
+
+  .responder-shell [class~="h-[92px]"],
+  .responder-shell [class~="h-[86px]"],
+  .responder-shell [class~="h-[84px]"] {
+    min-height: 3.75rem;
+    height: auto;
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .responder-page,
+  .responder-page > * > *,
+  .responder-nav-item,
+  .responder-nav-item[aria-current="page"] svg {
+    animation: none;
+    transition: none;
   }
 }
