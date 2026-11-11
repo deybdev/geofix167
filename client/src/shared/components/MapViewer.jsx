@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  CircleMarker,
   GeoJSON,
   MapContainer,
   Marker,
+  Polyline,
   TileLayer,
   useMap,
   useMapEvents,
@@ -206,6 +208,54 @@ const selectedIcon = L.divIcon({
     </span>`,
 });
 
+/* Moving responder unit: a color-filled circular badge with the agency glyph
+   (police/fire/ambulance), a white ring, and a pulse so it reads as an
+   active unit in transit rather than a static location. */
+const trackerIconCache = {};
+
+function trackerIcon(category) {
+  const resolved = typeof category === "string" ? getCategory(category) : category;
+  const cacheKey = `trk-${resolved.key}`;
+  trackerIconCache[cacheKey] ??= L.divIcon({
+    className: "",
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
+    html: `
+      <span style="width:34px;height:34px;display:block;position:relative;">
+        <span class="animate-ping rounded-full"
+              style="position:absolute;inset:0;border-radius:9999px;background:${resolved.color}55"></span>
+        <span style="position:absolute;left:2px;top:2px;width:30px;height:30px;
+                     border-radius:9999px;background:${resolved.color};
+                     border:2.5px solid #fff;box-shadow:0 2px 6px #0005;
+                     display:flex;align-items:center;justify-content:center;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${resolved.glyph}</svg>
+        </span>
+      </span>`,
+  });
+  return trackerIconCache[cacheKey];
+}
+
+/* Drop-off: a green square-topped pin with a down arrow marking where a
+   responding unit delivers its passengers or payload (e.g. the ambulance's
+   patient transport destination). */
+const DROP_OFF_ICON = L.divIcon({
+  className: "",
+  iconSize: [26, 34],
+  iconAnchor: [13, 33],
+  html: `
+    <svg width="26" height="34" viewBox="0 0 26 34"
+         style="filter:drop-shadow(0 2px 2px #0005)">
+      <ellipse cx="13" cy="31.5" rx="4" ry="1.4" fill="#0006"/>
+      <path d="M10.8 21.5 L13 31.5 L15.2 21.5 Z" fill="#94a3b8"
+            stroke="#475569" stroke-width="0.8" stroke-linejoin="round"/>
+      <rect x="1.5" y="1" width="23" height="21.5" rx="7" fill="#10b981"
+            stroke="#fff" stroke-width="2"/>
+      <path d="M13 5.8v11.4M8.7 12.6l4.3 4.6 4.3-4.6" fill="none" stroke="#fff"
+            stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`,
+});
+
 /* ------------------------------ Map behavior ------------------------------ */
 
 // Start zoomed in, stop zooming out at the whole barangay, lock panning
@@ -240,17 +290,19 @@ function ClickHandler({ boundary, onSelect }) {
   return null;
 }
 
-// Gently center the map on the selected incident pin
-function FlyToIncident({ incident }) {
+// Gently center the map on the selected incident pin — only when the incident
+// actually sits inside the barangay. Out-of-boundary selections (bad/mock data)
+// must not drag the camera away from the highlighted scope.
+function FlyToIncident({ incident, boundary }) {
   const map = useMap();
 
   useEffect(() => {
-    if (incident) {
+    if (incident && isInside(incident.lat, incident.lng, boundary)) {
       map.flyTo([incident.lat, incident.lng], Math.max(map.getZoom(), 17), {
         duration: 0.6,
       });
     }
-  }, [incident, map]);
+  }, [incident, boundary, map]);
 
   return null;
 }
@@ -290,8 +342,12 @@ export default function MapViewer({
   incidents = [],
   onLocationSelect,
   selectedLocation = null,
+  compact = false,
   onIncidentSelect,
   selectedIncident = null,
+  routes = [],
+  trackers = [],
+  dropOffs = [],
 }) {
   const navigate = useNavigate();
   const [boundary, setBoundary] = useState(null);
@@ -309,6 +365,20 @@ export default function MapViewer({
 
   const mask = useMemo(() => boundary && makeMask(boundary), [boundary]);
 
+  /* Modal-hosted viewers mount while their container is still laying out;
+     recalculating the size and re-fitting keeps the opening camera focused
+     inside the highlighted barangay scope. */
+  useEffect(() => {
+    if (!map) return undefined;
+    const timers = [120, 420].map((delay) =>
+      setTimeout(() => {
+        map.invalidateSize();
+        fitRef.current?.();
+      }, delay),
+    );
+    return () => timers.forEach(clearTimeout);
+  }, [map, boundary]);
+
   const visible = useMemo(
     () =>
       boundary
@@ -325,16 +395,16 @@ export default function MapViewer({
     isInside(selectedLocation.lat, selectedLocation.lng, boundary);
 
   return (
-    <div className="relative h-full w-full overflow-hidden">
+    <div className="relative z-0 isolate h-full w-full overflow-hidden">
       <MapContainer
         ref={setMap}
-        center={[14.75, 121.02]}
+        center={[14.7305, 121.0155]}
         zoom={DEFAULT_ZOOM}
         maxZoom={MAX_ZOOM}
         zoomSnap={0.5}
         zoomControl={false}
         maxBoundsViscosity={1}
-        className="h-full w-full"
+        className={`${compact ? "h-[300px] sm:h-[340px]" : "h-full"} w-full`}
         style={{ background: "#e5e7eb" }}
       >
         <TileLayer
@@ -352,6 +422,7 @@ export default function MapViewer({
         />
 
         <GeoJSON
+          key={JSON.stringify(boundary)}
           data={boundary}
           interactive={false}
           style={{
@@ -365,7 +436,7 @@ export default function MapViewer({
 
         <FitBarangay boundary={boundary} fitRef={fitRef} />
         <ClickHandler boundary={boundary} onSelect={onLocationSelect} />
-        <FlyToIncident incident={selectedIncident} />
+        <FlyToIncident incident={selectedIncident} boundary={boundary} />
 
         {showSelected && (
           <Marker
@@ -393,6 +464,60 @@ export default function MapViewer({
             />
           );
         })}
+
+        {/* Dashed route lines (e.g. responder travel routes) */}
+        {routes.map((route) => (
+          <Polyline
+            key={route.id}
+            positions={route.points.map(({ lat, lng }) => [lat, lng])}
+            pathOptions={{
+              color: route.color || "#10b981",
+              weight: 4,
+              dashArray: "8 7",
+              lineCap: "round",
+            }}
+            interactive={false}
+          />
+        ))}
+
+        {/* Moving responder units traveling along their route: a glyphed
+            agency badge when a category is given, plain dot otherwise */}
+        {trackers.map((tracker) => (
+          tracker.category ? (
+            <Marker
+              key={tracker.id}
+              position={[tracker.lat, tracker.lng]}
+              icon={trackerIcon(tracker.category)}
+              interactive={false}
+              zIndexOffset={2000}
+            />
+          ) : (
+            <CircleMarker
+              key={tracker.id}
+              center={[tracker.lat, tracker.lng]}
+              radius={7}
+              pathOptions={{
+                color: "#fff",
+                weight: 2.5,
+                fillColor: tracker.color || "#ec4899",
+                fillOpacity: 1,
+              }}
+              interactive={false}
+            />
+          )
+        ))}
+
+        {/* Drop-off destinations the responding units deliver to */}
+        {dropOffs.map((drop) => (
+          <Marker
+            key={drop.id}
+            position={[drop.lat, drop.lng]}
+            icon={DROP_OFF_ICON}
+            title={`Drop-off${drop.title ? `: ${drop.title}` : " point"}`}
+            interactive={false}
+            zIndexOffset={1500}
+          />
+        ))}
       </MapContainer>
 
       {/* Top left: title + legend button */}
@@ -541,6 +666,12 @@ export default function MapViewer({
           </button>
         </div>
       </div>
+      {onLocationSelect && (
+        <div className="absolute bottom-0 left-0 right-0 z-[1000] bg-white px-4 py-2 text-xs text-gray-500">
+          Barangay 167 (Llano), Caloocan City · Click inside the green boundary
+          to select an incident location.
+        </div>
+      )}
     </div>
   );
 }

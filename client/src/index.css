@@ -168,9 +168,11 @@
   }
   html {
     @apply font-sans;
+    scroll-behavior: smooth;
   }
 }
 
+<<<<<<< HEAD
 @media (max-width: 640px) {
   .responder-page {
     animation: responder-page-in 280ms ease-out both;
@@ -288,3 +290,36 @@
     transition: none;
   }
 }
+=======
+/* Polished Leaflet popup & controls */
+.leaflet-popup-content-wrapper {
+  border-radius: 14px !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
+  padding: 2px !important;
+}
+
+.leaflet-popup-content {
+  margin: 10px 12px !important;
+  line-height: 1.4 !important;
+}
+
+.leaflet-container {
+  font-family: inherit !important;
+  z-index: 0 !important;
+}
+
+/* Custom scrollbars */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 5px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+>>>>>>> 6e1658b290eaadc053055796649d405ec80e41d6
