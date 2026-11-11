@@ -1,72 +1,159 @@
-import { Link } from "react-router-dom";
-import { MapPin, ArrowRight, Bell, Wrench, Route } from "lucide-react";
+import { useState } from "react";
+import LandingHeader from "../features/landing/components/LandingHeader";
+import BarangayStatusBanner from "../features/landing/components/BarangayStatusBanner";
+import LandingMapViewer from "../features/landing/components/LandingMapViewer";
+import ResidentReportingCard from "../features/landing/components/ResidentReportingCard";
+import BarangayAnnouncementsCard from "../features/landing/components/BarangayAnnouncementsCard";
+import GetInvolvedSection from "../features/landing/components/GetInvolvedSection";
+import AboutSection from "../features/landing/components/AboutSection";
+import ServicesSection from "../features/landing/components/ServicesSection";
+import AccomplishmentsSection from "../features/landing/components/AccomplishmentsSection";
+import LandingFooter from "../features/landing/components/LandingFooter";
+import QuickReportModal from "../features/landing/components/QuickReportModal";
 
-const FEATURES = [
-  { icon: MapPin,  title: "Geotagged Reports",   desc: "Pin incidents directly on the Barangay 167 map with photo evidence." },
-  { icon: Bell,    title: "Instant Alerts",       desc: "Critical reports auto-notify the nearest response team in real time." },
-  { icon: Route,   title: "Emergency Routing",    desc: "Fastest route to the scene, extending to the nearest hospital if needed." },
-  { icon: Wrench,  title: "Infrastructure Fixes", desc: "Track potholes, broken lights, and clogged drains from report to resolution." },
-];
+import {
+  INITIAL_REPORTS,
+  INITIAL_BDRRMO_UNITS,
+} from "../features/landing/data/landingData";
 
 export default function HomePage() {
+  const [reports, setReports] = useState(INITIAL_REPORTS);
+  const [bdrrmoUnits] = useState(INITIAL_BDRRMO_UNITS);
+  const [selectedReport, setSelectedReport] = useState(null);
+  const [selectedCoordinates, setSelectedCoordinates] = useState(null);
+  const [isPickingLocation, setIsPickingLocation] = useState(false);
+  const [activeTab, setActiveTab] = useState("active");
+  const [isQuickReportOpen, setIsQuickReportOpen] = useState(false);
+
+  // Handle adding new report
+  const handleAddNewReport = (newReport) => {
+    setReports((prev) => [newReport, ...prev]);
+    setSelectedReport(newReport);
+    setSelectedCoordinates(null);
+  };
+
+  // Handle selecting a pin or list item
+  const handleSelectReport = (report) => {
+    setSelectedReport(report);
+  };
+
+  // Handle clicking on map to choose location
+  const handleLocationSelect = (coords) => {
+    setSelectedCoordinates(coords);
+    if (isPickingLocation) {
+      setActiveTab("submit");
+    }
+  };
+
+  // Scroll to accomplishments
+  const handleScrollToAccomplishments = () => {
+    const el = document.getElementById("accomplishments");
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth" });
+    }
+  };
+
+  // Trigger quick report
+  const handleTriggerReport = () => {
+    setIsQuickReportOpen(true);
+  };
+
   return (
-    <div className="min-h-screen bg-white text-gray-900 font-sans">
+    <div id="top" className="min-h-screen bg-slate-50/50 text-slate-900 font-sans antialiased selection:bg-[#2E8B57]/20 selection:text-[#2E8B57]">
+      
+      {/* 1. Official Header */}
+      <LandingHeader onReportClick={handleTriggerReport} />
 
-      {/* Nav */}
-      <nav className="fixed inset-x-0 top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white/80 px-6 py-3 backdrop-blur">
-        <div className="flex items-center gap-2 font-bold text-[#2E8B57]">
-          <MapPin size={20} /> GeoFix 167
-        </div>
-        <Link
-          to="/login"
-          className="rounded-lg bg-[#2E8B57] px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
-        >
-          Sign in
-        </Link>
-      </nav>
+      {/* 2. Barangay Online Status Bar */}
+      <BarangayStatusBanner />
 
-      {/* Hero */}
-      <section className="flex min-h-screen flex-col items-center justify-center px-6 pt-16 text-center">
-        <span className="mb-4 rounded-full border border-[#2E8B57]/30 bg-[#2E8B57]/10 px-3 py-1 text-xs font-medium text-[#2E8B57]">
-          Barangay 167 · Caloocan · Community Safety Platform
-        </span>
-
-        <h1 className="text-5xl font-extrabold tracking-tight sm:text-6xl">
-          Report. Dispatch.{" "}
-          <span className="text-[#2E8B57]">Resolve.</span>
-        </h1>
-
-        <p className="mt-5 max-w-lg text-lg text-gray-500">
-          GeoFix 167 connects residents with emergency responders and maintenance
-          teams through one geotagged platform — from incident report to resolution.
-        </p>
-
-        <Link
-          to="/login"
-          className="mt-8 inline-flex items-center gap-2 rounded-xl bg-[#2E8B57] px-7 py-3.5 text-sm font-semibold text-white shadow-lg shadow-[#2E8B57]/30 hover:opacity-90"
-        >
-          Get started <ArrowRight size={16} />
-        </Link>
-      </section>
-
-      {/* Features */}
-      <section className="mx-auto max-w-5xl px-6 py-20">
-        <h2 className="mb-10 text-center text-2xl font-bold">What GeoFix 167 does</h2>
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {FEATURES.map(({ icon: Icon, title, desc }) => (
-            <div key={title} className="rounded-2xl border border-gray-100 bg-gray-50 p-5">
-              <Icon size={22} className="mb-3 text-[#2E8B57]" />
-              <p className="font-semibold">{title}</p>
-              <p className="mt-1 text-sm text-gray-500">{desc}</p>
+      {/* 3. Main Live Dashboard Section (Map + Cards Matching Screenshot) */}
+      <section id="map-section" className="py-5 sm:py-7">
+        <div className="w-full px-4 sm:px-8 lg:px-10 xl:px-12">
+          
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 xl:gap-8 items-start">
+            
+            {/* Left Column: Interactive Map of Barangay 167 (~62% width on desktop) */}
+            <div className="relative z-0 isolate lg:col-span-7 xl:col-span-7 2xl:col-span-8 h-[500px] sm:h-[580px] lg:h-[680px] xl:h-[720px] flex flex-col">
+              <LandingMapViewer
+                reports={reports}
+                bdrrmoUnits={bdrrmoUnits}
+                selectedReport={selectedReport}
+                onSelectReport={handleSelectReport}
+                selectedCoordinates={selectedCoordinates}
+                onLocationSelect={handleLocationSelect}
+                isPickingLocation={isPickingLocation}
+              />
             </div>
-          ))}
+
+            {/* Right Column: Resident Dashboard & Announcements (~38% width on desktop) */}
+            <div className="lg:col-span-5 xl:col-span-5 2xl:col-span-4 flex flex-col gap-5">
+              
+              {/* Resident Reporting Dashboard Card */}
+              <ResidentReportingCard
+                reports={reports}
+                selectedReport={selectedReport}
+                onSelectReport={handleSelectReport}
+                onSubmitNewReport={handleAddNewReport}
+                activeTab={activeTab}
+                setActiveTab={setActiveTab}
+                selectedCoordinates={selectedCoordinates}
+                isPickingLocation={isPickingLocation}
+                setIsPickingLocation={setIsPickingLocation}
+              />
+
+              {/* Barangay Announcements Card */}
+              <BarangayAnnouncementsCard />
+
+            </div>
+
+          </div>
+
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-gray-100 py-6 text-center text-xs text-gray-400">
-        © {new Date().getFullYear()} GeoFix 167 · Barangay 167, Caloocan City
-      </footer>
+      {/* 4. "Get Involved" 3 Action Buttons */}
+      <GetInvolvedSection
+        onQuickReportClick={handleTriggerReport}
+        onAccomplishmentClick={handleScrollToAccomplishments}
+      />
+
+      {/* 5. Core Services */}
+      <ServicesSection />
+
+      {/* 6. About Barangay 167 & Capstone System */}
+      <AboutSection />
+
+      {/* 7. Public Accomplishment Log & Transparency Metrics */}
+      <AccomplishmentsSection />
+
+      {/* 8. Footer */}
+      <LandingFooter />
+
+      {/* Mobile Floating Emergency Button (always within thumb reach on phone/tablet) */}
+      <div className="fixed bottom-5 right-4 z-30 md:hidden">
+        <button
+          type="button"
+          onClick={handleTriggerReport}
+          aria-label="Report emergency incident"
+          className="flex items-center gap-2 rounded-full bg-gradient-to-r from-[#ea580c] to-[#dc2626] px-4 py-3 text-xs font-black tracking-wider text-white shadow-xl shadow-red-700/40 active:scale-95 transition-all ring-2 ring-white/90"
+        >
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75"></span>
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-white"></span>
+          </span>
+          <span>REPORT INCIDENT</span>
+        </button>
+      </div>
+
+      {/* Quick Report Modal */}
+      <QuickReportModal
+        isOpen={isQuickReportOpen}
+        onClose={() => setIsQuickReportOpen(false)}
+        onSubmitNewReport={handleAddNewReport}
+        defaultCoordinates={selectedCoordinates}
+      />
+
     </div>
   );
 }
