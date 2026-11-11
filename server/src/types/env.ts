@@ -1,9 +1,14 @@
 
-export type UserRole = "admin" | "responder" | "resident";
+export type UserRole =
+  | "admin"
+  | "resident"
+  | "tanod"
+  | "bdrrmo"
+  | "police"
+  | "fire";
 
 export type AuthUser = {
-  id: number;
-  public_id: string;
+  id: string;
   full_name: string;
   mobile_number: string;
   role: UserRole;

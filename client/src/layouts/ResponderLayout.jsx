@@ -53,7 +53,7 @@ const ResponderLayout = () => {
         <Outlet />
       </main>
       <nav
-        aria-label="Responder navigation"
+        aria-label="Tanod navigation"
         className="fixed inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-4px_16px_rgba(15,23,42,0.06)]"
       >
         <div className="mx-auto grid max-w-[680px] grid-cols-4 gap-1">

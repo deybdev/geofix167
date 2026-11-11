@@ -13,8 +13,11 @@ import { FormField, PhoneNumberField } from "../../shared/components/FormField";
 import { loginSchema } from "../../schemas/login.schema";
 
 const ROLE_PATHS = {
-  responder: "/responder",
+  tanod: "/responder",
   resident: "/resident",
+  bdrrmo: "/unauthorized",
+  police: "/unauthorized",
+  fire: "/unauthorized",
 };
 
 export default function Login() {
