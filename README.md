@@ -32,7 +32,7 @@ npm install
 
 ```bash
 # still inside the server/ folder
-npx wrangler d1 migrations apply geofix167_db --local
+npx wrangler d1 migrations apply geofix167-db --local
 ```
 
 ### 4. Start the backend
