@@ -348,6 +348,7 @@ export default function MapViewer({
   routes = [],
   trackers = [],
   dropOffs = [],
+  showBackButton = true,
 }) {
   const navigate = useNavigate();
   const [boundary, setBoundary] = useState(null);
@@ -526,7 +527,7 @@ export default function MapViewer({
                    flex flex-col items-start gap-2"
       >
         <div className="flex gap-2">
-          <button
+          {showBackButton && <button
             type="button"
             aria-label="Back to resident home"
             onClick={() => navigate("/resident")}
@@ -544,7 +545,7 @@ export default function MapViewer({
             >
               <path d="m15 18-6-6 6-6" />
             </svg>
-          </button>
+          </button>}
           <div className={`${CARD} px-3 py-2`}>
             <p className="text-sm font-bold leading-tight">Barangay 167</p>
             <p className="text-[11px] text-gray-500">
