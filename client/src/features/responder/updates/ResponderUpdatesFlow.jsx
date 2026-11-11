@@ -139,6 +139,7 @@ function ResponseReview() {
     <Notice title="Work completed. Awaiting administrator verification.">Incident remains open until officially reviewed.</Notice>
     {error && <p role="alert" className="text-sm font-semibold text-red-600">{error}</p>}
     <button type="submit" className={primaryButton}>Submit for Administrator Verification</button>
+    {state.handoverSubmitted && <Link to="/responder/updates/record-submitted" className={secondaryButton}>View Submitted Record</Link>}
   </form></>;
 }
 
