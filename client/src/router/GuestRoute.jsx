@@ -4,8 +4,11 @@ import { PATHS } from "./paths";
 
 const ROLE_PATHS = {
   admin: PATHS.admin,
-  responder: PATHS.responder,
+  tanod: PATHS.responder,
   resident: PATHS.resident,
+  bdrrmo: PATHS.unauthorized,
+  police: PATHS.unauthorized,
+  fire: PATHS.unauthorized,
 };
 
 export default function GuestRoute() {

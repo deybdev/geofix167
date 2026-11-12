@@ -44,16 +44,29 @@ const ResponderLayout = () => {
       <main className="flex-1 p-6">
         <Outlet />
       </main>
-
-      <ConfirmationDialog
-        open={isSignOutDialogOpen}
-        onOpenChange={setIsSignOutDialogOpen}
-        onConfirm={handleSignOut}
-        title="Sign out?"
-        description="Are you sure you want to sign out of GeoFix 167?"
-        confirmLabel="Sign out"
-        confirmVariant="destructive"
-      />
+      <nav
+        aria-label="Tanod navigation"
+        className="fixed inset-x-0 bottom-0 z-10 border-t border-slate-200 bg-white px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-4px_16px_rgba(15,23,42,0.06)]"
+      >
+        <div className="mx-auto grid max-w-[680px] grid-cols-4 gap-1">
+          {navItems.map(({ label, icon: Icon, path, isActive }) => {
+            return (
+              <button
+                key={label}
+                type="button"
+                onClick={() => navigate(path)}
+                aria-current={isActive ? "page" : undefined}
+                className={`responder-nav-item flex min-h-16 min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 text-sm transition-colors ${
+                  isActive ? "font-bold text-primary" : "font-medium text-slate-500"
+                }`}
+              >
+                <Icon size={24} strokeWidth={isActive ? 2.5 : 1.8} />
+                <span className="truncate">{label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
     </div>
   );
 };
