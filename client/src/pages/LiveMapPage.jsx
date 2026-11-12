@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import LandingFooter from "../features/landing/components/LandingFooter";
 import LandingHeader from "../features/landing/components/LandingHeader";
 import BarangayStatusBanner from "../features/landing/components/BarangayStatusBanner";
@@ -6,16 +6,60 @@ import LandingMapViewer from "../features/landing/components/LandingMapViewer";
 import ResidentReportingCard from "../features/landing/components/ResidentReportingCard";
 import BarangayAnnouncementsCard from "../features/landing/components/BarangayAnnouncementsCard";
 import QuickReportModal from "../features/landing/components/QuickReportModal";
-import { INITIAL_REPORTS, INITIAL_BDRRMO_UNITS } from "../features/landing/data/landingData";
+import { INITIAL_BDRRMO_UNITS } from "../features/landing/data/landingData";
+
+function toMapReport(report) {
+  const lat = report.latitude == null ? null : Number(report.latitude);
+  const lng = report.longitude == null ? null : Number(report.longitude);
+  return {
+    id: report.incident_id,
+    reportNumber: report.reference_number,
+    type: report.is_emergency ? "sudden" : "maintenance",
+    category: report.incident_category || report.category,
+    title: report.title,
+    location: report.location_description || report.landmark_description || "Location not provided",
+    status: report.status_code,
+    statusLabel: report.status_label,
+    urgency: report.priority_level,
+    reportedAt: report.received_at || report.submitted_at,
+    description: report.sanitized_description || report.description_sanitized || "",
+    ...(Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : {}),
+  };
+}
 
 export default function LiveMapPage() {
-  const [reports, setReports] = useState(INITIAL_REPORTS);
+  const [reports, setReports] = useState([]);
   const [selectedReport, setSelectedReport] = useState(null);
   const [selectedCoordinates, setSelectedCoordinates] = useState(null);
   const [isPickingLocation, setIsPickingLocation] = useState(false);
   const [activeTab, setActiveTab] = useState("active");
   const [isQuickReportOpen, setIsQuickReportOpen] = useState(false);
   const handleAddReport = (report) => { setReports((current) => [report, ...current]); setSelectedReport(report); setSelectedCoordinates(null); };
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/reports", { credentials: "include", cache: "no-store" })
+      .then(async (response) => {
+        if (response.status === 401) {
+          const incidentId = sessionStorage.getItem("geofix:last-guest-report");
+          const token = incidentId && sessionStorage.getItem(`geofix:guest-report:${incidentId}`);
+          if (!incidentId || !token) return [];
+          const guestResponse = await fetch(`/api/reports/${encodeURIComponent(incidentId)}`, {
+            headers: { "X-Guest-Token": token },
+            cache: "no-store",
+          });
+          if (!guestResponse.ok) return [];
+          const detail = await guestResponse.json();
+          return detail.report ? [toMapReport(detail.report)] : [];
+        }
+        if (!response.ok) throw new Error("Unable to load reports.");
+        const data = await response.json();
+        return (data.reports || []).map(toMapReport);
+      })
+      .then((items) => { if (active) setReports(items); })
+      .catch((error) => console.error("Report list error:", error));
+    return () => { active = false; };
+  }, []);
 
   return <><LandingHeader onReportClick={() => setIsQuickReportOpen(true)} /><BarangayStatusBanner />
     <main className="mx-auto min-h-[70vh] max-w-[1600px] px-4 py-7 sm:px-8 lg:px-10">

@@ -1,4 +1,4 @@
-import { Route } from "react-router-dom";
+import { Navigate, Route } from "react-router-dom";
 import { PATHS } from "./paths";
 
 import HomePage from "../pages/Home";
@@ -15,6 +15,7 @@ import GuestRoute from "./GuestRoute";
 
 export const publicRoutes = (
   <>
+    <Route path="/" element={<Navigate to={PATHS.home} replace />} />
     <Route element={<GuestRoute />}>
       <Route path={PATHS.home} element={<HomePage />} />
     </Route>
