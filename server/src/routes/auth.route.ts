@@ -8,10 +8,13 @@ import {
 } from "../controllers/auth.controller";
 import { meController } from "../controllers/me.controller";
 import { requireAuth } from "../middleware/auth";
+import { registerResident, verifyRegistrationOtp } from "../controllers/resident-auth.controller";
 
 const authRoutes = new Hono<AppEnv>();
 
 authRoutes.post("/login", loginController);
+authRoutes.post("/register", registerResident);
+authRoutes.post("/otp/verify-registration", verifyRegistrationOtp);
 authRoutes.get("/me", requireAuth, meController);
 authRoutes.post("/logout", logoutController);
 

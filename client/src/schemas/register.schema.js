@@ -28,13 +28,13 @@ export const registerSchema = z
         "Enter a valid middle name."
       ),
 
-    houseStreet: z
+    barangayIdentifier: z
       .string()
       .trim()
-      .min(5, "House number and street are required.")
-      .max(150, "Address must not exceed 150 characters."),
+      .min(4, "Enter the Barangay ID number below the barcode.")
+      .max(80, "Barangay ID number is too long."),
 
-    barangayCity: z.literal("Brgy 167, Caloocan City"),
+    dateOfBirth: z.string().min(1, "Date of birth is required."),
 
     phoneNumber: z
       .string()
