@@ -1,14 +1,20 @@
+import { useState } from "react";
 import {
-  ChevronRight,
+  BarChart3, CheckCircle2, ChevronRight, Clock, Flame, Siren, Wrench,
 } from "lucide-react";
+import { PATHS } from "../../router/paths";
 import MapViewer from "../../shared/components/MapViewer";
+import { BY_STATUS, GEO_INCIDENTS, KPI_DATA } from "./analytics/mockData";
+
+const KPI = KPI_DATA.month;
+const statusCount = (label) => BY_STATUS.find((status) => status.label === label)?.value ?? 0;
 
 const metrics = [
-  ["TOTAL REPORTS", "24", "Sample infrastructure data", "bg-[#2e8b57]"],
-  ["NEW REPORTS", "8", "New infrastructure reports", "bg-[#f59e0b]"],
-  ["IN PROGRESS", "7", "Infrastructure tasks in progress", "bg-[#2e8b57]"],
-  ["FOR VERIFICATION", "4", "Pending final armil check", "bg-[#2e8b57]"],
-  ["FIXED", "5", "Infrastructure cases resolved", "bg-[#2e8b57]"],
+  ["TOTAL REPORTS", KPI.totalReports, "All reports this month", BarChart3, "bg-[#e7f4ed] text-[#2e8b57]"],
+  ["PENDING", KPI.pendingReports, "Awaiting dispatch or action", Clock, "bg-[#fff8e6] text-[#f59e0b]"],
+  ["DISPATCHED", statusCount("Dispatched"), "Units assigned, rolling out", Siren, "bg-[#eff6ff] text-[#3b82f6]"],
+  ["IN PROGRESS", statusCount("In Progress"), "Being handled in the field", Wrench, "bg-[#f5f0ff] text-[#8b5cf6]"],
+  ["RESOLVED", KPI.resolvedReports, "Fixed and verified this month", CheckCircle2, "bg-[#e7f4ed] text-[#2e8b57]"],
 ];
 
 const reports = [
@@ -18,31 +24,34 @@ const reports = [
   ["GF-006", "Accident (DEMO)", "Incident / Emergency", "Rizal Street", "Demo Guest", "Demo record", "Dispatch Pending", "reported"],
 ];
 
-const urgentReports = [
-  ["GF-001 - Infrastructure: Road Damage", "Pothole on Rizal Street", "bg-[#fff1c6]", "text-[#f59e0b]"],
-  ["GF-002 - Infrastructure: Streetlight", "Broken Streetlight Pole", "bg-[#dcefe5]", "text-[#2e8b57]"],
-  ["GF-003 - Infrastructure: Drainage", "Clogged Drainage Canal", "bg-[#d9f7e4]", "text-[#2e8b57]"],
-  ["GF-006 - Accident (DEMO)", "Incident/Emergency: urgent, dispatch pending", "bg-[#fff1c6]", "text-[#f59e0b]"],
-];
+const URGENT_BG = { fire: "bg-[#fdecea]", incident: "bg-[#fdecea]", infrastructure: "bg-[#fff1c6]" };
+const URGENT_TEXT = { fire: "text-[#dc2626]", incident: "text-[#dc2626]", infrastructure: "text-[#f59e0b]" };
 
-const mapIncidents = [
-  { id: "GF-001", title: "Pothole on Rizal Street", status: "Reported", lat: 14.7299, lng: 121.0129 },
-  { id: "GF-002", title: "Broken Streetlight Pole", status: "In Progress", lat: 14.7321, lng: 121.0192 },
-  { id: "GF-003", title: "Clogged Drainage Canal", status: "Verified Fixed", lat: 14.7269, lng: 121.0174 },
-  { id: "GF-006", title: "Accident (DEMO)", status: "Dispatch Pending", lat: 14.7342, lng: 121.0085 },
-];
+const urgentReports = GEO_INCIDENTS
+  .filter((incident) => incident.status !== "Resolved" && incident.status !== "Verified Fixed")
+  .slice(0, 5)
+  .map((incident) => [
+    `${incident.id} — ${incident.category === "infrastructure" ? "Infrastructure" : "Incident / Emergency"}`,
+    incident.title,
+    URGENT_BG[incident.category] ?? "bg-[#fff1c6]",
+    URGENT_TEXT[incident.category] ?? "text-[#f59e0b]",
+  ]);
+
+const mapIncidents = GEO_INCIDENTS;
 
 export default function AdminDashboard() {
+  const [heatmap, setHeatmap] = useState(false);
+
   return (
     <div className="space-y-4">
           <section className="grid grid-cols-2 gap-3 xl:grid-cols-5">
-            {metrics.map(([label, value, description, dot]) => <div key={label} className="rounded-lg border border-[#e2e8eb] bg-white p-4 shadow-[0_2px_8px_rgba(27,52,70,0.03)]"><div className="flex items-center justify-between text-[9px] font-bold text-slate-500">{label}<span className={`h-1.5 w-1.5 rounded-full ${dot}`} /></div><div className="mt-1 text-[23px] font-bold text-[#2e8b57]">{value}</div><div className="text-[9px] text-slate-400">{description}</div></div>)}
+            {metrics.map(([label, value, description, Icon, iconBg]) => <div key={label} className="rounded-lg border border-[#e2e8eb] bg-white p-4 shadow-[0_2px_8px_rgba(27,52,70,0.03)]"><div className="flex items-center justify-between gap-2"><p className="text-[10px] font-bold leading-tight text-slate-500">{label}</p><div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${iconBg}`}><Icon size={14} /></div></div><div className="mt-2 text-[23px] font-bold text-[#2e8b57]">{value}</div><div className="text-[9px] text-slate-400">{description}</div></div>)}
           </section>
 
           <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_270px]">
             <div className="rounded-lg border border-[#e2e8eb] bg-white p-3">
-              <div className="mb-2 flex items-center justify-between"><h2 className="text-[12px] font-bold text-[#2e8b57]">Live Incident &amp; Infrastructure Cluster</h2><button className="flex items-center gap-1 rounded border border-[#d9e8df] px-2 py-1 text-[9px] font-semibold text-[#2e8b57]">Go to Map View <ChevronRight size={11} /></button></div>
-              <MapViewer incidents={mapIncidents} compact />
+              <div className="mb-2 flex items-center justify-between"><h2 className="text-[12px] font-bold text-[#2e8b57]">Live Incident &amp; Infrastructure Cluster</h2><div className="flex items-center gap-2"><button type="button" onClick={() => setHeatmap((on) => !on)} className={`flex items-center gap-1 rounded border px-2 py-1 text-[9px] font-semibold ${heatmap ? "border-[#2e8b57] bg-[#2e8b57] text-white" : "border-[#d9e8df] text-[#2e8b57]"}`}><Flame size={11} /> {heatmap ? "Show Pins" : "Heatmap"}</button><button className="flex items-center gap-1 rounded border border-[#d9e8df] px-2 py-1 text-[9px] font-semibold text-[#2e8b57]">Go to Map View <ChevronRight size={11} /></button></div></div>
+              <MapViewer incidents={mapIncidents} compact heatmap={heatmap} expandPath={PATHS.adminMapView} />
             </div>
             <div className="rounded-lg border border-[#e2e8eb] bg-white p-3">
               <h2 className="mb-2 text-[12px] font-bold text-[#2e8b57]">Urgent Reports &amp; Dispatch</h2>

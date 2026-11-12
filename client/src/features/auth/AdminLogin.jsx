@@ -10,7 +10,7 @@ import GeoFixBranding from "../../shared/components/Logo";
 import loginImage from "../../assets/images/login-img.png";
 
 export default function AdminLogin() {
-  const { signIn, signOut } = useAuth();
+  const { signIn, commitSignIn, signOut } = useAuth();
   const navigate = useNavigate();
   const [mobileNumber, setMobileNumber] = useState("");
   const [password, setPassword] = useState("");
@@ -27,10 +27,10 @@ export default function AdminLogin() {
       const user = await signIn(mobileNumber, password);
       if (user.role !== "admin") {
         await signOut();
-        const message = "Only authorized administrators can access this login.";
-        setError(message);
+        setError("Invalid mobile number or password.");
         return;
       }
+      commitSignIn(user);
       toast.add({
         title: "Login successful",
         description: "Welcome to the admin portal.",
@@ -103,6 +103,7 @@ export default function AdminLogin() {
               <Input
                 type={showPassword ? "text" : "password"}
                 placeholder="••••••••"
+                className="font-normal"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -113,7 +114,7 @@ export default function AdminLogin() {
                 size="icon-sm"
                 onClick={() => setShowPassword((visible) => !visible)}
                 aria-label={showPassword ? "Hide password" : "Show password"}
-                className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:bg-transparent hover:text-gray-700"
+                className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:bg-transparent hover:text-gray-700 active:-translate-y-1/2!"
               >
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </Button>

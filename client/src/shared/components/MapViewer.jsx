@@ -11,6 +11,7 @@ import {
   useMapEvents,
 } from "react-leaflet";
 import L from "leaflet";
+import { HeatLayer as LeafletHeatLayer } from "leaflet.heat";
 import booleanPointInPolygon from "@turf/boolean-point-in-polygon";
 import "leaflet/dist/leaflet.css";
 
@@ -111,7 +112,9 @@ export { getCategory, getStatus };
 const getFeatures = (boundary) =>
   boundary.type === "FeatureCollection" ? boundary.features : [boundary];
 
-const isInside = (lat, lng, boundary) =>
+// True when the point falls inside the barangay boundary.
+// Exported so report flows can enforce the Barangay-167-only rule.
+export const isInside = (lat, lng, boundary) =>
   Number.isFinite(lat) &&
   Number.isFinite(lng) &&
   getFeatures(boundary).some(
@@ -266,15 +269,53 @@ function FitBarangay({ boundary, fitRef }) {
     const bounds = L.geoJSON(boundary).getBounds();
     if (!bounds.isValid()) return;
 
-    const fullZoom = map.getBoundsZoom(bounds, false, L.point(20, 20));
-    const zoom = Math.max(DEFAULT_ZOOM, fullZoom);
+    let frame;
+    let tries = 0;
 
-    map.setMaxBounds(bounds.pad(0.15));
-    map.setMinZoom(fullZoom);
-    map.setView(bounds.getCenter(), zoom, { animate: false });
+    // The container can still be 0x0 while the page is laying out (e.g.
+    // when the map page is first opened). Wait for a real size so the
+    // fit is computed against the actual viewport instead of a default.
+    const fit = () => {
+      const size = map.getSize();
+      if (!size.x || !size.y) {
+        if (++tries < 120) frame = requestAnimationFrame(fit);
+        return;
+      }
 
-    fitRef.current = () => map.flyToBounds(bounds, { padding: [20, 20] });
+      map.invalidateSize();
+      const fullZoom = map.getBoundsZoom(bounds, false, L.point(20, 20));
+      const zoom = Math.max(DEFAULT_ZOOM, fullZoom);
+
+      map.setMaxBounds(bounds.pad(0.15));
+      map.setMinZoom(fullZoom);
+      map.setView(bounds.getCenter(), zoom, { animate: false });
+
+      fitRef.current = () => map.flyToBounds(bounds, { padding: [20, 20] });
+    };
+
+    fit();
+    return () => cancelAnimationFrame(frame);
   }, [boundary, map, fitRef]);
+
+  return null;
+}
+
+// Density heatmap of incident locations (leaflet.heat); replaces the pins
+function HeatLayer({ points }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!points.length) return;
+    const layer = new LeafletHeatLayer(points, {
+      radius: 26,
+      blur: 20,
+      maxZoom: 19,
+      minOpacity: 0.35,
+      gradient: { 0.2: "#fbbf24", 0.45: "#f97316", 0.7: "#dc2626", 1: "#7f1d1d" },
+    });
+    layer.addTo(map);
+    return () => map.removeLayer(layer);
+  }, [map, points]);
 
   return null;
 }
@@ -302,7 +343,59 @@ function FlyToIncident({ incident, boundary }) {
         duration: 0.6,
       });
     }
-  }, [incident, boundary, map]);
+  }, [incident, map]);
+
+  return null;
+}
+
+// Pan the map to keep the freshly chosen spot visible, but only
+// when it is NOT already on screen (so taping near the edge centers
+// it, while taps in the middle don't feel like a rubber band).
+// With a bottom sheet covering the map (bottomInset > 0), the pin is
+// centered in the visible strip above the sheet instead of the screen
+// middle it would hide behind.
+function FlyToSelected({ selectedLocation, bottomInset = 0 }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!selectedLocation) return;
+    const { lat, lng } = selectedLocation;
+
+    if (bottomInset > 0) {
+      const zoom = Math.max(map.getZoom(), 17);
+      const size = map.getSize();
+      const shift = Math.min(bottomInset, size.y * 0.6) / 2;
+      const target = map.project([lat, lng], zoom).add([0, shift]);
+      map.flyTo(map.unproject(target, zoom), zoom, { duration: 0.6 });
+      return;
+    }
+
+    if (map.getBounds().pad(-0.15).contains([lat, lng])) return;
+
+    map.flyTo([lat, lng], Math.max(map.getZoom(), 17), { duration: 0.6 });
+  }, [selectedLocation, map, bottomInset]);
+
+  return null;
+}
+
+// Frame every pin in play (e.g. the user's pin + the responder's station)
+// inside the visible strip above the bottom sheet, biased toward the top,
+// so nothing ends up hidden behind it. Used when the caller opts out of
+// the barangay highlight (fitPoints is provided).
+function FitOverlay({ points, bottomInset = 0 }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!points.length) return;
+    const bounds = L.latLngBounds(points.map(({ lat, lng }) => [lat, lng]));
+    if (!bounds.isValid()) return;
+
+    map.fitBounds(bounds, {
+      paddingTopLeft: [48, 48],
+      paddingBottomRight: [48, bottomInset + 32],
+      maxZoom: 17,
+    });
+  }, [map, points, bottomInset]);
 
   return null;
 }
@@ -348,7 +441,14 @@ export default function MapViewer({
   routes = [],
   trackers = [],
   dropOffs = [],
-}) {
+  variant = "viewer",
+  backPath = "/resident",
+   heatmap = false,
+   expandPath = null,
+   bottomInset = 0,
+   highlightBoundary = true,
+   fitPoints = null,
+ }) {
   const navigate = useNavigate();
   const [boundary, setBoundary] = useState(null);
   const [basemap, setBasemap] = useState("street");
@@ -365,40 +465,45 @@ export default function MapViewer({
 
   const mask = useMemo(() => boundary && makeMask(boundary), [boundary]);
 
-  /* Modal-hosted viewers mount while their container is still laying out;
-     recalculating the size and re-fitting keeps the opening camera focused
-     inside the highlighted barangay scope. */
-  useEffect(() => {
-    if (!map) return undefined;
-    const timers = [120, 420].map((delay) =>
-      setTimeout(() => {
-        map.invalidateSize();
-        fitRef.current?.();
-      }, delay),
-    );
-    return () => timers.forEach(clearTimeout);
-  }, [map, boundary]);
+  // Open already centered on the zone instead of the hardcoded default,
+  // so there is no jump while FitBarangay settles the exact view
+  const homeCenter = useMemo(() => {
+    if (!boundary) return null;
+    const bounds = L.geoJSON(boundary).getBounds();
+    return bounds.isValid() ? [bounds.getCenter().lat, bounds.getCenter().lng] : null;
+  }, [boundary]);
 
+  // Without the barangay highlight (e.g. responder tracking), pins show
+  // wherever they are — stations can sit outside the boundary.
   const visible = useMemo(
     () =>
-      boundary
-        ? incidents.filter((i) => isInside(i.lat, i.lng, boundary))
-        : [],
-    [incidents, boundary],
+      !highlightBoundary
+        ? incidents
+        : boundary
+          ? incidents.filter((i) => isInside(i.lat, i.lng, boundary))
+          : [],
+    [incidents, boundary, highlightBoundary],
+  );
+
+  const heatPoints = useMemo(
+    () => visible.map((i) => [i.lat, i.lng, 1]),
+    [visible],
   );
 
   if (!boundary) return null;
 
   const base = BASEMAPS[basemap];
-  const showSelected =
-    selectedLocation &&
-    isInside(selectedLocation.lat, selectedLocation.lng, boundary);
+  const showSelected = highlightBoundary
+    ? selectedLocation &&
+      isInside(selectedLocation.lat, selectedLocation.lng, boundary)
+    : Boolean(selectedLocation);
+  const useFitOverlay = Array.isArray(fitPoints) && fitPoints.length > 0;
 
   return (
     <div className="relative z-0 isolate h-full w-full overflow-hidden">
       <MapContainer
         ref={setMap}
-        center={[14.7305, 121.0155]}
+        center={homeCenter ?? [14.75, 121.02]}
         zoom={DEFAULT_ZOOM}
         maxZoom={MAX_ZOOM}
         zoomSnap={0.5}
@@ -415,28 +520,40 @@ export default function MapViewer({
           maxZoom={MAX_ZOOM}
         />
 
-        <GeoJSON
-          data={mask}
-          interactive={false}
-          style={{ weight: 0, fillColor: "#0f172a", fillOpacity: 0.5 }}
-        />
+        {highlightBoundary && (
+          <GeoJSON
+            data={mask}
+            interactive={false}
+            style={{ weight: 0, fillColor: "#0f172a", fillOpacity: 0.5 }}
+          />
+        )}
 
-        <GeoJSON
-          key={JSON.stringify(boundary)}
-          data={boundary}
-          interactive={false}
-          style={{
-            color: basemap === "satellite" ? "#86efac" : "#15803d",
-            weight: 3,
-            fillColor: "#22c55e",
-            fillOpacity: 0.08,
-            dashArray: "8 6",
-          }}
-        />
+        {highlightBoundary && (
+          <GeoJSON
+            key={JSON.stringify(boundary)}
+            data={boundary}
+            interactive={false}
+            style={{
+              color: basemap === "satellite" ? "#86efac" : "#15803d",
+              weight: 3,
+              fillColor: "#22c55e",
+              fillOpacity: 0.08,
+              dashArray: "8 6",
+            }}
+          />
+        )}
 
-        <FitBarangay boundary={boundary} fitRef={fitRef} />
+        {highlightBoundary && <FitBarangay boundary={boundary} fitRef={fitRef} />}
         <ClickHandler boundary={boundary} onSelect={onLocationSelect} />
         <FlyToIncident incident={selectedIncident} boundary={boundary} />
+        {useFitOverlay ? (
+          <FitOverlay points={fitPoints} bottomInset={bottomInset} />
+        ) : (
+          <FlyToSelected
+            selectedLocation={selectedLocation}
+            bottomInset={bottomInset}
+          />
+        )}
 
         {showSelected && (
           <Marker
@@ -447,25 +564,30 @@ export default function MapViewer({
           />
         )}
 
-        {visible.map((incident) => {
-          const category = getCategory(incident.category);
-          const status = getStatus(incident.status);
-          const isPinned = incident.id === selectedIncident?.id;
+        {heatmap ? (
+          <HeatLayer points={heatPoints} />
+        ) : (
+          visible.map((incident) => {
+            const category = getCategory(incident.category);
+            const status = getStatus(incident.status);
+            const isPinned = incident.id === selectedIncident?.id;
 
-          return (
-            <Marker
-              key={incident.id}
-              position={[incident.lat, incident.lng]}
-              icon={pinIcon(category, status, isPinned)}
-              eventHandlers={{
-                click: () => onIncidentSelect?.(incident),
-              }}
-              zIndexOffset={isPinned ? 1500 : 0}
-            />
-          );
-        })}
+            return (
+              <Marker
+                key={incident.id}
+                position={[incident.lat, incident.lng]}
+                icon={pinIcon(category, status, isPinned)}
+                eventHandlers={{
+                  click: () => onIncidentSelect?.(incident),
+                }}
+                zIndexOffset={isPinned ? 1500 : 0}
+              />
+            );
+          })
+        )}
 
-        {/* Dashed route lines (e.g. responder travel routes) */}
+        {/* Route lines (e.g. responder travel routes) — dashed by default,
+            callers can override color or pass dashed:false for a solid line */}
         {routes.map((route) => (
           <Polyline
             key={route.id}
@@ -473,8 +595,9 @@ export default function MapViewer({
             pathOptions={{
               color: route.color || "#10b981",
               weight: 4,
-              dashArray: "8 7",
+              dashArray: route.dashed === false ? undefined : "8 7",
               lineCap: "round",
+              lineJoin: "round",
             }}
             interactive={false}
           />
@@ -521,30 +644,33 @@ export default function MapViewer({
       </MapContainer>
 
       {/* Top left: title + legend button */}
-      <div
-        className="pointer-events-none absolute left-3 top-3 z-[1000]
-                   flex flex-col items-start gap-2"
-      >
+      {variant === "viewer" && (
+        <div
+          className="pointer-events-none absolute left-3 top-3 z-[1000]
+                     flex flex-col items-start gap-2"
+        >
         <div className="flex gap-2">
-          <button
-            type="button"
-            aria-label="Back to resident home"
-            onClick={() => navigate("/resident")}
-            className={`${BTN} bg-white/95 text-gray-700`}
-          >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+          {!compact && (
+            <button
+              type="button"
+              aria-label="Back to resident home"
+              onClick={() => navigate(backPath)}
+              className={`${BTN} bg-white/95 text-gray-700`}
             >
-              <path d="m15 18-6-6 6-6" />
-            </svg>
-          </button>
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="m15 18-6-6 6-6" />
+              </svg>
+            </button>
+          )}
           <div className={`${CARD} px-3 py-2`}>
             <p className="text-sm font-bold leading-tight">Barangay 167</p>
             <p className="text-[11px] text-gray-500">
@@ -552,22 +678,24 @@ export default function MapViewer({
             </p>
           </div>
 
-          <button
-            type="button"
-            aria-label="Show legend"
-            onClick={() => setLegendOpen(!legendOpen)}
-            className={`${BTN} h-auto ${
-              legendOpen
-                ? "bg-emerald-600 text-white"
-                : "bg-white/95 text-gray-700"
-            }`}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-              <circle cx="12" cy="5" r="2" />
-              <circle cx="12" cy="12" r="2" />
-              <circle cx="12" cy="19" r="2" />
-            </svg>
-          </button>
+          {!compact && (
+            <button
+              type="button"
+              aria-label="Show legend"
+              onClick={() => setLegendOpen(!legendOpen)}
+              className={`${BTN} h-auto ${
+                legendOpen
+                  ? "bg-emerald-600 text-white"
+                  : "bg-white/95 text-gray-700"
+              }`}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <circle cx="12" cy="5" r="2" />
+                <circle cx="12" cy="12" r="2" />
+                <circle cx="12" cy="19" r="2" />
+              </svg>
+            </button>
+          )}
         </div>
 
         {legendOpen && (
@@ -598,12 +726,14 @@ export default function MapViewer({
           </div>
         )}
       </div>
+      )}
 
       {/* Top right: basemap switch + show whole barangay */}
-      <div
-        className="pointer-events-none absolute right-3 top-3 z-[1000]
-                   flex flex-col items-end gap-2"
-      >
+      {variant === "viewer" && (
+        <div
+          className="pointer-events-none absolute right-3 top-3 z-[1000]
+                     flex flex-col items-end gap-2"
+        >
         <div
           className="pointer-events-auto flex rounded-xl bg-white p-1
                      text-xs font-semibold shadow-lg ring-1 ring-black/5"
@@ -622,55 +752,88 @@ export default function MapViewer({
           ))}
         </div>
 
-        <button
-          type="button"
-          aria-label="Show entire barangay"
-          onClick={() => fitRef.current?.()}
-          className={`${BTN} bg-white text-gray-700`}
-        >
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+        {/* Expand: opens this map as a whole page (with its incidents) */}
+        {compact && expandPath && (
+          <button
+            type="button"
+            aria-label="Expand map to full page"
+            onClick={() =>
+              navigate(expandPath, {
+                state: {
+                  incidents: visible,
+                  heatmap,
+                  routes,
+                  trackers,
+                  dropOffs,
+                  selectedIncident,
+                },
+              })
+            }
+            className={`${BTN} bg-white text-gray-700`}
           >
-            <path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" />
-          </svg>
-        </button>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+            </svg>
+          </button>
+        )}
 
-        <div
-          className="pointer-events-auto flex flex-col overflow-hidden
-                     rounded-xl bg-white text-xl text-gray-700 shadow-lg
-                     ring-1 ring-black/5"
-        >
+        {!compact && highlightBoundary && (
           <button
             type="button"
-            aria-label="Zoom in"
-            onClick={() => map?.zoomIn()}
-            className="flex h-11 w-11 items-center justify-center"
+            aria-label="Show entire barangay"
+            onClick={() => fitRef.current?.()}
+            className={`${BTN} bg-white text-gray-700`}
           >
-            +
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" />
+            </svg>
           </button>
-          <div className="h-px bg-gray-200" />
-          <button
-            type="button"
-            aria-label="Zoom out"
-            onClick={() => map?.zoomOut()}
-            className="flex h-11 w-11 items-center justify-center"
+        )}
+
+        {!compact && (
+          <div
+            className="pointer-events-auto flex flex-col overflow-hidden
+                       rounded-xl bg-white text-xl text-gray-700 shadow-lg
+                       ring-1 ring-black/5"
           >
-            &minus;
-          </button>
-        </div>
+            <button
+              type="button"
+              aria-label="Zoom in"
+              onClick={() => map?.zoomIn()}
+              className="flex h-11 w-11 items-center justify-center"
+            >
+              +
+            </button>
+            <div className="h-px bg-gray-200" />
+            <button
+              type="button"
+              aria-label="Zoom out"
+              onClick={() => map?.zoomOut()}
+              className="flex h-11 w-11 items-center justify-center"
+            >
+              &minus;
+            </button>
+          </div>
+        )}
       </div>
-      {onLocationSelect && (
-        <div className="absolute bottom-0 left-0 right-0 z-[1000] bg-white px-4 py-2 text-xs text-gray-500">
-          Barangay 167 (Llano), Caloocan City · Click inside the green boundary
-          to select an incident location.
-        </div>
       )}
     </div>
   );
