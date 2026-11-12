@@ -53,13 +53,15 @@ export async function login(
 ): Promise<LoginResult> {
   const user: UserRecord | null = await findUserByMobileNumber(db, mobileNumber);
 
-  if (!user || !(await bcrypt.compare(password, user.password))) {
+  if (!user || !(await bcrypt.compare(password, user.password_hash))) {
     throw new AuthError("Invalid mobile number or password.", 401);
   }
 
-  if (user.is_verified !== 1) {
+  if (user.account_status !== "ACTIVE") {
     throw new AuthError(
-      "Your account has not been verified.",
+      user.account_status === "UNVERIFIED"
+        ? "Your account has not been verified."
+        : "Your account is unavailable.",
       403,
     );
   }
@@ -70,16 +72,15 @@ export async function login(
     Date.now() + 7 * 24 * 60 * 60 * 1000,
   );
 
-  await createSession(db, user.id, tokenHash, expiresAt);
+  await createSession(db, user.user_id, tokenHash, expiresAt);
 
   return {
     token,
     expiresAt,
     user: {
-      id: user.id,
-      public_id: user.public_id,
-      full_name: user.full_name,
-      mobile_number: user.mobile_number,
+        id: user.user_id,
+        full_name: `${user.first_name} ${user.last_name}`.trim(),
+        mobile_number: user.mobile_number,
       role: user.role,
     },
   };

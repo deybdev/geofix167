@@ -1,6 +1,6 @@
 
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { Button } from "../../shared/components/ui/button";
 import { Input } from "../../shared/components/ui/input";
@@ -14,8 +14,12 @@ import {
 } from "../../shared/components/FormField";
 
 import { registerSchema } from "../../schemas/register.schema";
+import { registerResident } from "../../services/authService";
+import { PATHS } from "../../router/paths";
+import { toast } from "../../shared/components/ui/toast";
 
 export default function Register() {
+  const navigate = useNavigate();
   const [error, setError] = useState("");
   const [errors, setErrors] = useState({});
   const [submitted, setSubmitted] = useState(false);
@@ -24,8 +28,8 @@ export default function Register() {
     lastName: "",
     firstName: "",
     middleName: "",
-    houseStreet: "",
-    barangayCity: "Brgy 167, Caloocan City",
+    barangayIdentifier: "",
+    dateOfBirth: "",
     phoneNumber: "",
     password: "",
     confirmPassword: "",
@@ -48,7 +52,7 @@ export default function Register() {
     setSubmitted(false);
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
 
     setError("");
@@ -72,9 +76,33 @@ export default function Register() {
       return;
     }
 
-    // Registration API integration will go here.
-    // Do not send confirmPassword to the backend.
-    setSubmitted(true);
+    try {
+      const { data } = await registerResident({
+        barangay_identifier: result.data.barangayIdentifier,
+        first_name: result.data.firstName,
+        middle_name: result.data.middleName,
+        last_name: result.data.lastName,
+        date_of_birth: result.data.dateOfBirth,
+        mobile_number: result.data.phoneNumber,
+        password: result.data.password,
+      });
+
+      if (data.status === "OTP_SENT") {
+        toast.add({ title: "Registration submitted", description: "A verification code was sent to your mobile number.", type: "success" });
+        navigate(PATHS.verify, {
+          state: { mobileNumber: result.data.phoneNumber, purpose: "registration" },
+        });
+        return;
+      }
+
+      setSubmitted(true);
+      setError(data.message ?? "Your registration is pending Front Desk review.");
+    } catch (requestError) {
+      setError(
+        requestError.response?.data?.error
+          ?? "We could not submit your registration. Check your connection and try again.",
+      );
+    }
   };
 
   return (
@@ -97,7 +125,7 @@ export default function Register() {
           role="status"
           className="mt-4 rounded-lg bg-primary/10 px-3 py-2.5 text-sm leading-5 text-primary"
         >
-          Registration is not available yet. Please contact an administrator.
+          Your registration is pending Front Desk review. Use Need Help if you need an update.
         </p>
       )}
 
@@ -132,42 +160,37 @@ export default function Register() {
           />
         </div>
 
+        <FormField
+          label="Barangay ID Number"
+          required
+          error={errors.barangayIdentifier}
+        >
+          <Input
+            type="text"
+            placeholder="Enter the number below your ID barcode"
+            value={form.barangayIdentifier}
+            onChange={updateField("barangayIdentifier")}
+            aria-invalid={!!errors.barangayIdentifier}
+            className="h-11 rounded-lg border-slate-300 bg-white text-sm"
+          />
+        </FormField>
+
+        <FormField label="Date of Birth" required error={errors.dateOfBirth}>
+          <Input
+            type="date"
+            value={form.dateOfBirth}
+            onChange={updateField("dateOfBirth")}
+            aria-invalid={!!errors.dateOfBirth}
+            className="h-11 rounded-lg border-slate-300 bg-white text-sm"
+          />
+        </FormField>
+
         <PhoneNumberField
           value={form.phoneNumber}
           onChange={updateField("phoneNumber")}
           error={errors.phoneNumber}
           required
         />
-
-        <div className="flex flex-col gap-3">
-          <FormField
-            label="House Number / Street"
-            required
-            error={errors.houseStreet}
-          >
-            <Input
-              type="text"
-              placeholder="Enter house number and street"
-              value={form.houseStreet}
-              onChange={updateField("houseStreet")}
-              aria-invalid={!!errors.houseStreet}
-              className={`h-11 rounded-lg bg-white text-sm font-normal placeholder:font-normal placeholder:text-slate-400 ${
-                errors.houseStreet
-                  ? "border-destructive focus-visible:ring-destructive"
-                  : "border-slate-300"
-              }`}
-            />
-          </FormField>
-
-          <FormField label="Barangay / City" required>
-            <Input
-              type="text"
-              value={form.barangayCity}
-              disabled
-              className="h-11 rounded-lg border-slate-300 bg-slate-200 text-sm font-normal text-slate-500 disabled:cursor-not-allowed disabled:opacity-100"
-            />
-          </FormField>
-        </div>
 
         <PasswordField
           label="Password"
@@ -231,6 +254,13 @@ export default function Register() {
           Login
         </Link>
       </p>
+
+      <a
+        href="mailto:frontdesk@barangay167.example?subject=GeoFix%20resident%20registration%20help"
+        className="mt-3 block text-center text-xs font-semibold text-primary hover:underline"
+      >
+        Need Help?
+      </a>
     </form>
   );
 }

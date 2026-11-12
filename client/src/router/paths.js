@@ -12,6 +12,11 @@ export const PATHS = {
   test: "/test",
 
   // Auth routes
+  guest: "/guest",
+  guestMap: "/guest/map",
+  guestReport: "/guest/report",
+  guestPhotoCapture: "/guest/photo-capture",
+  guestVideoCapture: "/guest/video-capture",
   login: "/login",
   register: "/register",
   changeMobile: "/change-mobile",
@@ -32,9 +37,15 @@ export const PATHS = {
   adminResidents: "/admin/residents",
   adminReportsAnalytics: "/admin/reports-analytics",
   adminSettings: "/admin/settings",
+  adminMapView: "/admin/map-view",
 
   // Resident routes
   map: "/resident/map",
   report: "/resident/report",
+  reportDetails: "/resident/report/details",
   photoCapture: "/resident/photo-capture",
+  myReports: "/resident/my-reports",
+  alerts: "/resident/alerts",
+  profile: "/resident/profile",
+  emergency: "/resident/emergency",
 };

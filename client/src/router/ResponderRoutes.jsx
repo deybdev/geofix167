@@ -26,7 +26,7 @@ import ReassignmentPending from "../features/responder/ReassignmentPending";
 import ReassignmentConfirmed from "../features/responder/ReassignmentConfirmed";
 
 export const responderRoutes = (
-  <Route element={<ProtectedRoute allowedRoles={["responder"]} />}>
+  <Route element={<ProtectedRoute allowedRoles={["tanod"]} />}>
     <Route path={PATHS.responder} element={<ResponderLayout />}>
       <Route index element={<NewDispatchNotif />} />
       <Route path="assignment-offer" element={<AssignmentOffer />} />
