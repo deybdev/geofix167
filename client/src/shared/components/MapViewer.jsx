@@ -442,6 +442,12 @@ export default function MapViewer({
   trackers = [],
   dropOffs = [],
   showBackButton = true,
+  highlightBoundary = true,
+  fitPoints = null,
+  bottomInset = 0,
+  heatmap = false,
+  variant = "viewer",
+  expandPath,
 }) {
   const navigate = useNavigate();
   const [boundary, setBoundary] = useState(null);

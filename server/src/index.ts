@@ -5,6 +5,7 @@ import { cors } from "hono/cors";
 import type { AppEnv } from "./types/env";
 import authRoutes from "./routes/auth.route";
 import communicationRoutes from "./routes/communication.route";
+import reportRoutes from "./routes/report.route";
 
 const app = new Hono<AppEnv>();
 
@@ -18,7 +19,7 @@ app.use(
     },
     credentials: true,
     allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
-    allowHeaders: ["Content-Type"],
+    allowHeaders: ["Content-Type", "X-Guest-Token"],
   }),
 );
 
@@ -28,5 +29,11 @@ app.use(
 // POST /api/auth/logout
 app.route("/api/auth", authRoutes);
 app.route("/api/communication", communicationRoutes);
+
+// Incident report routes:
+// POST /api/reports
+// GET  /api/reports
+// GET  /api/reports/:id
+app.route("/api/reports", reportRoutes);
 
 export default app;

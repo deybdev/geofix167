@@ -45,7 +45,7 @@ export default function ResidentReportingCard({
     }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.description.trim()) {
       toast.add({
@@ -58,39 +58,98 @@ export default function ResidentReportingCard({
 
     setIsSubmitting(true);
 
-    const lat = selectedCoordinates?.lat || 14.735 + (Math.random() - 0.5) * 0.006;
-    const lng = selectedCoordinates?.lng || 121.015 + (Math.random() - 0.5) * 0.006;
-
-    const newReport = {
-      id: `REP-${Date.now().toString().slice(-4)}`,
-      reportNumber: Math.floor(124 + Math.random() * 50).toString(),
-      type: formData.type,
-      category: formData.category,
-      title: `${formData.category}`,
-      location: formData.street,
-      status: "in-progress",
-      statusLabel: "In Progress - ETA: 15 mins",
-      urgency: formData.urgency,
-      reportedAt: "Just now",
-      lat,
-      lng,
-      description: formData.description,
-      hasProof: false,
+    const payload = {
+      reporter_type: "RESIDENT",
+      is_emergency: formData.type === "sudden" ? 1 : 0,
+      incident_category: formData.category,
+      priority_level: formData.urgency ? formData.urgency.toUpperCase() : "HIGH",
+      description: formData.description.trim(),
+      reverse_geocoded_address: formData.street.trim() || null,
+      ...(selectedCoordinates?.lat != null && selectedCoordinates?.lng != null
+        ? {
+            latitude: Number(selectedCoordinates.lat),
+            longitude: Number(selectedCoordinates.lng),
+            pin_manually_adjusted: 1,
+          }
+        : {}),
     };
 
-    setTimeout(() => {
+    try {
+      const response = await fetch("/api/reports", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok || (response.status !== 200 && response.status !== 201)) {
+        throw new Error(
+          data?.error || "Failed to submit incident report. Please try again.",
+        );
+      }
+
+      const savedReport = data?.report ?? data;
+      const referenceNumber =
+        savedReport?.reference_number || `GF167-${Date.now().toString().slice(-4)}`;
+
+      const lat =
+        savedReport?.latitude ??
+        selectedCoordinates?.lat ??
+        14.735 + (Math.random() - 0.5) * 0.006;
+      const lng =
+        savedReport?.longitude ??
+        selectedCoordinates?.lng ??
+        121.015 + (Math.random() - 0.5) * 0.006;
+
+      const newReport = {
+        id: savedReport?.incident_id || referenceNumber,
+        reportNumber: referenceNumber,
+        type: formData.type,
+        category: formData.category,
+        title: `${formData.category}`,
+        location: formData.street,
+        status: "in-progress",
+        statusLabel: savedReport?.status_label || "Pending - Received",
+        urgency: formData.urgency || "High",
+        reportedAt: "Just now",
+        lat,
+        lng,
+        description: savedReport?.sanitized_description ?? formData.description,
+        hasProof: false,
+      };
+
       onSubmitNewReport(newReport);
-      setIsSubmitting(false);
-      setFormData((prev) => ({ ...prev, description: "" }));
+      setFormData({
+        type: "sudden",
+        category: "Fire Incident",
+        street: "Molave St.",
+        description: "",
+        urgency: "High",
+      });
       setIsPickingLocation(false);
       setActiveTab("active");
 
       toast.add({
         title: "Report Submitted Successfully!",
-        description: `Ticket #${newReport.reportNumber} has been logged and pinned on Barangay 167 map.`,
+        description: `Reference #${referenceNumber} has been logged and pinned on Barangay 167 map.`,
         type: "success",
       });
-    }, 600);
+    } catch (error) {
+      toast.add({
+        title: "Submission Failed",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Unable to submit your report right now.",
+        type: "error",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
