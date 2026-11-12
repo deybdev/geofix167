@@ -24,7 +24,7 @@ export default function QuickReportModal({
     setCategory(type === "sudden" ? "Fire Incident" : "Drainage / Flooding");
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!description.trim()) {
       toast.add({
@@ -37,36 +37,97 @@ export default function QuickReportModal({
 
     setIsSubmitting(true);
 
-    const lat = defaultCoordinates?.lat || 14.734 + (Math.random() - 0.5) * 0.005;
-    const lng = defaultCoordinates?.lng || 121.015 + (Math.random() - 0.5) * 0.005;
-
-    const newReport = {
-      id: `REP-${Date.now().toString().slice(-4)}`,
-      reportNumber: Math.floor(124 + Math.random() * 50).toString(),
-      type: reportType,
-      category,
-      title: `${category}`,
-      location: street,
-      status: "in-progress",
-      statusLabel: "In Progress - Dispatched",
-      urgency,
-      reportedAt: "Just now",
-      lat,
-      lng,
-      description,
-      hasProof: false,
+    const payload = {
+      reporter_type: "GUEST",
+      is_emergency: reportType === "sudden" ? 1 : 0,
+      incident_category: category,
+      priority_level: urgency ? urgency.toUpperCase() : "HIGH",
+      description: description.trim(),
+      reverse_geocoded_address: street.trim() || null,
+      ...(defaultCoordinates?.lat != null && defaultCoordinates?.lng != null
+        ? {
+            latitude: Number(defaultCoordinates.lat),
+            longitude: Number(defaultCoordinates.lng),
+            pin_manually_adjusted: 1,
+          }
+        : {}),
     };
 
-    setTimeout(() => {
-      onSubmitNewReport(newReport);
-      setIsSubmitting(false);
+    try {
+      const response = await fetch("/api/reports", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok || (response.status !== 200 && response.status !== 201)) {
+        throw new Error(
+          data?.error || "Failed to submit incident report. Please try again.",
+        );
+      }
+
+      const savedReport = data?.report ?? data;
+      const referenceNumber =
+        savedReport?.reference_number || `GF167-${Date.now().toString().slice(-4)}`;
+
+      const lat =
+        savedReport?.latitude ??
+        defaultCoordinates?.lat ??
+        14.734 + (Math.random() - 0.5) * 0.005;
+      const lng =
+        savedReport?.longitude ??
+        defaultCoordinates?.lng ??
+        121.015 + (Math.random() - 0.5) * 0.005;
+
+      const newReport = {
+        id: savedReport?.incident_id || referenceNumber,
+        reportNumber: referenceNumber,
+        type: reportType,
+        category,
+        title: `${category}`,
+        location: street,
+        status: "in-progress",
+        statusLabel: savedReport?.status_label || "Pending - Received",
+        urgency: urgency || "High",
+        reportedAt: "Just now",
+        lat,
+        lng,
+        description: savedReport?.sanitized_description ?? description,
+        hasProof: false,
+      };
+
+      onSubmitNewReport?.(newReport);
+
+      // Clear form state
+      setReportType("sudden");
+      setCategory("Fire Incident");
+      setStreet("Molave St., Barangay 167");
+      setDescription("");
+      setUrgency("High");
+
       onClose();
       toast.add({
         title: "Incident Report Logged!",
-        description: `Ticket #${newReport.reportNumber} has been dispatched to Barangay 167 BDRRMO.`,
+        description: `Reference #${referenceNumber} has been dispatched to Barangay 167 BDRRMO.`,
         type: "success",
       });
-    }, 500);
+    } catch (error) {
+      toast.add({
+        title: "Submission Failed",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Unable to submit your report right now.",
+        type: "error",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
