@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import { AuthProvider } from "../shared/context/AuthProvider";
+import { LocationProvider } from "../shared/context/LocationProvider";
 import NotFoundPage from "../pages/NotFound";
 
 import { publicRoutes } from "./PublicRoutes";
@@ -13,6 +14,7 @@ export default function AppRouter() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <LocationProvider>
         <Routes>
           {publicRoutes}
           {authRoutes}
@@ -21,6 +23,7 @@ export default function AppRouter() {
           {adminRoutes}
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
+        </LocationProvider>
       </AuthProvider>
     </BrowserRouter>
   );

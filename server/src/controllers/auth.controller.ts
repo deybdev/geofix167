@@ -42,7 +42,7 @@ export async function loginController(c: Context<AppEnv>) {
 
     return c.json({
       user: {
-        id: result.user.public_id,
+        id: result.user.id,
         full_name: result.user.full_name,
         mobile_number: result.user.mobile_number,
         role: result.user.role,

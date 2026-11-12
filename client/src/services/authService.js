@@ -11,3 +11,8 @@ export const login = (mobileNumber, password) =>
 export const getMe = () => api.get("/auth/me");
 
 export const logout = () => api.post("/auth/logout");
+
+export const registerResident = (payload) => api.post("/auth/register", payload);
+
+export const verifyRegistrationOtp = (mobileNumber, code) =>
+  api.post("/auth/otp/verify-registration", { mobile_number: mobileNumber, code });
