@@ -12,7 +12,7 @@ export default function QuickReportModal({
 }) {
   const [reportType, setReportType] = useState("sudden");
   const [category, setCategory] = useState("Fire Incident");
-  const [street, setStreet] = useState("Molave St., Barangay 167");
+  const [street, setStreet] = useState("");
   const [description, setDescription] = useState("");
   const [urgency, setUrgency] = useState("High");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -72,32 +72,29 @@ export default function QuickReportModal({
       }
 
       const savedReport = data?.report ?? data;
-      const referenceNumber =
-        savedReport?.reference_number || `GF167-${Date.now().toString().slice(-4)}`;
-
-      const lat =
-        savedReport?.latitude ??
-        defaultCoordinates?.lat ??
-        14.734 + (Math.random() - 0.5) * 0.005;
-      const lng =
-        savedReport?.longitude ??
-        defaultCoordinates?.lng ??
-        121.015 + (Math.random() - 0.5) * 0.005;
+      if (!savedReport?.incident_id || !savedReport?.reference_number) {
+        throw new Error("The server did not return the saved report details. Please try again.");
+      }
+      if (savedReport.guest_access_token) {
+        sessionStorage.setItem(`geofix:guest-report:${savedReport.incident_id}`, savedReport.guest_access_token);
+        sessionStorage.setItem("geofix:last-guest-report", savedReport.incident_id);
+      }
+      const lat = savedReport.latitude == null ? null : Number(savedReport.latitude);
+      const lng = savedReport.longitude == null ? null : Number(savedReport.longitude);
 
       const newReport = {
-        id: savedReport?.incident_id || referenceNumber,
-        reportNumber: referenceNumber,
+        id: savedReport.incident_id,
+        reportNumber: savedReport.reference_number,
         type: reportType,
-        category,
-        title: `${category}`,
-        location: street,
-        status: "in-progress",
-        statusLabel: savedReport?.status_label || "Pending - Received",
-        urgency: urgency || "High",
-        reportedAt: "Just now",
-        lat,
-        lng,
-        description: savedReport?.sanitized_description ?? description,
+        category: savedReport.category || savedReport.incident_category || category,
+        title: savedReport.title || `${category} Incident Report`,
+        location: savedReport.location_description || street,
+        status: savedReport.status_code || "pending",
+        statusLabel: savedReport.status_label || "Submitted",
+        urgency: savedReport.priority_level || urgency || "High",
+        reportedAt: savedReport.received_at || savedReport.submitted_at,
+        ...(Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : {}),
+        description: savedReport.sanitized_description ?? description,
         hasProof: false,
       };
 
@@ -106,14 +103,14 @@ export default function QuickReportModal({
       // Clear form state
       setReportType("sudden");
       setCategory("Fire Incident");
-      setStreet("Molave St., Barangay 167");
+      setStreet("");
       setDescription("");
       setUrgency("High");
 
       onClose();
       toast.add({
-        title: "Incident Report Logged!",
-        description: `Reference #${referenceNumber} has been dispatched to Barangay 167 BDRRMO.`,
+        title: "Incident Report Submitted",
+        description: `Reference #${savedReport.reference_number} was saved successfully.`,
         type: "success",
       });
     } catch (error) {

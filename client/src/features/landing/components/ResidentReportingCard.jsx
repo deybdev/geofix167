@@ -29,7 +29,7 @@ export default function ResidentReportingCard({
   const [formData, setFormData] = useState({
     type: "sudden",
     category: "Fire Incident",
-    street: "Molave St.",
+    street: "",
     description: "",
     urgency: "High",
   });
@@ -93,31 +93,24 @@ export default function ResidentReportingCard({
       }
 
       const savedReport = data?.report ?? data;
-      const referenceNumber =
-        savedReport?.reference_number || `GF167-${Date.now().toString().slice(-4)}`;
-
-      const lat =
-        savedReport?.latitude ??
-        selectedCoordinates?.lat ??
-        14.735 + (Math.random() - 0.5) * 0.006;
-      const lng =
-        savedReport?.longitude ??
-        selectedCoordinates?.lng ??
-        121.015 + (Math.random() - 0.5) * 0.006;
+      if (!savedReport?.incident_id || !savedReport?.reference_number) {
+        throw new Error("The server did not return the saved report details. Please try again.");
+      }
+      const lat = savedReport.latitude == null ? null : Number(savedReport.latitude);
+      const lng = savedReport.longitude == null ? null : Number(savedReport.longitude);
 
       const newReport = {
-        id: savedReport?.incident_id || referenceNumber,
-        reportNumber: referenceNumber,
+        id: savedReport.incident_id,
+        reportNumber: savedReport.reference_number,
         type: formData.type,
         category: formData.category,
-        title: `${formData.category}`,
-        location: formData.street,
-        status: "in-progress",
-        statusLabel: savedReport?.status_label || "Pending - Received",
-        urgency: formData.urgency || "High",
-        reportedAt: "Just now",
-        lat,
-        lng,
+        title: savedReport.title || `${formData.category} Incident Report`,
+        location: savedReport.location_description || formData.street,
+        status: savedReport.status_code || "pending",
+        statusLabel: savedReport.status_label || "Submitted",
+        urgency: savedReport.priority_level || formData.urgency || "High",
+        reportedAt: savedReport.received_at || savedReport.submitted_at,
+        ...(Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : {}),
         description: savedReport?.sanitized_description ?? formData.description,
         hasProof: false,
       };
@@ -126,7 +119,7 @@ export default function ResidentReportingCard({
       setFormData({
         type: "sudden",
         category: "Fire Incident",
-        street: "Molave St.",
+        street: "",
         description: "",
         urgency: "High",
       });
@@ -135,7 +128,7 @@ export default function ResidentReportingCard({
 
       toast.add({
         title: "Report Submitted Successfully!",
-        description: `Reference #${referenceNumber} has been logged and pinned on Barangay 167 map.`,
+        description: `Reference #${savedReport.reference_number} was saved successfully.`,
         type: "success",
       });
     } catch (error) {
