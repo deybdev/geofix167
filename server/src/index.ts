@@ -6,6 +6,7 @@ import type { AppEnv } from "./types/env";
 import authRoutes from "./routes/auth.route";
 import communicationRoutes from "./routes/communication.route";
 import reportRoutes from "./routes/report.route";
+import adminDispatchRoutes from "./routes/admin-dispatch.route";
 
 const app = new Hono<AppEnv>();
 
@@ -35,5 +36,6 @@ app.route("/api/communication", communicationRoutes);
 // GET  /api/reports
 // GET  /api/reports/:id
 app.route("/api/reports", reportRoutes);
+app.route("/api/admin/dispatch", adminDispatchRoutes);
 
 export default app;

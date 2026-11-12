@@ -12,6 +12,7 @@ import AccomplishmentLog from "../features/admin/AccomplishmentLog";
 import Residents from "../features/admin/Residents";
 import ReportsAnalytics from "../features/admin/ReportsAnalytics";
 import AdminSettings from "../features/admin/Settings";
+import AdminDispatch from "../features/admin/AdminDispatch";
 
 export const adminRoutes = (
   <Route
@@ -25,6 +26,7 @@ export const adminRoutes = (
     <Route path={PATHS.admin} element={<AdminLayout />}>
       <Route index element={<AdminDashboard />} />
       <Route path="incident-reports" element={<IncidentReports />} />
+      <Route path="dispatch" element={<AdminDispatch />} />
       <Route path="maintenance-tasks" element={<MaintenanceTasks />} />
       <Route path="resolution-verification" element={<ResolutionVerification />} />
       <Route path="accomplishment-log" element={<AccomplishmentLog />} />
