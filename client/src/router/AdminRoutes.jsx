@@ -3,6 +3,7 @@ import { PATHS } from "./paths";
 
 import ProtectedRoute from "../shared/components/ProtectedRoute";
 import AdminLayout from "../layouts/AdminLayout";
+import MapPage from "../shared/components/MapPage";
 import AdminDashboard from "../features/admin/AdminDashboard";
 import IncidentReports from "../features/admin/IncidentReports";
 import MaintenanceTasks from "../features/admin/MaintenanceTasks";
@@ -31,5 +32,7 @@ export const adminRoutes = (
       <Route path="reports-analytics" element={<ReportsAnalytics />} />
       <Route path="settings" element={<AdminSettings />} />
     </Route>
+    {/* Full-page map opened from embedded maps (dashboard, reports, etc.) */}
+    <Route path={PATHS.adminMapView} element={<MapPage backPath={PATHS.admin} />} />
   </Route>
 );

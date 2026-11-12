@@ -23,9 +23,13 @@ export function AuthProvider({ children }) {
 
   const signIn = async (mobileNumber, password) => {
     const { data } = await login(mobileNumber, password);
-    setUser(data.user);
+    // The caller validates the role and calls commitSignIn() before any
+    // route guard (e.g. GuestRoute) sees a signed-in user, so wrong-role
+    // credentials can be rejected without a redirect.
     return data.user;
   };
+
+  const commitSignIn = (user) => setUser(user);
 
   const signOut = async () => {
     await logout();
@@ -33,7 +37,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, role: user?.role ?? null, loading, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, role: user?.role ?? null, loading, signIn, commitSignIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );
