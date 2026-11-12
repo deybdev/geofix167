@@ -1,6 +1,6 @@
 export const PATHS = {
   // Public routes
-  home: "/",
+  home: "/home",
   about: "/about",
   publicMap: "/map",
   services: "/services",

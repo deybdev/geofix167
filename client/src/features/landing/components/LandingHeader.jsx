@@ -36,11 +36,11 @@ export default function LandingHeader({ onReportClick }) {
   }, [mobileMenuOpen]);
 
   const navLinks = [
-    { label: "Home", href: "/", icon: House },
-    { label: "About Us", href: "/about", icon: Info },
-    { label: "Live Map & Reports", href: "/map", icon: MapPin },
-    { label: "Barangay Services", href: "/services", icon: Wrench },
-    { label: "Accomplishments", href: "/accomplishments", icon: CheckCircle2 },
+    { label: "Home", href: PATHS.home, icon: House },
+    { label: "About Us", href: PATHS.about, icon: Info },
+    { label: "Live Map & Reports", href: PATHS.publicMap, icon: MapPin },
+    { label: "Barangay Services", href: PATHS.services, icon: Wrench },
+    { label: "Accomplishments", href: PATHS.accomplishments, icon: CheckCircle2 },
   ];
 
   const handleNavClick = (e, link) => {
@@ -56,7 +56,7 @@ export default function LandingHeader({ onReportClick }) {
         <div className="flex h-[76px] sm:h-[88px] w-full items-center justify-between px-4 sm:px-8 lg:px-10 xl:px-12">
           
           {/* Brand Logo & Name (Responsive) */}
-          <Link to="/" className="flex items-center gap-2 sm:gap-3 transition-opacity hover:opacity-90 min-w-0 mr-2">
+          <Link to={PATHS.home} className="flex items-center gap-2 sm:gap-3 transition-opacity hover:opacity-90 min-w-0 mr-2">
             <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-white p-1 shadow-sm ring-1 ring-slate-900/10">
               <img src={logoImg} alt="GeoFix 167 Logo" className="h-8 w-8 sm:h-10 sm:w-10 object-contain" />
             </div>
@@ -82,7 +82,7 @@ export default function LandingHeader({ onReportClick }) {
                 key={link.label}
                 to={link.href}
                 onClick={(e) => handleNavClick(e, link)}
-                end={link.href === "/"}
+                end={link.href === PATHS.home}
                 className={({ isActive }) => `relative py-2 text-[13px] font-bold transition-colors ${isActive ? "text-[#17633f] after:absolute after:inset-x-0 after:-bottom-1 after:h-0.5 after:rounded-full after:bg-[#2e8b57]" : "text-slate-600 hover:text-[#2E8B57]"}`}
               >
                 {link.label}
