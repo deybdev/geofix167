@@ -6,7 +6,7 @@ import ConfirmationDialog from "../shared/components/ConfirmationDialog";
 import { toast } from "../shared/components/ui/toast";
 
 const ResponderLayout = () => {
-  const { signOut } = useAuth();
+  const location = useLocation();
   const navigate = useNavigate();
   const [isSignOutDialogOpen, setIsSignOutDialogOpen] = useState(false);
 
