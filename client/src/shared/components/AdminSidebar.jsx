@@ -3,6 +3,7 @@ import {
   BookOpen,
   CheckSquare,
   ClipboardList,
+  Radio,
   Grid2X2,
   Settings,
   ShieldCheck,
@@ -15,6 +16,7 @@ import { PATHS } from "../../router/paths";
 const navigation = [
   { label: "Dashboard", icon: Grid2X2, path: PATHS.admin },
   { label: "Incident Reports", icon: ClipboardList, path: PATHS.adminIncidentReports },
+  { label: "Dispatch Responders", icon: Radio, path: PATHS.adminDispatch },
   { label: "Maintenance Tasks", icon: ShieldCheck, path: PATHS.adminMaintenanceTasks },
   { label: "Resolution Verification", icon: CheckSquare, path: PATHS.adminResolutionVerification },
   { label: "Accomplishment Log", icon: BookOpen, path: PATHS.adminAccomplishmentLog },

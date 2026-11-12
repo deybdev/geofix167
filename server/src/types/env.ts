@@ -17,6 +17,7 @@ export type AuthUser = {
 export type AppEnv = {
   Bindings: {
     geofix167_db: D1Database;
+    geofix167_uploads: R2Bucket;
     FRONTEND_ORIGIN: string;
     BREVO_API_KEY: string;
     BREVO_API_URL: string;

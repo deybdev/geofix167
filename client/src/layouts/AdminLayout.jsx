@@ -10,6 +10,7 @@ import { toast } from "../shared/components/ui/toast";
 const pageTitles = {
   [PATHS.admin]: "Barangay 167 Operations Dashboard",
   [PATHS.adminIncidentReports]: "Incident Reports",
+  [PATHS.adminDispatch]: "Dispatch Responders",
   [PATHS.adminMaintenanceTasks]: "Maintenance Tasks",
   [PATHS.adminResolutionVerification]: "Resolution Verification",
   [PATHS.adminAccomplishmentLog]: "Accomplishment Log",
