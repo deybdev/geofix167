@@ -11,45 +11,48 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { useGeoLocation } from "../../shared/context/LocationProvider";
 import { setResponderMeta } from "./responderMeta";
 
 const cardClass = "rounded-[20px] border-2 border-slate-200 bg-white px-5 py-5";
-const googleMapsUrl =
+const fallbackDirectionsUrl =
   "https://www.google.com/maps/dir/?api=1&origin=Traffic%2FRoad+Response+Team+A&destination=Rizal+Street%2C+Barangay+167&travelmode=driving&dir_action=navigate";
-const embeddedMapUrl =
+const fallbackEmbeddedMapUrl =
   "https://www.google.com/maps?q=accidents+near+Barangay+167%2C+Caloocan&output=embed";
 const accidentSearchUrl =
   "https://www.google.com/maps/search/?api=1&query=accidents+near+Barangay+167%2C+Caloocan";
 
 export default function EmergencyRouting() {
-  const [locationState, setLocationState] = useState("Locating responder...");
+  const { position, locating, locationError, detect } = useGeoLocation();
   const [lastUpdated, setLastUpdated] = useState(null);
   const [incidentStatus, setIncidentStatus] = useState("Pending verification");
 
-  function updateResponderLocation() {
-    if (!navigator.geolocation) {
-      setLocationState("Location unavailable on this device");
-      return;
-    }
+  const locationState = locating
+    ? "Updating live location..."
+    : locationError
+      ? locationError
+      : position
+        ? "Live location active"
+        : "Locating responder...";
 
-    setLocationState("Updating live location...");
-    navigator.geolocation.getCurrentPosition(
-      () => {
-        setLocationState("Live location active");
-        setLastUpdated(new Date());
-      },
-      () => setLocationState("Location permission required"),
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 15000 },
-    );
-  }
+  const embeddedMapUrl = position
+    ? `https://www.google.com/maps?q=${position.lat}%2C${position.lng}&output=embed`
+    : fallbackEmbeddedMapUrl;
+  const directionsUrl = position
+    ? `https://www.google.com/maps/dir/?api=1&origin=${position.lat}%2C${position.lng}&destination=Rizal+Street%2C+Barangay+167&travelmode=driving&dir_action=navigate`
+    : fallbackDirectionsUrl;
+
+  useEffect(() => {
+    if (position) setLastUpdated(new Date());
+  }, [position]);
 
   useEffect(() => {
     setResponderMeta(
       "Emergency Route & Incident Tracking",
       "Track the active responder location, confirm the incident, and review the safest route to the scene.",
     );
-    updateResponderLocation();
-  }, []);
+    detect();
+  }, [detect]);
 
   return (
     <div className="assignment-dashboard min-h-screen bg-slate-50">
@@ -84,8 +87,8 @@ export default function EmergencyRouting() {
               referrerPolicy="no-referrer-when-downgrade"
             />
             <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full bg-white px-3 py-2 text-[14px] font-bold text-primary shadow-md">
-              <span className="size-2.5 animate-pulse rounded-full bg-primary" />
-              Tracking Active
+            <span className="size-2.5 animate-pulse rounded-full bg-primary" />
+            {position ? "Tracking Active" : "Location Pending"}
             </div>
           </div>
           <div className="flex items-start gap-3 border-t border-slate-200 px-5 py-4 text-[15px] leading-5 text-slate-500">
@@ -119,9 +122,14 @@ export default function EmergencyRouting() {
               <p className="mt-1 text-[17px] font-bold">{lastUpdated ? lastUpdated.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "Waiting..."}</p>
             </div>
           </div>
-          <button type="button" onClick={updateResponderLocation} className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-xl border-2 border-primary text-[16px] font-bold text-primary">
+          <button type="button" onClick={detect} className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-xl border-2 border-primary text-[16px] font-bold text-primary">
             <RefreshCw size={18} /> Refresh Live Location
           </button>
+          {position && (
+            <p className="mt-2 text-center text-[14px] text-slate-500">
+              Current coords: {position.lat.toFixed(5)}, {position.lng.toFixed(5)}
+            </p>
+          )}
         </section>
         <section className={cardClass}>
           <div className="flex items-start gap-3">
@@ -152,7 +160,7 @@ export default function EmergencyRouting() {
         <div className="flex gap-3 rounded-xl bg-[#fff1c8] px-4 py-4 text-[17px] leading-6 text-[#a66a00]"><TriangleAlert className="shrink-0" />Flooding reported on the direct approach. Avoid the marked segment; use the alternate approach to Rizal Street.</div>
         <div className="flex gap-3 rounded-xl bg-[#e2f2eb] px-4 py-4 text-[17px] leading-6 text-primary"><Info className="shrink-0" />Advisory Route. Check road conditions before proceeding. Travel time may change.</div>
         <div className="grid grid-cols-2 gap-3">
-          <a href={googleMapsUrl} target="_blank" rel="noreferrer" className="flex h-20 items-center justify-center gap-2 rounded-xl border-2 border-slate-200 text-center text-[20px] font-bold text-primary"><Navigation size={22} /> Start Navigation</a>
+          <a href={directionsUrl} target="_blank" rel="noreferrer" className="flex h-20 items-center justify-center gap-2 rounded-xl border-2 border-slate-200 text-center text-[20px] font-bold text-primary"><Navigation size={22} /> Start Navigation</a>
           <Link to="/responder/scene-assessment" className="flex h-20 items-center justify-center rounded-xl bg-primary text-[20px] font-bold text-white">Update Response</Link>
         </div>
       </main>

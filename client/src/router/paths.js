@@ -1,6 +1,10 @@
 export const PATHS = {
   // Public routes
   home: "/",
+  about: "/about",
+  publicMap: "/map",
+  services: "/services",
+  accomplishments: "/accomplishments",
   privacy: "/privacy-policy",
   terms: "/terms-of-service",
   adminLogin: "/admin-login",

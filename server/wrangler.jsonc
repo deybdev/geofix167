@@ -19,10 +19,15 @@
 			"migrations_dir": "src/migrations"
 		}
 	],
-
 	"vars": {
-    	"FRONTEND_ORIGIN": "http://localhost:5173",
-  	}
+		"FRONTEND_ORIGIN": "http://localhost:5173",
+	},
+	"r2_buckets": [
+		{
+			"bucket_name": "geofix167-uploads",
+			"binding": "geofix167_uploads"
+		}
+	]
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
