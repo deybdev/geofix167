@@ -29,6 +29,7 @@ export async function createReportController(c: Context<AppEnv>) {
     const result = await submitIncidentReport(
       c.env.geofix167_db,
       validation.data,
+      c.get("user"),
     );
 
     return c.json(
@@ -74,6 +75,7 @@ export async function listReportsController(c: Context<AppEnv>) {
     const reports = await getIncidentReports(
       c.env.geofix167_db,
       validation.data,
+      c.get("user"),
     );
 
     return c.json({
@@ -81,6 +83,7 @@ export async function listReportsController(c: Context<AppEnv>) {
       count: reports.length,
     });
   } catch (error) {
+    if (error instanceof ReportError) return c.json({ error: error.message }, error.status as 401 | 403 | 404);
     console.error("Failed to list incident reports:", error);
     return c.json({ error: "An internal server error occurred." }, 500);
   }
@@ -94,7 +97,7 @@ export async function getReportByIdController(c: Context<AppEnv>) {
   }
 
   try {
-    const report = await getIncidentReportDetails(c.env.geofix167_db, id);
+    const report = await getIncidentReportDetails(c.env.geofix167_db, id, c.get("user"), c.req.header("X-Guest-Token"));
     return c.json({ report });
   } catch (error) {
     if (error instanceof ReportError) {

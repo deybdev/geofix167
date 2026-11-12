@@ -126,9 +126,12 @@ export async function createIncidentReportBundle(db: Database, params: {
   await db.batch(statements);
 }
 
-export async function listIncidentReports(db: Database, filters: ListReportsQuery): Promise<IncidentReportRecord[]> {
+export async function listIncidentReports(db: Database, filters: ListReportsQuery, ownerId?: string): Promise<IncidentReportRecord[]> {
   const conditions: string[] = [];
   const values: (string | number)[] = [];
+  if (ownerId !== undefined) {
+    conditions.push("r.reported_by_user_id = ?"); values.push(ownerId);
+  }
   if (filters.status_id !== undefined) {
     conditions.push("r.incident_status_id = ?"); values.push(filters.status_id);
   }

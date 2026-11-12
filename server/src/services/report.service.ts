@@ -1,4 +1,4 @@
-import type { AppEnv } from "../types/env";
+import type { AppEnv, AuthUser } from "../types/env";
 import type { CreateReportInput, ListReportsQuery } from "../validators/report.schema";
 import {
   createIncidentReportBundle, findIncidentReportById, findLanguageFlagsByIncidentId,
@@ -34,11 +34,17 @@ function priorityCode(value: string): PriorityCode {
     case "HIGH": case "P2": return "P2";
     case "MEDIUM": case "P3": return "P3";
     case "LOW": case "P4": return "P4";
-    default: throw new ReportError("Priority must be Low, Medium, High, Critical, or P1–P4.", 400);
+    default: throw new ReportError("Priority must be Low, Medium, High, Critical, or P1ï¿½P4.", 400);
   }
 }
-export async function submitIncidentReport(db: Database, input: CreateReportInput): Promise<SubmitReportResult> {
-  const userId = input.reporter_user_id?.trim() || null;
+export async function submitIncidentReport(db: Database, input: CreateReportInput, user?: AuthUser): Promise<SubmitReportResult> {
+  if (!user && (input.reporter_type === "RESIDENT" || input.reporter_user_id)) {
+    throw new ReportError("Sign in to submit a resident report.", 401);
+  }
+  if (user && input.reporter_user_id && input.reporter_user_id !== user.id) {
+    throw new ReportError("Reporter identity does not match your session.", 403);
+  }
+  const userId = user?.id ?? null;
   if (userId && input.guest_session_id) {
     throw new ReportError("Provide a user identity or a guest identity, not both.", 400);
   }
@@ -74,7 +80,8 @@ export async function submitIncidentReport(db: Database, input: CreateReportInpu
       title: `${category} Incident Report`, description_original: description,
       description_sanitized: language.sanitizedText, callback_mobile_number: null,
       latitude: input.latitude ?? null, longitude: input.longitude ?? null,
-      location_description: input.landmark_description ?? null,
+      location_description: [input.landmark_description?.trim(), input.reverse_geocoded_address?.trim()]
+        .filter((value, index, values) => value && values.indexOf(value) === index).join(" ï¿½ ") || null,
       submitted_at: now, updated_at: now,
     },
     statusEvent: {
@@ -91,12 +98,21 @@ export async function submitIncidentReport(db: Database, input: CreateReportInpu
     status_events: await findStatusEventsByIncidentId(db, id), idempotent_replay: false,
   };
 }
-export async function getIncidentReports(db: Database, filters: ListReportsQuery): Promise<IncidentReportRecord[]> {
-  return listIncidentReports(db, filters);
+export async function getIncidentReports(db: Database, filters: ListReportsQuery, user?: AuthUser): Promise<IncidentReportRecord[]> {
+  if (!user) throw new ReportError("Authentication required.", 401);
+  return listIncidentReports(db, filters, user.role === "admin" ? undefined : user.id);
 }
-export async function getIncidentReportDetails(db: Database, id: string): Promise<IncidentReportDetail> {
+export async function getIncidentReportDetails(db: Database, id: string, user?: AuthUser, guestToken?: string): Promise<IncidentReportDetail> {
   const report = await findIncidentReportById(db, id.trim());
   if (!report) throw new ReportError("Incident report not found.", 404);
+  const owned = user && (user.role === "admin" || report.reported_by_user_id === user.id);
+  let guestOwned = false;
+  if (!owned && guestToken && report.guest_session_id) {
+    guestOwned = Boolean(await db.prepare(
+      "SELECT guest_session_id FROM guest_sessions WHERE guest_session_id = ? AND access_token_hash = ? AND ended_at IS NULL AND (expires_at IS NULL OR datetime(expires_at) > datetime('now'))"
+    ).bind(report.guest_session_id, await sha256(guestToken)).first());
+  }
+  if (!owned && !guestOwned) throw new ReportError("Incident report not found.", 404);
   const [status_events, language_flags] = await Promise.all([
     findStatusEventsByIncidentId(db, report.incident_id),
     findLanguageFlagsByIncidentId(db, report.incident_id),
