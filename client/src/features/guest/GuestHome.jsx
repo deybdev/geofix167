@@ -1,5 +1,9 @@
 import { useNavigate, Link } from "react-router-dom";
+<<<<<<< Updated upstream
 import { ArrowLeft, Map, Siren } from "lucide-react";
+=======
+import { Map, Siren } from "lucide-react";
+>>>>>>> Stashed changes
 
 import { Button } from "../../shared/components/ui/button";
 import { PATHS } from "../../router/paths";
@@ -9,6 +13,7 @@ export default function GuestHome() {
 
   return (
     <div className="mt-7 flex flex-col">
+<<<<<<< Updated upstream
       <button
         type="button"
         onClick={() => navigate(PATHS.home)}
@@ -16,6 +21,8 @@ export default function GuestHome() {
       >
         <ArrowLeft size={16} /> Back to GeoFix 167
       </button>
+=======
+>>>>>>> Stashed changes
       <div className="flex flex-col items-center gap-1.5">
         <h2 className="text-[22px] font-bold leading-7 text-primary">
           You&apos;re browsing as a guest

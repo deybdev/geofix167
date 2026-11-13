@@ -45,8 +45,19 @@ export const PATHS = {
   report: "/resident/report",
   reportDetails: "/resident/report/details",
   photoCapture: "/resident/photo-capture",
+<<<<<<< Updated upstream
+  myReports: "/resident/my-reports",
+  alerts: "/resident/alerts",
+  profile: "/resident/profile",
+  emergency: "/resident/emergency",
+=======
+<<<<<<< HEAD
+>>>>>>> Stashed changes
+};
+=======
   myReports: "/resident/my-reports",
   alerts: "/resident/alerts",
   profile: "/resident/profile",
   emergency: "/resident/emergency",
 };
+>>>>>>> e414cf1 (feat: update resident dashboard)

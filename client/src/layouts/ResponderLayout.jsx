@@ -1,15 +1,31 @@
+<<<<<<< Updated upstream
 import { useState } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../shared/hooks/useAuth";
 import { PATHS } from "../router/paths";
 import ConfirmationDialog from "../shared/components/ConfirmationDialog";
 import { toast } from "../shared/components/ui/toast";
+=======
+<<<<<<< HEAD
+import { ClipboardList, FileCheck2, Map, UserRound } from "lucide-react";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { PATHS } from "../router/paths";
+=======
+import { useState } from "react";
+import { Outlet, useNavigate } from "react-router-dom";
+import { useAuth } from "../shared/hooks/useAuth";
+import { PATHS } from "../router/paths";
+import ConfirmationDialog from "../shared/components/ConfirmationDialog";
+import { toast } from "../shared/components/ui/toast";
+>>>>>>> e414cf1 (feat: update resident dashboard)
+>>>>>>> Stashed changes
 
 const ResponderLayout = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [isSignOutDialogOpen, setIsSignOutDialogOpen] = useState(false);
 
+<<<<<<< Updated upstream
   async function handleSignOut() {
     try {
       await signOut();
@@ -28,6 +44,49 @@ const ResponderLayout = () => {
       });
     }
   }
+=======
+<<<<<<< HEAD
+  const navItems = [
+    {
+      label: "Assignments",
+      icon: ClipboardList,
+      path: PATHS.responder,
+      isActive:
+        location.pathname === PATHS.responder ||
+        location.pathname === `${PATHS.responder}/dashboard` ||
+        location.pathname.startsWith(`${PATHS.responder}/assignment`) ||
+        location.pathname.startsWith(`${PATHS.responder}/acceptance`) ||
+        location.pathname.startsWith(`${PATHS.responder}/confirmation`) ||
+        location.pathname.startsWith(`${PATHS.responder}/new-dispatch`) ||
+        location.pathname.startsWith(`${PATHS.responder}/mark-unavailable`) ||
+        location.pathname.startsWith(`${PATHS.responder}/unavailability-submitted`) ||
+        location.pathname.startsWith(`${PATHS.responder}/reassignment-`),
+    },
+    {
+      label: "Route",
+      icon: Map,
+      path: `${PATHS.responder}/route`,
+      isActive:
+        location.pathname.startsWith(`${PATHS.responder}/route`) ||
+        location.pathname.startsWith(`${PATHS.responder}/scene-assessment`) ||
+        location.pathname.startsWith(`${PATHS.responder}/incident-not-located`) ||
+        location.pathname.startsWith(`${PATHS.responder}/emergency-support`) ||
+        location.pathname.startsWith(`${PATHS.responder}/non-emergency-support`),
+    },
+    {
+      label: "Updates",
+      icon: FileCheck2,
+      path: `${PATHS.responder}/updates`,
+      isActive: location.pathname.startsWith(`${PATHS.responder}/updates`),
+    },
+    {
+      label: "Profile",
+      icon: UserRound,
+      path: `${PATHS.responder}/profile`,
+      isActive: location.pathname.startsWith(`${PATHS.responder}/profile`),
+    },
+  ];
+>>>>>>> Stashed changes
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -67,6 +126,52 @@ const ResponderLayout = () => {
           })}
         </div>
       </nav>
+=======
+  async function handleSignOut() {
+    try {
+      await signOut();
+      setIsSignOutDialogOpen(false);
+      toast.add({
+        title: "Logout successful",
+        description: "You have been safely logged out.",
+        type: "success",
+      });
+      navigate(PATHS.login, { replace: true });
+    } catch (error) {
+      toast.add({
+        title: "Logout failed",
+        description: error instanceof Error ? error.message : "Please try again.",
+        type: "error",
+      });
+    }
+  }
+
+  return (
+    <div className="flex min-h-screen flex-col">
+      <header className="flex items-center justify-between border-b px-6 py-3">
+        <span className="font-medium">GeoFix 167 — Responder</span>
+        <button
+          type="button"
+          onClick={() => setIsSignOutDialogOpen(true)}
+          className="text-sm text-muted-foreground hover:text-foreground"
+        >
+          Sign out
+        </button>
+      </header>
+      <main className="flex-1 p-6">
+        <Outlet />
+      </main>
+
+      <ConfirmationDialog
+        open={isSignOutDialogOpen}
+        onOpenChange={setIsSignOutDialogOpen}
+        onConfirm={handleSignOut}
+        title="Sign out?"
+        description="Are you sure you want to sign out of GeoFix 167?"
+        confirmLabel="Sign out"
+        confirmVariant="destructive"
+      />
+>>>>>>> e414cf1 (feat: update resident dashboard)
     </div>
   );
 };
