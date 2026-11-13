@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import type { AppEnv } from "../types/env";
 import {
+  updateReportStatusSchema, updateReportDetailsSchema,
   createReportSchema,
   listReportsQuerySchema,
 } from "../validators/report.schema";
@@ -9,6 +10,7 @@ import {
   getIncidentReports,
   ReportError,
   submitIncidentReport,
+  updateReportStatus, updateReportDetails,
 } from "../services/report.service";
 
 export async function createReportController(c: Context<AppEnv>) {
@@ -30,6 +32,7 @@ export async function createReportController(c: Context<AppEnv>) {
       c.env.geofix167_db,
       validation.data,
       c.get("user"),
+      c.req.header("X-Guest-Token"),
     );
 
     return c.json(
@@ -109,3 +112,33 @@ export async function getReportByIdController(c: Context<AppEnv>) {
   }
 }
 
+
+export async function updateReportStatusController(c: Context<AppEnv>) {
+  const id = c.req.param("id")?.trim();
+  if (!id) return c.json({ error: "Incident report ID is required." }, 400);
+  const validation = updateReportStatusSchema.safeParse(await c.req.json().catch(() => null));
+  if (!validation.success) return c.json({ error: "Invalid status update.", details: validation.error.flatten() }, 400);
+  try {
+    const report = await updateReportStatus(c.env.geofix167_db, id, validation.data, c.get("user"));
+    return c.json({ report });
+  } catch (error) {
+    if (error instanceof ReportError) return c.json({ error: error.message }, error.status as 400 | 401 | 403 | 404 | 409);
+    console.error("Failed to update incident status:", error);
+    return c.json({ error: "An internal server error occurred." }, 500);
+  }
+}
+export async function updateReportDetailsController(c: Context<AppEnv>) {
+  const id = c.req.param("id")?.trim();
+  if (!id) return c.json({ error: "Incident report ID is required." }, 400);
+  const validation = updateReportDetailsSchema.safeParse(await c.req.json().catch(() => null));
+  if (!validation.success) return c.json({ error: "Invalid details update.", details: validation.error.flatten() }, 400);
+  try {
+    const report = await updateReportDetails(c.env.geofix167_db, id, validation.data,
+      c.get("user"), c.req.header("X-Guest-Token"));
+    return c.json({ report });
+  } catch (error) {
+    if (error instanceof ReportError) return c.json({ error: error.message }, error.status as 400 | 401 | 403 | 404 | 409);
+    console.error("Failed to update incident details:", error);
+    return c.json({ error: "An internal server error occurred." }, 500);
+  }
+}

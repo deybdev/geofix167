@@ -36,6 +36,7 @@ export async function findUserBySession(
           ON account_status.status_id = u.account_status_id
         WHERE s.token_hash = ?
           AND s.expires_at > ?
+          AND s.revoked_at IS NULL
           AND account_status.status_code = 'ACTIVE'
         LIMIT 1`,
     )

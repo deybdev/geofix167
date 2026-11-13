@@ -11,11 +11,7 @@ export const createReportSchema = z
     guest_session_id: z.string().trim().min(1).nullable().optional(),
     guest_alias: z.string().trim().min(1).nullable().optional(),
     callback_contact: z.string().trim().min(1).nullable().optional(),
-    idempotency_key: z
-      .string()
-      .trim()
-      .optional()
-      .transform((val) => (val && val.length > 0 ? val : crypto.randomUUID())),
+    idempotency_key: z.string().trim().min(1).max(200).optional(),
     idempotency_fingerprint: z.string().trim().nullable().optional(),
     is_emergency: sqliteFlagSchema.optional().default(0),
     incident_category: z
@@ -74,3 +70,18 @@ export const listReportsQuerySchema = z.object({
 
 export type ListReportsQuery = z.infer<typeof listReportsQuerySchema>;
 
+
+export const updateReportStatusSchema = z.object({
+  status_id: z.number().int().positive(),
+  note: z.string().trim().max(4000).optional(),
+}).strict();
+export const updateReportDetailsSchema = z.object({
+  category: z.string().trim().min(1).max(200).optional(),
+  priority_code: z.enum(["P1", "P2", "P3", "P4"]).optional(),
+  location_description: z.string().trim().max(4000).optional(),
+  description_sanitized: z.string().trim().max(10000).optional(),
+}).strict().refine(value => Object.values(value).some(v => v !== undefined), {
+  message: "Provide at least one report detail to update.",
+});
+export type UpdateReportStatusInput = z.infer<typeof updateReportStatusSchema>;
+export type UpdateReportDetailsInput = z.infer<typeof updateReportDetailsSchema>;
