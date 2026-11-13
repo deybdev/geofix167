@@ -441,7 +441,6 @@ export default function MapViewer({
   routes = [],
   trackers = [],
   dropOffs = [],
-<<<<<<< HEAD
   showBackButton = true,
   highlightBoundary = true,
   fitPoints = null,
@@ -449,17 +448,8 @@ export default function MapViewer({
   heatmap = false,
   variant = "viewer",
   expandPath,
-}) {
-=======
-  variant = "viewer",
   backPath = "/resident",
-   heatmap = false,
-   expandPath = null,
-   bottomInset = 0,
-   highlightBoundary = true,
-   fitPoints = null,
- }) {
->>>>>>> e414cf1 (feat: update resident dashboard)
+}) {
   const navigate = useNavigate();
   const [boundary, setBoundary] = useState(null);
   const [basemap, setBasemap] = useState("street");
@@ -661,11 +651,10 @@ export default function MapViewer({
                      flex flex-col items-start gap-2"
         >
         <div className="flex gap-2">
-<<<<<<< HEAD
-          {showBackButton && <button
+          {showBackButton && !compact && <button
             type="button"
             aria-label="Back to resident home"
-            onClick={() => navigate("/resident")}
+            onClick={() => navigate(backPath)}
             className={`${BTN} bg-white/95 text-gray-700`}
           >
             <svg
@@ -681,29 +670,6 @@ export default function MapViewer({
               <path d="m15 18-6-6 6-6" />
             </svg>
           </button>}
-=======
-          {!compact && (
-            <button
-              type="button"
-              aria-label="Back to resident home"
-              onClick={() => navigate(backPath)}
-              className={`${BTN} bg-white/95 text-gray-700`}
-            >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="m15 18-6-6 6-6" />
-              </svg>
-            </button>
-          )}
->>>>>>> e414cf1 (feat: update resident dashboard)
           <div className={`${CARD} px-3 py-2`}>
             <p className="text-sm font-bold leading-tight">Barangay 167</p>
             <p className="text-[11px] text-gray-500">

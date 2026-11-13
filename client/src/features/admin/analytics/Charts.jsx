@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 
 // Reusable chart primitives — pure SVG, no external charting library.
 
-<<<<<<< Updated upstream
 // Returns 0 on mount/data change, then eases to 1 so charts can grow/draw in.
 function useGrowAnim(dep) {
   const [t, setT] = useState(0);
@@ -20,8 +19,6 @@ function useGrowAnim(dep) {
 
 const GROW_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
 
-=======
->>>>>>> Stashed changes
 // Measures the container box so charts render at real pixel size and fill
 // their card edge-to-edge instead of letterboxing a fixed 400px viewBox.
 function useContainerSize(fallbackHeight) {
@@ -46,10 +43,7 @@ function useContainerSize(fallbackHeight) {
 // ── Line Chart ───────────────────────────────────────────────────────────────
 export function LineChart({ data, color = "#2e8b57", height = 120 }) {
   const [ref, { width, height: boxH }] = useContainerSize(height);
-<<<<<<< Updated upstream
   const t = useGrowAnim(`${width}x${boxH}|${data.map((d) => d.label).join(",")}`);
-=======
->>>>>>> Stashed changes
   if (!data.length || !width) return <div ref={ref} className="min-h-0 flex-1" />;
   const W = width, H = boxH || height;
   const max = Math.max(...data.map((d) => d.value));
@@ -89,7 +83,6 @@ export function LineChart({ data, color = "#2e8b57", height = 120 }) {
           );
         })}
         {/* Area fill */}
-<<<<<<< Updated upstream
         <path
           d={areaPath}
           fill={`url(#lg-${color.replace("#", "")})`}
@@ -112,14 +105,6 @@ export function LineChart({ data, color = "#2e8b57", height = 120 }) {
             key={p.label}
             style={{ opacity: t, transition: `opacity 0.3s ease ${0.55 + i * 0.06}s` }}
           >
-=======
-        <path d={areaPath} fill={`url(#lg-${color.replace("#", "")})`} />
-        {/* Line */}
-        <path d={linePath} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        {/* Dots + x-labels */}
-        {pts.map((p) => (
-          <g key={p.label}>
->>>>>>> Stashed changes
             <circle cx={p.x} cy={p.y} r="3" fill={color} stroke="#fff" strokeWidth="1.5" />
             <text x={p.x} y={H - 6} textAnchor="middle" fontSize="8" fill="#7184a0">{p.label}</text>
           </g>
@@ -132,10 +117,7 @@ export function LineChart({ data, color = "#2e8b57", height = 120 }) {
 // ── Donut Chart ──────────────────────────────────────────────────────────────
 export function DonutChart({ data, size = 140 }) {
   const total = data.reduce((s, d) => s + d.value, 0);
-<<<<<<< Updated upstream
   const t = useGrowAnim(JSON.stringify(data));
-=======
->>>>>>> Stashed changes
   if (!total) return null;
   const r = 46, cx = size / 2, cy = size / 2, stroke = 18;
   let cumAngle = -Math.PI / 2;
@@ -153,7 +135,6 @@ export function DonutChart({ data, size = 140 }) {
 
   return (
     <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size}>
-<<<<<<< Updated upstream
       {arcs.map((arc, i) => (
         <path
           key={arc.label}
@@ -189,15 +170,6 @@ export function DonutChart({ data, size = 140 }) {
       >
         total
       </text>
-=======
-      {arcs.map((arc) => (
-        <path key={arc.label} d={arc.d} fill="none" stroke={arc.color} strokeWidth={stroke} strokeLinecap="butt">
-          <title>{arc.label}: {arc.value} ({arc.pct}%)</title>
-        </path>
-      ))}
-      <text x={cx} y={cy - 5} textAnchor="middle" fontSize="16" fontWeight="700" fill="#263246">{total}</text>
-      <text x={cx} y={cy + 10} textAnchor="middle" fontSize="8" fill="#7184a0">total</text>
->>>>>>> Stashed changes
     </svg>
   );
 }
@@ -205,10 +177,7 @@ export function DonutChart({ data, size = 140 }) {
 // ── Bar Chart (vertical) ─────────────────────────────────────────────────────
 export function BarChart({ data, height = 140 }) {
   const [ref, { width, height: boxH }] = useContainerSize(height);
-<<<<<<< Updated upstream
   const t = useGrowAnim(`${width}x${boxH}|${data.map((d) => d.label).join(",")}`);
-=======
->>>>>>> Stashed changes
   if (!data.length || !width) return <div ref={ref} className="min-h-0 flex-1" />;
   const W = width, H = boxH || height;
   const max = Math.max(...data.map((d) => d.value));
@@ -221,7 +190,6 @@ export function BarChart({ data, height = 140 }) {
   return (
     <div ref={ref} className="min-h-0 flex-1">
       <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} className="block">
-<<<<<<< Updated upstream
         {[0, 0.5, 1].map((t2) => {
           const y = pad.t + t2 * iH;
           return <line key={t2} x1={pad.l} y1={y} x2={pad.l + iW} y2={y} stroke="#e2e8eb" strokeWidth="1" />;
@@ -259,23 +227,6 @@ export function BarChart({ data, height = 140 }) {
               >
                 {d.value}
               </text>
-=======
-        {[0, 0.5, 1].map((t) => {
-          const y = pad.t + t * iH;
-          return <line key={t} x1={pad.l} y1={y} x2={pad.l + iW} y2={y} stroke="#e2e8eb" strokeWidth="1" />;
-        })}
-        {data.map((d, i) => {
-          const bh = (d.value / max) * iH;
-          const x = pad.l + i * gap + gap / 2 - bw / 2;
-          const y = pad.t + iH - bh;
-          return (
-            <g key={d.label}>
-              <rect x={x} y={y} width={bw} height={bh} rx="3" fill={d.color || "#2e8b57"} opacity="0.9">
-                <title>{d.label}: {d.value}</title>
-              </rect>
-              <text x={x + bw / 2} y={H - 6} textAnchor="middle" fontSize="7.5" fill="#7184a0">{d.label}</text>
-              <text x={x + bw / 2} y={y - 3} textAnchor="middle" fontSize="8" fontWeight="600" fill="#263246">{d.value}</text>
->>>>>>> Stashed changes
             </g>
           );
         })}
@@ -287,10 +238,7 @@ export function BarChart({ data, height = 140 }) {
 // ── Horizontal Bar Chart ─────────────────────────────────────────────────────
 export function HBarChart({ data, color = "#2e8b57" }) {
   const max = Math.max(...data.map((d) => d.value));
-<<<<<<< Updated upstream
   const t = useGrowAnim(JSON.stringify(data));
-=======
->>>>>>> Stashed changes
   return (
     <div className="grid gap-2">
       {data.map((d, i) => (
@@ -301,7 +249,6 @@ export function HBarChart({ data, color = "#2e8b57" }) {
           </div>
           <div className="h-[7px] rounded-full bg-[#f0f3f5] overflow-hidden">
             <div
-<<<<<<< Updated upstream
               className="h-full rounded-full"
               style={{
                 width: `${(d.value / max) * 100 * t}%`,
@@ -309,10 +256,6 @@ export function HBarChart({ data, color = "#2e8b57" }) {
                 opacity: 1 - i * 0.08,
                 transition: `width 0.8s ${GROW_EASE} ${i * 0.08}s`,
               }}
-=======
-              className="h-full rounded-full transition-all"
-              style={{ width: `${(d.value / max) * 100}%`, background: d.color || color, opacity: 1 - i * 0.08 }}
->>>>>>> Stashed changes
             />
           </div>
         </div>
@@ -324,10 +267,7 @@ export function HBarChart({ data, color = "#2e8b57" }) {
 // ── Grouped Bar (maintenance monthly) ─────────────────────────────────────
 export function GroupedBarChart({ data, height = 140 }) {
   const [ref, { width, height: boxH }] = useContainerSize(height);
-<<<<<<< Updated upstream
   const t = useGrowAnim(`${width}x${boxH}|${data.map((d) => d.label).join(",")}`);
-=======
->>>>>>> Stashed changes
   if (!data.length || !width) return <div ref={ref} className="min-h-0 flex-1" />;
   const W = width, H = boxH || height;
   const max = Math.max(...data.flatMap((d) => [d.reported, d.resolved]));
@@ -340,7 +280,6 @@ export function GroupedBarChart({ data, height = 140 }) {
   return (
     <div ref={ref} className="min-h-0 flex-1">
       <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} className="block">
-<<<<<<< Updated upstream
         {[0, 0.5, 1].map((t2) => (
           <line key={t2} x1={pad.l} y1={pad.t + t2 * iH} x2={pad.l + iW} y2={pad.t + t2 * iH} stroke="#e2e8eb" strokeWidth="1" />
         ))}
@@ -367,24 +306,6 @@ export function GroupedBarChart({ data, height = 140 }) {
               >
                 {d.label}
               </text>
-=======
-        {[0, 0.5, 1].map((t) => (
-          <line key={t} x1={pad.l} y1={pad.t + t * iH} x2={pad.l + iW} y2={pad.t + t * iH} stroke="#e2e8eb" strokeWidth="1" />
-        ))}
-        {data.map((d, i) => {
-          const cx = pad.l + i * groupW + groupW / 2;
-          const rh = (d.reported / max) * iH;
-          const rsh = (d.resolved / max) * iH;
-          return (
-            <g key={d.label}>
-              <rect x={cx - bw - 1} y={pad.t + iH - rh} width={bw} height={rh} rx="2" fill="#7184a0" opacity="0.7">
-                <title>Reported: {d.reported}</title>
-              </rect>
-              <rect x={cx + 1} y={pad.t + iH - rsh} width={bw} height={rsh} rx="2" fill="#2e8b57" opacity="0.85">
-                <title>Resolved: {d.resolved}</title>
-              </rect>
-              <text x={cx} y={H - 6} textAnchor="middle" fontSize="8" fill="#7184a0">{d.label}</text>
->>>>>>> Stashed changes
             </g>
           );
         })}
@@ -395,20 +316,12 @@ export function GroupedBarChart({ data, height = 140 }) {
 
 // ── Stacked Bar (maintenance by category) ───────────────────────────────────
 export function StackedHBar({ data }) {
-<<<<<<< Updated upstream
   const t = useGrowAnim(JSON.stringify(data));
   return (
     <div className="grid gap-2.5">
       {data.map((d, i) => {
         const total = d.resolved + d.unresolved;
         const resPct = (d.resolved / total) * 100 * t;
-=======
-  return (
-    <div className="grid gap-2.5">
-      {data.map((d) => {
-        const total = d.resolved + d.unresolved;
-        const resPct = (d.resolved / total) * 100;
->>>>>>> Stashed changes
         return (
           <div key={d.label}>
             <div className="flex items-center justify-between text-[9px] font-medium text-[#60738f] mb-0.5">
@@ -419,14 +332,10 @@ export function StackedHBar({ data }) {
               <span className="text-[#263246] font-bold">{d.resolved}/{total}</span>
             </div>
             <div className="h-[7px] rounded-full bg-[#f0f3f5] overflow-hidden flex">
-<<<<<<< Updated upstream
               <div
                 className="h-full rounded-l-full"
                 style={{ width: `${resPct}%`, background: d.color, transition: `width 0.8s ${GROW_EASE} ${i * 0.08}s` }}
               />
-=======
-              <div className="h-full rounded-l-full" style={{ width: `${resPct}%`, background: d.color }} />
->>>>>>> Stashed changes
               <div className="h-full flex-1 bg-[#e2e8eb]" />
             </div>
           </div>

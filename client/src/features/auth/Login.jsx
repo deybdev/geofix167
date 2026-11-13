@@ -14,16 +14,12 @@ import { loginSchema } from "../../schemas/login.schema";
 import { PATHS } from "../../router/paths";
 
 const ROLE_PATHS = {
-<<<<<<< HEAD
   tanod: "/responder",
+  responder: PATHS.responder,
   resident: "/resident",
   bdrrmo: "/unauthorized",
   police: "/unauthorized",
   fire: "/unauthorized",
-=======
-  responder: PATHS.responder,
-  resident: PATHS.resident,
->>>>>>> e414cf1 (feat: update resident dashboard)
 };
 
 export default function Login() {
