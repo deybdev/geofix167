@@ -105,7 +105,7 @@ route.post("/reports/:reportId/dispatch", async (c) => {
       SELECT ?, r.incident_id, rr.responder_user_id, rr.responder_resource_id, 1, ?, 'Admin dispatch'
       FROM incident_reports r JOIN incident_statuses s ON s.incident_status_id = r.incident_status_id
       JOIN responder_resources rr ON rr.responder_resource_id = ?
-      WHERE r.incident_id = ? AND s.code IN ('SUBMITTED', 'VERIFIED')
+      WHERE r.incident_id = ? AND s.code = 'VERIFIED'
         AND rr.availability_status = 'AVAILABLE' AND rr.responder_user_id IS NOT NULL`)
       .bind(assignmentId, c.get("user").id, body.data.unit_id, id.data),
     db.prepare(`INSERT INTO incident_status_events
@@ -136,7 +136,7 @@ route.post("/reports/:reportId/dispatch", async (c) => {
     if (!report) return c.json({ error: "Report not found." }, 404);
     if (!unit) return c.json({ error: "Responder unit not found." }, 404);
     if (unit.availability_status !== "AVAILABLE") return c.json({ error: "That unit is no longer available." }, 409);
-    return c.json({ error: "Only pending or verified reports can be dispatched." }, 409);
+    return c.json({ error: "Only verified reports can be dispatched." }, 409);
   }
   return c.json({ ok: true, assignment_id: assignmentId, status: "DISPATCHED" }, 201);
 });
