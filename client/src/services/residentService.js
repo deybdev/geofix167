@@ -1,82 +1,147 @@
-// Sample data — replace with real API calls when the backend is ready.
-
-export const SAMPLE_STATS = {
-  total: 5,
-  submitted: 1,
-  under_review: 0,
-  assigned: 1,
-  in_progress: 1,
-  resolved: 2,
+// Status IDs are defined by migrations 0005 and 0015. Keep the exact database
+// status alongside the smaller set of card/filter groups used by the UI.
+const STATUSES = {
+  1: ["SUBMITTED", "Submitted", "submitted"],
+  2: ["UNDER_REVIEW", "Under Front Desk Review", "under_review"],
+  3: ["NEEDS_CLARIFICATION", "Needs Clarification", "under_review"],
+  4: ["VERIFIED", "Verified", "under_review"],
+  5: ["FORWARDED_TO_BDRRMO", "Forwarded to BDRRMO", "assigned"],
+  6: ["ASSIGNED", "Assigned", "assigned"],
+  7: ["EN_ROUTE", "En Route", "in_progress"],
+  8: ["ON_SCENE", "On Scene", "in_progress"],
+  9: ["FOR_CLOSURE_REVIEW", "For Closure Review", "in_progress"],
+  10: ["CLOSED", "Closed", "resolved"],
+  11: ["REJECTED", "Rejected", "rejected"],
+  12: ["LINKED_DUPLICATE", "Linked Duplicate", "linked_duplicate"],
+  13: ["DISPATCHED", "Dispatched", "assigned"],
+  14: ["AWAITING_DRRMO_SUPPORT", "Awaiting DRRMO Support", "assigned"],
 };
 
-export const SAMPLE_REPORTS = [
-  {
-    public_id: "rpt_a1b2c3d4",
-    report_type: "infrastructure",
-    category: "drainage",
-    description: "Clogged drainage near the wet market causing flooding every time it rains.",
-    address: "Purok 4, near the wet market",
-    latitude: 14.7365,
-    longitude: 121.0155,
-    urgency: "High",
-    status: "in_progress",
-    photo_url: null,
-    created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    public_id: "rpt_e5f6g7h8",
-    report_type: "infrastructure",
-    category: "streetlight",
-    description: "Broken streetlight at the end of the alley making the area unsafe at night.",
-    address: "Purok 5, Sampaguita St.",
-    latitude: 14.7342,
-    longitude: 121.0125,
-    urgency: "Moderate",
-    status: "submitted",
-    photo_url: null,
-    created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    public_id: "rpt_i9j0k1l2",
-    report_type: "infrastructure",
-    category: "road",
-    description: "Deep pothole on the main road damaging motorcycle tires.",
-    address: "Purok 6, along Balagtas St.",
-    latitude: 14.7315,
-    longitude: 121.0185,
-    urgency: "High",
-    status: "resolved",
-    photo_url: null,
-    created_at: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    public_id: "rpt_m3n4o5p6",
-    report_type: "emergency",
-    category: "fire",
-    description: "Smoke coming from the second floor of a residential house.",
-    address: "Purok 2, along Molave St.",
-    latitude: 14.7391,
-    longitude: 121.0162,
-    urgency: "Critical",
-    status: "assigned",
-    photo_url: null,
-    created_at: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    public_id: "rpt_q7r8s9t0",
-    report_type: "emergency",
-    category: "medical",
-    description: "An elderly neighbor collapsed and needs immediate medical help.",
-    address: "Purok 3, near the chapel",
-    latitude: 14.7378,
-    longitude: 121.0131,
-    urgency: "Critical",
-    status: "resolved",
-    photo_url: null,
-    created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-];
+function timestamp(value) {
+  if (!value) return null;
+  // SQLite datetime('now') is UTC but does not include a timezone suffix.
+  return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(value)
+    ? value.replace(" ", "T") + "Z" : value;
+}
 
+export function normalizeReport(record) {
+  const statusId = Number(record.incident_status_id ?? record.status_id);
+  const [code, label, group] = STATUSES[statusId] ?? ["UNKNOWN", "Unknown", "unknown"];
+  const priority = record.priority_code ?? record.priority_level;
+  const urgency = { P1: "Critical", P2: "High", P3: "Moderate", P4: "Low",
+    CRITICAL: "Critical", HIGH: "High", MEDIUM: "Moderate", LOW: "Low" }[priority] ?? "Not specified";
+  const events = (record.status_events ?? []).map(event => ({
+    id: event.incident_status_event_id ?? event.status_event_id,
+    from_status_id: event.from_incident_status_id ?? event.from_status_id ?? null,
+    to_status_id: event.to_incident_status_id ?? event.to_status_id,
+    label: event.to_status_label ?? STATUSES[event.to_incident_status_id ?? event.to_status_id]?.[1] ?? "Status updated",
+    note: event.note ?? event.reason ?? "",
+    created_at: timestamp(event.created_at ?? event.occurred_at),
+  })).sort((a, b) => (Date.parse(a.created_at) || 0) - (Date.parse(b.created_at) || 0));
+  return {
+    public_id: record.incident_id,
+    reference_number: record.reference_number ?? record.incident_id,
+    title: record.title,
+    report_type: record.is_emergency === 1 || record.is_emergency === true ? "emergency" : "infrastructure",
+    category: record.category ?? record.incident_category ?? "other",
+    description: record.description_sanitized ?? record.sanitized_description ?? record.description_original ?? "",
+    address: record.location_description ?? record.landmark_description ?? "",
+    latitude: Number.isFinite(record.latitude) ? record.latitude : null,
+    longitude: Number.isFinite(record.longitude) ? record.longitude : null,
+    urgency, status: group, status_id: statusId,
+    status_code: record.status_code ?? code,
+    status_label: record.status_label ?? label,
+    is_terminal: record.is_terminal === 1 || record.is_terminal === true || [10, 11, 12].includes(statusId),
+    photo_url: record.photo_url ?? null,
+    created_at: timestamp(record.submitted_at ?? record.received_at),
+    updated_at: timestamp(record.updated_at),
+    status_events: events,
+  };
+}
+
+export function matchesReportStatus(report, status) {
+  // The overview's In Progress counter and list filter both include every
+  // active stage beyond submission. Rejected/duplicate reports aren't resolved.
+  return !status || (status === "in_progress"
+    ? !report.is_terminal && report.status_id > 1
+    : report.status === status);
+}
+
+export function summarizeReports(reports) {
+  return Object.fromEntries(["total", "submitted", "under_review", "assigned", "in_progress", "resolved"]
+    .map(key => [key, key === "total" ? reports.length : reports.filter(r => matchesReportStatus(r, key)).length]));
+}
+
+async function reportRequest(path = "", { method = "GET", body, signal } = {}) {
+  let response;
+  try {
+    response = await fetch(`/api/reports${path}`, {
+      method, credentials: "include", cache: "no-store", signal,
+      ...(body === undefined ? {} : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
+    });
+  } catch (error) {
+    if (error.name === "AbortError") throw error;
+    throw new Error("Could not connect to the server. Check your connection and try again.", { cause: error });
+  }
+  const data = await response.json().catch(() => null);
+  if (!response.ok || (method === "POST" && ![200, 201].includes(response.status))) {
+    const error = new Error(data?.error || (response.status === 401
+      ? "Your session has expired. Please sign in again." : "Unable to load or save your report. Please try again."));
+    error.status = response.status;
+    throw error;
+  }
+  if (!data) throw new Error("The server returned an invalid response. Please try again.");
+  return data;
+}
+
+export async function getReports({ status, limit, signal } = {}) {
+  const data = await reportRequest("", { signal });
+  if (!Array.isArray(data.reports)) throw new Error("The server did not return a report list.");
+  let reports = data.reports.map(normalizeReport).filter(report => matchesReportStatus(report, status));
+  reports.sort((a, b) => (Date.parse(b.created_at) || 0) - (Date.parse(a.created_at) || 0));
+  if (limit) reports = reports.slice(0, limit);
+  return { data: { reports } };
+}
+
+export async function getReportStats() {
+  const { data } = await getReports();
+  return { data: { stats: summarizeReports(data.reports) } };
+}
+
+function reportResult(data) {
+  if (!data.report?.incident_id) throw new Error("The server did not return a saved report.");
+  return { data: { ...data, report: normalizeReport(data.report) } };
+}
+
+export async function getReportDetails(id, { signal } = {}) {
+  return reportResult(await reportRequest(`/${encodeURIComponent(id)}`, { signal }));
+}
+
+export function buildResidentReportPayload({ category, urgency, isEmergency, description, position, address, landmark, callbackContact }) {
+  const pinned = Number.isFinite(position?.lat) && Number.isFinite(position?.lng);
+  return {
+    reporter_type: "RESIDENT", incident_category: category,
+    priority_level: urgency?.toUpperCase() === "MODERATE" ? "MEDIUM" : (urgency || "HIGH").toUpperCase(),
+    is_emergency: isEmergency ? 1 : 0, description: description.trim(),
+    latitude: pinned ? position.lat : null, longitude: pinned ? position.lng : null,
+    landmark_description: landmark?.trim() || null,
+    reverse_geocoded_address: address?.trim() || null,
+    callback_contact: callbackContact?.trim() || null,
+  };
+}
+
+export async function submitReport(payload) {
+  return reportResult(await reportRequest("", { method: "POST", body: payload }));
+}
+
+export async function updateReportDetails(id, { description_sanitized, location_description }) {
+  // Never forward priority/category/identity fields from a resident edit form.
+  return reportResult(await reportRequest(`/${encodeURIComponent(id)}`, {
+    method: "PATCH", body: { description_sanitized, location_description },
+  }));
+}
+
+// Announcements and notifications are separate demo features, not report data.
 export const SAMPLE_ANNOUNCEMENTS = [
   {
     public_id: "ann_001",
@@ -139,19 +204,6 @@ export const SAMPLE_NOTIFICATIONS = [
 
 // Simulated async helpers — swap these for real axios calls later.
 const delay = (ms = 300) => new Promise((res) => setTimeout(res, ms));
-
-export async function getReportStats() {
-  await delay();
-  return { data: { stats: SAMPLE_STATS } };
-}
-
-export async function getReports({ status, limit } = {}) {
-  await delay();
-  let reports = [...SAMPLE_REPORTS];
-  if (status) reports = reports.filter((r) => r.status === status);
-  if (limit) reports = reports.slice(0, limit);
-  return { data: { reports } };
-}
 
 export async function getAnnouncements() {
   await delay();

@@ -20,6 +20,7 @@ export const residentRoutes = (
       <Route path="map" element={<ResidentMap />} />
       <Route path="report" element={<ResidentReport />} />
       <Route path="report/details" element={<ReportDetails />} />
+      <Route path="report/details/:id" element={<ReportDetails />} />
       <Route path="photo-capture" element={<PhotoCapture />} />
       <Route path="my-reports" element={<MyReports />} />
       <Route path="alerts" element={<Alerts />} />
