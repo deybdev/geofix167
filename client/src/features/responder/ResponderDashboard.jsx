@@ -52,7 +52,7 @@ export default function ResponderDashboard() {
         </section>
 
         <section className={cardClass}>
-          <h2 className="text-[27px] font-bold text-primary">Assignment details</h2>
+          <h2 className="text-[27px] font-bold text-primary">Assignment</h2>
           <dl className="mt-4 space-y-4">
             <div>
               <dt className="text-[24px] font-bold text-slate-500">Assigned Department</dt>

@@ -19,7 +19,6 @@ export default function NewDispatchNotif() {
             <ArrowLeft size={38} strokeWidth={1.8} />
           </Link>
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Responder dashboard</p>
             <h1 className="truncate text-2xl font-bold tracking-tight text-primary sm:text-3xl">Dispatch Assignment</h1>
           </div>
         </div>
@@ -55,7 +54,7 @@ export default function NewDispatchNotif() {
         </section>
 
         <section className={cardClass}>
-          <h2 className="text-xl font-bold text-primary">Assignment details</h2>
+          <h2 className="text-xl font-bold text-primary">Assignment</h2>
           <dl className="mt-4 space-y-4">
             <div>
               <dt className="text-sm font-semibold uppercase tracking-wide text-slate-500">Assigned department</dt>
@@ -70,7 +69,7 @@ export default function NewDispatchNotif() {
         </section>
 
         <section className={cardClass}>
-          <h2 className="text-xl font-bold text-primary">Incident location</h2>
+          <h2 className="text-xl font-bold text-primary">Location</h2>
           <p className="mt-2 text-lg font-bold">Mabini Street, Barangay 167</p>
           <div className="mt-5 grid grid-cols-2 gap-4">
             <div>
@@ -89,7 +88,7 @@ export default function NewDispatchNotif() {
           to="/responder/assignment"
           className="flex min-h-16 w-full items-center justify-center rounded-2xl bg-primary px-4 text-lg font-bold text-white shadow-sm"
         >
-          Review Responder Assignment
+          View Assignment
         </Link>
       </main>
     </div>

@@ -22,7 +22,6 @@ export default function AssignmentOffer() {
             <ArrowLeft size={38} strokeWidth={1.8} />
           </Link>
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Responder dashboard</p>
             <h1 className="truncate text-2xl font-bold tracking-tight text-primary sm:text-3xl">Assignment Offer</h1>
           </div>
         </div>
@@ -46,7 +45,7 @@ export default function AssignmentOffer() {
         </section>
 
         <section className={cardClass}>
-          <h2 className="text-xl font-bold text-primary">Assignment details</h2>
+          <h2 className="text-xl font-bold text-primary">Assignment</h2>
           <dl className="mt-4 space-y-4">
             <div>
               <dt className="text-sm font-semibold uppercase tracking-wide text-slate-500">Department</dt>

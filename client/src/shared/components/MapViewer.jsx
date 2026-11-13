@@ -449,10 +449,13 @@ export default function MapViewer({
   variant = "viewer",
   expandPath,
   backPath = "/resident",
+  mapHeight = null,
+  hideMapLabel = false,
 }) {
   const navigate = useNavigate();
   const [boundary, setBoundary] = useState(null);
   const [basemap, setBasemap] = useState("street");
+  const [layersOpen, setLayersOpen] = useState(false);
   const [legendOpen, setLegendOpen] = useState(false);
   const [map, setMap] = useState(null);
   const fitRef = useRef(null);
@@ -510,7 +513,7 @@ export default function MapViewer({
         zoomSnap={0.5}
         zoomControl={false}
         maxBoundsViscosity={1}
-        className={`${compact ? "h-[300px] sm:h-[340px]" : "h-full"} w-full`}
+        className={`${mapHeight || (compact ? "h-[300px] sm:h-[340px]" : "h-full")} w-full`}
         style={{ background: "#e5e7eb" }}
       >
         <TileLayer
@@ -670,12 +673,14 @@ export default function MapViewer({
               <path d="m15 18-6-6 6-6" />
             </svg>
           </button>}
-          <div className={`${CARD} px-3 py-2`}>
-            <p className="text-sm font-bold leading-tight">Barangay 167</p>
-            <p className="text-[11px] text-gray-500">
-              {visible.length} report{visible.length === 1 ? "" : "s"}
-            </p>
-          </div>
+          {!hideMapLabel && (
+            <div className={`${CARD} ${compact ? "rounded-lg px-1.5 py-1" : "px-3 py-2"}`}>
+              <p className={`${compact ? "text-[9px]" : "text-sm"} font-bold leading-tight`}>Barangay 167</p>
+              <p className={`${compact ? "text-[8px]" : "text-[11px]"} text-gray-500`}>
+                {visible.length} report{visible.length === 1 ? "" : "s"}
+              </p>
+            </div>
+          )}
 
           {!compact && (
             <button
@@ -733,22 +738,25 @@ export default function MapViewer({
           className="pointer-events-none absolute right-3 top-3 z-[1000]
                      flex flex-col items-end gap-2"
         >
-        <div
-          className="pointer-events-auto flex rounded-xl bg-white p-1
-                     text-xs font-semibold shadow-lg ring-1 ring-black/5"
-        >
-          {Object.entries(BASEMAPS).map(([key, { label }]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setBasemap(key)}
-              className={`rounded-lg px-3 py-2 ${
-                basemap === key ? "bg-emerald-600 text-white" : "text-gray-600"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+        <div className="pointer-events-auto relative">
+          <button type="button" aria-label="Choose map layers" aria-expanded={layersOpen}
+            onClick={() => setLayersOpen((open) => !open)}
+            className={`${BTN} ${compact ? "h-9 w-9 rounded-lg bg-white/95" : "bg-white"} text-gray-700`}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m12 2 9 5-9 5-9-5 9-5Z" /><path d="m3 12 9 5 9-5" /><path d="m3 17 9 5 9-5" />
+            </svg>
+          </button>
+          {layersOpen && (
+            <div className={`${CARD} absolute right-0 top-full mt-2 overflow-hidden p-1 text-xs`}>
+              {Object.entries(BASEMAPS).map(([key, { label }]) => (
+                <button key={key} type="button" onClick={() => { setBasemap(key); setLayersOpen(false); }}
+                  className={`block w-full rounded-lg px-3 py-2 text-left font-semibold ${
+                    basemap === key ? "bg-emerald-600 text-white" : "text-gray-600 hover:bg-gray-100"
+                  }`}>{label}</button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Expand: opens this map as a whole page (with its incidents) */}

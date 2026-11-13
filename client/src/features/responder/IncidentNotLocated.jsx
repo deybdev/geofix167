@@ -1,6 +1,7 @@
 import { ArrowLeft, Check, Info } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useState } from "react";
+import EvidencePreview from "./EvidencePreview";
 
 const cardClass = "rounded-[20px] border-2 border-slate-200 bg-white px-5 py-5";
 const fieldClass = "rounded-xl border-2 border-slate-200 bg-slate-50 px-4 py-4 text-[18px]";
@@ -13,7 +14,6 @@ export default function IncidentNotLocated() {
   const [observed, setObserved] = useState("No");
   const [submitted, setSubmitted] = useState(false);
   const [evidence, setEvidence] = useState(null);
-  const evidenceUrl = evidence ? URL.createObjectURL(evidence) : "";
   return (
     <div className="min-h-screen bg-white">
       <header className="flex items-center justify-between border-b border-slate-200 px-5 pb-5 pt-7">
@@ -28,7 +28,7 @@ export default function IncidentNotLocated() {
         <section className={cardClass}><h2 className="text-[20px] font-bold text-primary">Checks performed</h2><div className="mt-3 space-y-3"><div className="rounded-lg border-2 border-primary bg-[#e2f2eb] px-3 py-3 font-bold text-primary">■ &nbsp; Confirmed reported pin at Rizal / Mabini</div><div className="rounded-lg border-2 border-primary bg-[#e2f2eb] px-3 py-3 font-bold text-primary">■ &nbsp; Checked nearby streets and landmarks</div></div><p className="mt-4 font-bold">Area covered</p><p className={`${fieldClass} mt-2`}>Rizal–Mabini junction to the bakery block; both roadside approaches, about 150 m.</p><p className="mt-4 font-bold">Time checked</p><p className={`${fieldClass} mt-2`}>November 3, 2026 • 2:02 PM–2:08 PM</p></section>
         <label className="block font-bold">Observations and findings<textarea className={`${fieldClass} mt-2 h-24 w-full`} defaultValue="No vehicles obstructing the junction during the check. No matching collision scene visible along the covered route." /></label>
         <label className="block font-bold">Reason and limits<textarea className={`${fieldClass} mt-2 h-28 w-full`} defaultValue="The reported scene may have moved or cleared before arrival, or the pin may be imprecise. Side streets beyond the bakery were not checked." /></label>
-        <section className={cardClass}><h2 className="text-[20px] font-bold text-primary">Optional Evidence</h2><label className="mt-4 flex h-14 cursor-pointer items-center justify-center rounded-xl border-2 border-slate-200 text-[17px] font-bold text-primary">Add Photo / Video (Optional)<input type="file" accept="image/*,video/*" className="sr-only" onChange={(event) => setEvidence(event.target.files?.[0] ?? null)} /></label>{evidence && <div className="mt-4 overflow-hidden rounded-xl border-2 border-slate-200">{evidence.type.startsWith("video/") ? <video src={evidenceUrl} controls className="max-h-64 w-full object-contain" /> : <img src={evidenceUrl} alt="Uploaded incident evidence" className="max-h-64 w-full object-contain" />}<p className="px-3 py-2 text-sm text-slate-500">{evidence.name}</p></div>}<p className="mt-3 text-[15px] text-slate-500">No attachment is required. Collect evidence only when safe.</p></section>
+        <section className={cardClass}><h2 className="text-[20px] font-bold text-primary">Photo or video evidence</h2><label className="mt-4 flex h-14 cursor-pointer items-center justify-center rounded-xl border-2 border-slate-200 text-[17px] font-bold text-primary">Add photo or video (optional)<input type="file" accept="image/*,video/*" className="sr-only" onChange={(event) => setEvidence(event.target.files?.[0] ?? null)} /></label>{evidence && <div className="mt-4"><EvidencePreview file={evidence} alt="Uploaded incident evidence" /></div>}<p className="mt-3 text-[15px] text-slate-500">No attachment is required. Collect evidence only when safe.</p></section>
         <div className="rounded-xl bg-[#e2f2eb] px-4 py-4 text-[16px] leading-6 text-primary"><b>No Automatic False-Report Penalty</b><br />Submit for authorized admin follow-up. Findings do not establish a false report, restrict access, or close the case.</div>
         {!submitted ? <button type="button" onClick={() => setSubmitted(true)} className="h-16 w-full rounded-xl bg-primary text-[18px] font-bold text-white">Submit Findings for Admin Follow-Up</button> : <Link to="/responder/emergency-support" className="flex h-16 items-center justify-center rounded-xl bg-primary text-[18px] font-bold text-white">Continue to Emergency Support</Link>}
         {submitted && <p className="rounded-xl bg-[#e2f2eb] px-4 py-3 text-[16px] font-bold text-primary" role="status">Findings submitted for administrator follow-up.</p>}
