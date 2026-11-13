@@ -28,8 +28,7 @@ import { Button } from "../../shared/components/ui/button";
 import { Input } from "../../shared/components/ui/input";
 import MapViewer from "../../shared/components/MapViewer";
 import { isInside } from "../../shared/utils/mapUtils";
-import RequestTracking from "./RequestTracking";
-import InfraTracking from "./InfraTracking";
+import { buildResidentReportPayload, submitReport } from "../../services/residentService";
 import { PATHS } from "../../router/paths";
 import { useGeoLocation } from "../../shared/context/LocationProvider";
 
@@ -104,6 +103,11 @@ export default function Report() {
   const [urgency, setUrgency] = useState("High");
   const [injured, setInjured] = useState("Yes");
   const [submitted, setSubmitted] = useState(false);
+  const [savedReport, setSavedReport] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const submittingRef = useRef(false);
+  const attemptRef = useRef(null);
   const photoInputRef = useRef(null);
   const videoInputRef = useRef(null);
   const [photos, setPhotos] = useState(
@@ -115,7 +119,7 @@ export default function Report() {
   // otherwise from this device's GPS
   const photoState = routeLocation.state;
   const [position, setPosition] = useState(
-    Number.isFinite(photoState?.latitude)
+    Number.isFinite(photoState?.latitude) && Number.isFinite(photoState?.longitude)
       ? { lat: photoState.latitude, lng: photoState.longitude }
       : null,
   );
@@ -193,45 +197,38 @@ export default function Report() {
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
   }
 
-  function handleSubmit(event) {
-    event.preventDefault();
-    if (!category) return; // type may have changed mid-flow, invalidating it
-    setSubmitted(true);
+  async function handleSubmit(event) {
+    event?.preventDefault();
+    if (!category || submittingRef.current) return;
+    submittingRef.current = true;
+    setSubmitting(true);
+    setSubmitError("");
+    try {
+      const payload = buildResidentReportPayload({
+        category, urgency: reportType === "emergency" ? "CRITICAL" : urgency,
+        isEmergency: reportType === "emergency", description, position, address,
+      });
+      const signature = JSON.stringify(payload);
+      // A retry of unchanged inputs keeps its key, even if the first response
+      // was lost after the server saved it. Editing the payload starts a new attempt.
+      if (attemptRef.current?.signature !== signature) {
+        attemptRef.current = { signature, key: crypto.randomUUID() };
+      }
+      const { data } = await submitReport({ ...payload, idempotency_key: attemptRef.current.key });
+      setSavedReport(data.report);
+      setSubmitted(true);
+    } catch (error) {
+      setSubmitError(error.message || "Unable to submit your report. Please try again.");
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
   }
 
   if (submitted) {
     const emergency = reportType === "emergency";
 
-    // With a pinned location, show the full-page tracking view:
-    // infrastructure follows the maintenance workflow timeline, while
-    // emergencies get the live responder-dispatch map
-    if (position) {
-      const categoryLabel =
-        CATEGORIES[reportType]?.find((item) => item.value === category)?.label ??
-        "Report";
-
-      if (reportType === "infrastructure") {
-        return (
-          <InfraTracking
-            address={address}
-            category={category}
-            categoryLabel={categoryLabel}
-            photos={photos}
-          />
-        );
-      }
-
-      return (
-        <RequestTracking
-          position={position}
-          address={address}
-          category={category}
-          categoryLabel={categoryLabel}
-        />
-      );
-    }
-
-    // No coordinates (boundary check unavailable) — plain success screen
+    // Show confirmed submission; subsequent progress comes from saved events.
     return (
       <div className="mx-auto flex max-w-md flex-col items-center px-4 py-16 text-center">
         <span className="flex size-16 items-center justify-center rounded-full bg-primary/10">
@@ -241,16 +238,16 @@ export default function Report() {
           {emergency ? "Request Submitted" : "Report Submitted"}
         </h1>
         <p className="mt-1 text-sm text-slate-500">
-          {emergency
-            ? "Admin and responders have been notified. You can track its progress from the map."
-            : "Thank you! Your report has been sent to the responders. You can track its progress from the map."}
+          Your report has been received. Open its details to see the latest status.
         </p>
+        <p className="mt-3 break-all font-mono text-xs text-slate-600">Reference: {savedReport.reference_number}</p>
+        <p className="mt-1 text-sm font-semibold text-primary">{savedReport.status_label}</p>
         <Button
           type="button"
-          onClick={() => navigate(PATHS.map)}
+          onClick={() => navigate(`${PATHS.reportDetails}/${encodeURIComponent(savedReport.public_id)}`)}
           className="mt-6 h-11 rounded-lg px-6 text-sm font-semibold"
         >
-          Back to Home
+          View Report Details
         </Button>
       </div>
     );
@@ -277,6 +274,7 @@ export default function Report() {
 
     return (
       <section className="mx-auto max-w-md space-y-5 text-sm text-slate-700">
+        {submitError && <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{submitError}</p>}
         <div className="flex items-center justify-between">
           <button
             type="button"
@@ -485,6 +483,11 @@ export default function Report() {
 
         {emergencyStep === 3 && (
           <>
+            <label className="block text-xs font-semibold">
+              Additional details (optional)
+              <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={3}
+                className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-primary" />
+            </label>
             <section className="rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-600">
               <p className="mb-1 font-semibold text-slate-800">Review</p>
               <p>
@@ -499,7 +502,7 @@ export default function Report() {
               </p>
               <p>
                 <span className="font-medium">Photo:</span>{" "}
-                {photos.length > 0 ? `${photos.length} attached` : "None"}
+                {photos.length > 0 ? `${photos.length} selected locally (not uploaded)` : "None"}
               </p>
               <p>
                 <span className="font-medium">Coordinates:</span>{" "}
@@ -509,11 +512,12 @@ export default function Report() {
             <Button
               type="button"
               size="lg"
-              onClick={() => setSubmitted(true)}
+              onClick={handleSubmit}
+              disabled={submitting}
               className="h-12 w-full rounded-xl bg-red-600 text-sm font-semibold text-white shadow-lg shadow-red-600/25 hover:bg-red-700"
             >
               <Siren size={16} />
-              Send Emergency Request
+              {submitting ? "Sending…" : "Send Emergency Request"}
             </Button>
           </>
         )}
@@ -539,6 +543,7 @@ export default function Report() {
       onSubmit={handleSubmit}
       className="mx-auto max-w-md space-y-5 text-sm text-slate-700"
     >
+      {submitError && <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{submitError}</p>}
       <div className="flex items-center justify-between">
         <button
           type="button"
@@ -804,7 +809,7 @@ export default function Report() {
             <p>
               <span className="font-medium">Evidence:</span>{" "}
               {photos.length > 0
-                ? `${photos.length} photo${photos.length > 1 ? "s" : ""}`
+                ? `${photos.length} photo${photos.length > 1 ? "s" : ""} selected locally (not uploaded)`
                 : "None"}
             </p>
             <p><span className="font-medium">Details:</span> {description || "None"}</p>
@@ -840,11 +845,12 @@ export default function Report() {
         {step === STEPS.length - 1 && (
           <Button
             type="submit"
+            disabled={submitting}
             size="lg"
             className="h-12 flex-1 rounded-lg text-sm font-semibold sm:h-11"
           >
             <Check size={16} strokeWidth={3} />
-            Submit Report
+            {submitting ? "Submitting…" : "Submit Report"}
           </Button>
         )}
       </div>

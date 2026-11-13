@@ -10,6 +10,8 @@ const STATUS_LABELS = {
   assigned: { label: "Assigned", color: "bg-purple-100 text-purple-700" },
   in_progress: { label: "In Progress", color: "bg-amber-100 text-amber-700" },
   resolved: { label: "Resolved", color: "bg-green-100 text-green-700" },
+  rejected: { label: "Rejected", color: "bg-red-100 text-red-700" },
+  linked_duplicate: { label: "Linked Duplicate", color: "bg-slate-100 text-slate-700" },
 };
 
 const FILTERS = [
@@ -18,7 +20,9 @@ const FILTERS = [
   { value: "under_review", label: "Under Review" },
   { value: "assigned", label: "Assigned" },
   { value: "in_progress", label: "In Progress" },
-  { value: "resolved", label: "Resolved" },
+  { value: "resolved", label: "Closed" },
+  { value: "rejected", label: "Rejected" },
+  { value: "linked_duplicate", label: "Duplicate" },
 ];
 
 const CATEGORY_LABELS = {
@@ -37,16 +41,22 @@ export default function MyReports() {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [reload, setReload] = useState(0);
 
   useEffect(() => {
+    const controller = new AbortController();
+    getReports({ status: activeFilter, signal: controller.signal })
+      .then(({ data }) => { if (!controller.signal.aborted) setReports(data.reports); })
+      .catch((error) => { if (!controller.signal.aborted) setError(error.message || "Failed to load reports."); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [activeFilter, reload]);
+
+  function retry() {
     setLoading(true);
     setError(null);
-    const params = activeFilter ? { status: activeFilter } : {};
-    getReports(params)
-      .then(({ data }) => setReports(data.reports))
-      .catch(() => setError("Failed to load reports."))
-      .finally(() => setLoading(false));
-  }, [activeFilter]);
+    setReload(value => value + 1);
+  }
 
   return (
     <div className="mx-auto max-w-md space-y-4">
@@ -67,7 +77,12 @@ export default function MyReports() {
           <button
             key={value}
             type="button"
-            onClick={() => setActiveFilter(value)}
+            onClick={() => {
+              if (value === activeFilter) return;
+              setLoading(true);
+              setError(null);
+              setActiveFilter(value);
+            }}
             className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition ${
               activeFilter === value
                 ? "bg-primary text-white"
@@ -88,7 +103,10 @@ export default function MyReports() {
       )}
 
       {error && (
-        <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p>
+        <div role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
+          <p>{error}</p>
+          <button type="button" onClick={retry} className="mt-2 font-semibold underline">Try again</button>
+        </div>
       )}
 
       {!loading && !error && reports.length === 0 && (
@@ -120,12 +138,12 @@ export default function MyReports() {
                 role="button"
                 tabIndex={0}
                 onClick={() =>
-                  navigate(PATHS.reportDetails, { state: { report } })
+                  navigate(`${PATHS.reportDetails}/${encodeURIComponent(report.public_id)}`)
                 }
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    navigate(PATHS.reportDetails, { state: { report } });
+                    navigate(`${PATHS.reportDetails}/${encodeURIComponent(report.public_id)}`);
                   }
                 }}
                 className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-100 bg-white p-4 shadow-sm transition hover:border-primary/30 hover:shadow-md"
@@ -143,11 +161,11 @@ export default function MyReports() {
                       #{report.public_id.slice(-8).toUpperCase()}
                     </span>
                     <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${st.color}`}>
-                      {st.label}
+                      {report.status_label || st.label}
                     </span>
                   </div>
                   <p className="mt-0.5 text-sm font-semibold text-slate-800">
-                    {CATEGORY_LABELS[report.category] ?? report.category}
+                    {report.title || CATEGORY_LABELS[report.category] || report.category}
                   </p>
                   <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">{report.description}</p>
                   <div className="mt-1.5 flex items-center justify-between">
