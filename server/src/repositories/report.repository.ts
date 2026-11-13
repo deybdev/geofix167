@@ -92,6 +92,7 @@ export async function createIncidentReportBundle(db: Database, params: {
   statusEvent: IncidentStatusEventRecord;
   languageFlags: LanguageFlagRecord[];
   guestSession: InsertGuestSessionParams | null;
+  creationAudit?: { id: string; key: string };
 }): Promise<void> {
   const statements: D1PreparedStatement[] = [];
   if (params.guestSession) {
@@ -123,14 +124,23 @@ export async function createIncidentReportBundle(db: Database, params: {
       VALUES (?, ?, ?, ?, ?, ?)`).bind(f.language_flag_id, f.incident_id,
         f.detected_term_hash, f.severity, f.status, f.created_at));
   }
+  if (params.creationAudit) statements.push(db.prepare(
+    "INSERT INTO audit_logs (audit_log_id, actor_user_id, action, entity_type, entity_id, incident_id, metadata_json) VALUES (?, ?, 'REPORT_CREATED', 'INCIDENT_REPORT', ?, ?, ?)"
+  ).bind(params.creationAudit.id, r.reported_by_user_id, params.creationAudit.key, r.incident_id,
+    JSON.stringify({ guest_session_id: r.guest_session_id })));
   await db.batch(statements);
 }
 
-export async function listIncidentReports(db: Database, filters: ListReportsQuery, ownerId?: string): Promise<IncidentReportRecord[]> {
+export async function listIncidentReports(db: Database, filters: ListReportsQuery, ownerId?: string, includeAssignments = false): Promise<IncidentReportRecord[]> {
   const conditions: string[] = [];
   const values: (string | number)[] = [];
   if (ownerId !== undefined) {
-    conditions.push("r.reported_by_user_id = ?"); values.push(ownerId);
+    conditions.push(includeAssignments ? `(r.reported_by_user_id = ? OR EXISTS (
+      SELECT 1 FROM tanod_assignments a JOIN assignment_statuses ast ON ast.assignment_status_id = a.assignment_status_id
+      WHERE a.incident_id = r.incident_id AND a.tanod_user_id = ? AND a.completed_at IS NULL
+      AND ast.code IN ('OFFERED','ACCEPTED','EN_ROUTE','ON_SCENE')))` : "r.reported_by_user_id = ?");
+    values.push(ownerId);
+    if (includeAssignments) values.push(ownerId);
   }
   if (filters.status_id !== undefined) {
     conditions.push("r.incident_status_id = ?"); values.push(filters.status_id);
@@ -181,7 +191,8 @@ export async function hasActiveReportAssignment(db: Database, id: string, userId
 
 export async function updateIncidentReportStatus(db: Database, id: string, fromStatus: number,
   toStatus: number, terminal: boolean, actorId: string, note?: string): Promise<boolean> {
-  const results = await db.batch([
+  const eventId = crypto.randomUUID();
+  const statements = [
     db.prepare(`UPDATE incident_reports SET incident_status_id = ?, updated_at = datetime('now'),
       closed_at = CASE WHEN ? = 1 THEN datetime('now') ELSE NULL END,
       closed_by_user_id = CASE WHEN ? = 1 THEN ? ELSE NULL END
@@ -192,20 +203,66 @@ export async function updateIncidentReportStatus(db: Database, id: string, fromS
     db.prepare(`INSERT INTO incident_status_events (incident_status_event_id, incident_id,
       from_incident_status_id, to_incident_status_id, changed_by_user_id, note, created_at)
       SELECT ?, ?, ?, ?, ?, ?, datetime('now') WHERE changes() = 1`).bind(
-        crypto.randomUUID(), id, fromStatus, toStatus, actorId, note ?? null),
-  ]);
+        eventId, id, fromStatus, toStatus, actorId, note ?? null),
+  ];
+  if (terminal) {
+    // Snapshot affected assignments. The unique status event gates all later writes.
+    statements.push(db.prepare(`INSERT INTO tanod_assignment_events
+      (tanod_assignment_event_id, tanod_assignment_id, assignment_status_id, changed_by_user_id, note, created_at)
+      SELECT ? || ':' || tanod_assignment_id, tanod_assignment_id, 6, ?, 'Incident closed', datetime('now')
+      FROM tanod_assignments WHERE incident_id = ? AND completed_at IS NULL AND assignment_status_id IN (1,2,4,5)
+      AND EXISTS (SELECT 1 FROM incident_status_events WHERE incident_status_event_id = ?)`)
+      .bind(eventId, actorId, id, eventId));
+    statements.push(db.prepare(`UPDATE tanod_assignments SET assignment_status_id = 6, completed_at = datetime('now')
+      WHERE tanod_assignment_id IN (SELECT tanod_assignment_id FROM tanod_assignment_events
+      WHERE tanod_assignment_event_id = ? || ':' || tanod_assignment_id)`).bind(eventId));
+    statements.push(db.prepare(`UPDATE responder_resources SET availability_status = 'AVAILABLE', updated_at = datetime('now')
+      WHERE responder_resource_id IN (SELECT a.responder_resource_id FROM tanod_assignments a
+        JOIN tanod_assignment_events e ON e.tanod_assignment_id = a.tanod_assignment_id
+        WHERE e.tanod_assignment_event_id = ? || ':' || a.tanod_assignment_id)
+      AND NOT EXISTS (SELECT 1 FROM tanod_assignments other WHERE other.responder_resource_id = responder_resources.responder_resource_id
+        AND other.completed_at IS NULL AND other.assignment_status_id IN (1,2,4,5))`).bind(eventId));
+  }
+  const results = await db.batch(statements);
   return results[0]?.meta.changes === 1;
 }
 
 export async function updateIncidentReportDetails(db: Database, id: string,
-  input: import("../validators/report.schema").UpdateReportDetailsInput, admin: boolean): Promise<boolean> {
+  input: import("../validators/report.schema").UpdateReportDetailsInput, admin: boolean, actorId: string | null): Promise<boolean> {
   const columns = ["category", "priority_code", "location_description", "description_sanitized"] as const;
   const fields = columns.filter(key => input[key] !== undefined);
   if (fields.length === 0) return false;
-  const result = await db.prepare(`UPDATE incident_reports SET
-    ${fields.map(key => `${key} = ?`).join(', ')}, updated_at = datetime('now')
-    WHERE incident_id = ? ${admin ? '' : `AND closed_at IS NULL AND incident_status_id IN
-      (SELECT incident_status_id FROM incident_statuses WHERE is_terminal = 0)`}`)
-    .bind(...fields.map(key => input[key]!), id).run();
-  return result.meta.changes === 1;
+  const updatedFields: Record<string, string> = Object.fromEntries(fields.map(key => [key, input[key]!]));
+  if (input.category !== undefined) updatedFields.title = input.category.trim() + " Incident Report";
+  const results = await db.batch([
+    db.prepare(`UPDATE incident_reports SET
+      ${Object.keys(updatedFields).map(key => key + ' = ?').join(', ')}, updated_at = datetime('now')
+      WHERE incident_id = ? ${admin ? '' : 'AND closed_at IS NULL AND incident_status_id IN (1,2,3)'}`)
+      .bind(...Object.values(updatedFields), id),
+    db.prepare(`INSERT INTO audit_logs (audit_log_id, actor_user_id, action, entity_type, entity_id, incident_id, metadata_json)
+      SELECT ?, ?, 'REPORT_DETAILS_UPDATED', 'INCIDENT_REPORT', ?, ?, ? WHERE changes() = 1`)
+      .bind(crypto.randomUUID(), actorId, id, id, JSON.stringify(updatedFields)),
+  ]);
+  return results[0]?.meta.changes === 1;
+}
+
+export async function hasReportReadAssignment(db: Database, incidentId: string, userId: string) {
+  return Boolean(await db.prepare(`SELECT a.tanod_assignment_id FROM tanod_assignments a
+    JOIN assignment_statuses s ON s.assignment_status_id = a.assignment_status_id
+    WHERE a.incident_id = ? AND a.tanod_user_id = ? AND a.completed_at IS NULL
+    AND s.code IN ('OFFERED', 'ACCEPTED', 'EN_ROUTE', 'ON_SCENE') LIMIT 1`).bind(incidentId, userId).first());
+}
+export async function hasAnyReportAssignment(db: Database, incidentId: string) {
+  return Boolean(await db.prepare(`SELECT tanod_assignment_id FROM tanod_assignments
+    WHERE incident_id = ? AND completed_at IS NULL AND assignment_status_id IN (1,2,4,5) LIMIT 1`).bind(incidentId).first());
+}
+export async function verifyGuestSession(db: Database, id: string, tokenHash: string) {
+  return Boolean(await db.prepare(`SELECT guest_session_id FROM guest_sessions WHERE guest_session_id = ?
+    AND access_token_hash = ? AND ended_at IS NULL AND (expires_at IS NULL OR datetime(expires_at) > datetime('now'))`).bind(id, tokenHash).first());
+}
+export async function findCreationReplay(db: Database, key: string, userId: string | null, guestId: string | null) {
+  return db.prepare(`SELECT r.incident_id FROM audit_logs a JOIN incident_reports r ON r.incident_id = a.incident_id
+    WHERE a.action = 'REPORT_CREATED' AND a.entity_type = 'INCIDENT_REPORT' AND a.entity_id = ?
+      AND ((? IS NOT NULL AND r.reported_by_user_id = ?) OR (? IS NULL AND r.guest_session_id = ?)) LIMIT 1`)
+    .bind(key, userId, userId, userId, guestId).first<{ incident_id: string }>();
 }

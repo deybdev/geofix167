@@ -11,11 +11,7 @@ export const createReportSchema = z
     guest_session_id: z.string().trim().min(1).nullable().optional(),
     guest_alias: z.string().trim().min(1).nullable().optional(),
     callback_contact: z.string().trim().min(1).nullable().optional(),
-    idempotency_key: z
-      .string()
-      .trim()
-      .optional()
-      .transform((val) => (val && val.length > 0 ? val : crypto.randomUUID())),
+    idempotency_key: z.string().trim().min(1).max(200).optional(),
     idempotency_fingerprint: z.string().trim().nullable().optional(),
     is_emergency: sqliteFlagSchema.optional().default(0),
     incident_category: z
