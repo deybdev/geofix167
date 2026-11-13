@@ -12,7 +12,13 @@ import {
 } from "react-leaflet";
 import L from "leaflet";
 import { HeatLayer as LeafletHeatLayer } from "leaflet.heat";
-import booleanPointInPolygon from "@turf/boolean-point-in-polygon";
+import {
+  getCategory,
+  getFeatures,
+  getStatus,
+  isInside,
+  STATUSES,
+} from "../utils/mapUtils";
 import "leaflet/dist/leaflet.css";
 
 const BOUNDARY_URL = "/barangay-167.geojson";
@@ -75,51 +81,6 @@ const CATEGORIES = {
       'a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
   },
 };
-
-const STATUSES = {
-  pending: { color: "#f59e0b", label: "Pending" },
-  ongoing: { color: "#3b82f6", label: "Ongoing" },
-  resolved: { color: "#16a34a", label: "Resolved" },
-};
-
-const STATUS_MATCH = [
-  ["ongoing", /progress|ongoing|responding|assigned/],
-  ["resolved", /resolv|done|complete|closed/],
-  ["rejected", /reject|invalid|declin/],
-];
-
-// Older data may still say "emergency"; it maps to "incident"
-const CATEGORY_ALIASES = { emergency: "incident" };
-
-function getCategory(value) {
-  const name = String(value).toLowerCase();
-  const alias = CATEGORY_ALIASES[name] ?? name;
-  const key = alias in CATEGORIES ? alias : "incident";
-  return { key, ...CATEGORIES[key] };
-}
-
-function getStatus(value) {
-  const text = String(value || "").toLowerCase();
-  const match = STATUS_MATCH.find(([, regex]) => regex.test(text));
-  const key = match ? match[0] : "pending";
-  return { key, ...STATUSES[key] };
-}
-
-export { getCategory, getStatus };
-
-/* ------------------------------ Geo helpers ------------------------------ */
-
-const getFeatures = (boundary) =>
-  boundary.type === "FeatureCollection" ? boundary.features : [boundary];
-
-// True when the point falls inside the barangay boundary.
-// Exported so report flows can enforce the Barangay-167-only rule.
-export const isInside = (lat, lng, boundary) =>
-  Number.isFinite(lat) &&
-  Number.isFinite(lng) &&
-  getFeatures(boundary).some(
-    (f) => f.geometry && booleanPointInPolygon([lng, lat], f),
-  );
 
 // A world-sized polygon with the barangay cut out, used to dim the outside
 function makeMask(boundary) {

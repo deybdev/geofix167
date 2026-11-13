@@ -14,7 +14,8 @@ import {
 } from "lucide-react";
 
 import { Button } from "../../shared/components/ui/button";
-import MapViewer, { isInside } from "../../shared/components/MapViewer";
+import MapViewer from "../../shared/components/MapViewer";
+import { isInside } from "../../shared/utils/mapUtils";
 import { PATHS } from "../../router/paths";
 import { useGeoLocation } from "../../shared/context/LocationProvider";
 import { CATEGORIES } from "../resident/Report";
