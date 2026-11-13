@@ -343,7 +343,7 @@ function FlyToIncident({ incident, boundary }) {
         duration: 0.6,
       });
     }
-  }, [incident, map]);
+  }, [incident, boundary, map]);
 
   return null;
 }
@@ -461,10 +461,25 @@ export default function MapViewer({
   const fitRef = useRef(null);
 
   useEffect(() => {
+    let active = true;
+
     fetch(BOUNDARY_URL)
-      .then((res) => res.json())
-      .then(setBoundary)
-      .catch((err) => console.error("Barangay boundary error:", err));
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(`Boundary request failed (${res.status})`);
+        }
+        return res.json();
+      })
+      .then((data) => {
+        if (active) setBoundary(data);
+      })
+      .catch((err) => {
+        if (active) console.error("Barangay boundary error:", err);
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const mask = useMemo(() => boundary && makeMask(boundary), [boundary]);
