@@ -15,6 +15,7 @@ import { PATHS } from "../../router/paths";
 
 const ROLE_PATHS = {
   tanod: "/responder",
+  responder: PATHS.responder,
   resident: "/resident",
   bdrrmo: "/unauthorized",
   police: "/unauthorized",

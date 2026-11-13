@@ -44,7 +44,6 @@ export default function ConfirmationAcceptance() {
             <ArrowLeft size={38} strokeWidth={1.8} />
           </Link>
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Responder dashboard</p>
             <h1 className="truncate text-2xl font-bold tracking-tight text-primary sm:text-3xl">Assignment Accepted</h1>
           </div>
         </div>
