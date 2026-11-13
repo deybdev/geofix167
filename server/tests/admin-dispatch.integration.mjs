@@ -16,7 +16,7 @@ sql.exec('PRAGMA foreign_keys = ON');
 sql.exec(`CREATE TABLE roles(role_id INTEGER PRIMARY KEY, code TEXT UNIQUE);
 CREATE TABLE account_statuses(status_id INTEGER PRIMARY KEY, status_code TEXT UNIQUE);
 CREATE TABLE users(user_id TEXT PRIMARY KEY, first_name TEXT, last_name TEXT, mobile_number TEXT, password_hash TEXT, role_id INTEGER, account_status_id INTEGER);
-CREATE TABLE user_sessions_and_devices(user_id TEXT, token_hash TEXT, expires_at TEXT);
+CREATE TABLE user_sessions_and_devices(user_id TEXT, token_hash TEXT, expires_at TEXT, revoked_at TEXT);
 INSERT INTO roles VALUES(1,'admin'),(2,'resident'),(3,'tanod');
 INSERT INTO account_statuses VALUES(1,'ACTIVE');
 INSERT INTO users VALUES('admin','Admin','User','09123123123','hash',1,1),('resident','Resident','User','09246246246','hash',2,1),
@@ -27,7 +27,7 @@ for (const file of ['0005_guest_incidents.sql', '0006_review_alerts.sql', '0007_
 const sha256 = async (value) => Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))).toString('hex');
 for (const [id, role] of [['admin', 'admin'], ['resident', 'resident']]) {
   const token = `${id}-session`;
-  sql.prepare('INSERT INTO user_sessions_and_devices VALUES(?,?,?)').run(id, await sha256(token), '2099-01-01');
+  sql.prepare('INSERT INTO user_sessions_and_devices (user_id, token_hash, expires_at) VALUES(?,?,?)').run(id, await sha256(token), '2099-01-01');
 }
 const db = {
   prepare(query) {
@@ -74,17 +74,47 @@ for (let index = 0; index < 4; index += 1) {
   reportIds.push((await response.json()).report.incident_id);
 }
 
+// Compare complete rows, including timestamps, so rejected dispatches cannot
+// silently change a report, consume a unit, or append either kind of event.
+const dispatchSnapshot = () => Object.fromEntries([
+  'incident_reports', 'responder_resources', 'tanod_assignments',
+  'tanod_assignment_events', 'incident_status_events',
+].map(table => [table, sql.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
+const assertRejectedDispatch = async (reportId, unitId, account, status, message) => {
+  const before = dispatchSnapshot();
+  const response = await request(`/admin/dispatch/reports/${reportId}/dispatch`, 'POST', { unit_id: unitId }, account);
+  assert.equal(response.status, status);
+  if (message) assert.equal((await response.json()).error, message);
+  assert.deepEqual(dispatchSnapshot(), before, 'rejected dispatch must have no database side effects');
+};
+
+for (const statusId of [1, 2]) {
+  sql.prepare('UPDATE incident_reports SET incident_status_id = ? WHERE incident_id = ?').run(statusId, reportIds[0]);
+  await assertRejectedDispatch(reportIds[0], seededUnits[0].id, 'admin', 409, 'Only verified reports can be dispatched.');
+}
+
 for (let index = 0; index < 3; index += 1) {
   const verified = await request(`/admin/dispatch/reports/${reportIds[index]}/verify`, 'POST', { decision: 'VERIFIED' }, 'admin');
   assert.equal(verified.status, 200);
+  if (index === 0) {
+    await assertRejectedDispatch(reportIds[index], seededUnits[index].id, undefined, 401);
+    await assertRejectedDispatch(reportIds[index], seededUnits[index].id, 'resident', 403);
+  }
+  const before = dispatchSnapshot();
   const dispatched = await request(`/admin/dispatch/reports/${reportIds[index]}/dispatch`, 'POST', { unit_id: seededUnits[index].id }, 'admin');
   assert.equal(dispatched.status, 201);
+  const after = dispatchSnapshot();
+  assert.equal(after.tanod_assignments.length, before.tanod_assignments.length + 1);
+  assert.equal(after.tanod_assignment_events.length, before.tanod_assignment_events.length + 1);
+  assert.equal(after.incident_status_events.length, before.incident_status_events.length + 1);
   const report = sql.prepare(`SELECT s.code AS status FROM incident_reports r JOIN incident_statuses s ON s.incident_status_id = r.incident_status_id WHERE r.incident_id = ?`).get(reportIds[index]);
   assert.equal(report.status, 'DISPATCHED');
 }
 const busyUnits = (await (await request('/admin/dispatch/units', 'GET', undefined, 'admin')).json()).units;
 assert.ok(busyUnits.every((unit) => unit.availability_status === 'BUSY'));
-assert.equal((await request(`/admin/dispatch/reports/${reportIds[0]}/dispatch`, 'POST', { unit_id: seededUnits[0].id }, 'admin')).status, 409, 'unavailable unit must not be dispatched');
+// Isolate unit availability from report eligibility: this report is VERIFIED.
+assert.equal((await request(`/admin/dispatch/reports/${reportIds[3]}/verify`, 'POST', { decision: 'VERIFIED' }, 'admin')).status, 200);
+await assertRejectedDispatch(reportIds[3], seededUnits[0].id, 'admin', 409, 'That unit is no longer available.');
 
 const help = await request(`/admin/dispatch/reports/${reportIds[3]}/request-drrmo`, 'POST', { note: 'No units available' }, 'admin');
 assert.equal(help.status, 201);
