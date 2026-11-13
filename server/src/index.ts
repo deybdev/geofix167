@@ -19,7 +19,7 @@ app.use(
         : "";
     },
     credentials: true,
-    allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
+    allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allowHeaders: ["Content-Type", "X-Guest-Token"],
   }),
 );

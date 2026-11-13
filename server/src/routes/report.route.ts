@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import type { AppEnv } from "../types/env";
 import {
   createReportController,
+  updateReportStatusController, updateReportDetailsController,
   getReportByIdController,
   listReportsController,
 } from "../controllers/report.controller";
@@ -22,6 +23,8 @@ reportRoutes.get("/public", async (c) => {
   return c.json({ reports: result.results, count: result.results.length });
 });
 reportRoutes.post("/", createReportController);
+reportRoutes.patch("/:id/status", updateReportStatusController);
+reportRoutes.patch("/:id", updateReportDetailsController);
 reportRoutes.get("/", listReportsController);
 reportRoutes.get("/:id", getReportByIdController);
 

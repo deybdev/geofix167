@@ -167,3 +167,45 @@ export async function findLanguageFlagsByIncidentId(db: Database, id: string): P
     .bind(id).all<LanguageFlagRecord>();
   return result.results ?? [];
 }
+
+export async function findIncidentStatus(db: Database, id: number) {
+  return db.prepare("SELECT incident_status_id, is_terminal FROM incident_statuses WHERE incident_status_id = ?")
+    .bind(id).first<{ incident_status_id: number; is_terminal: number }>();
+}
+export async function hasActiveReportAssignment(db: Database, id: string, userId: string) {
+  return Boolean(await db.prepare(`SELECT a.tanod_assignment_id FROM tanod_assignments a
+    JOIN assignment_statuses s ON s.assignment_status_id = a.assignment_status_id
+    WHERE a.incident_id = ? AND a.tanod_user_id = ? AND a.completed_at IS NULL
+      AND s.code IN ('ACCEPTED', 'EN_ROUTE', 'ON_SCENE') LIMIT 1`).bind(id, userId).first());
+}
+
+export async function updateIncidentReportStatus(db: Database, id: string, fromStatus: number,
+  toStatus: number, terminal: boolean, actorId: string, note?: string): Promise<boolean> {
+  const results = await db.batch([
+    db.prepare(`UPDATE incident_reports SET incident_status_id = ?, updated_at = datetime('now'),
+      closed_at = CASE WHEN ? = 1 THEN datetime('now') ELSE NULL END,
+      closed_by_user_id = CASE WHEN ? = 1 THEN ? ELSE NULL END
+      WHERE incident_id = ? AND incident_status_id = ?`).bind(
+        toStatus, terminal ? 1 : 0, terminal ? 1 : 0, actorId, id, fromStatus),
+    // changes() refers to the preceding UPDATE in this atomic batch. A stale
+    // status produces neither an update nor a misleading audit event.
+    db.prepare(`INSERT INTO incident_status_events (incident_status_event_id, incident_id,
+      from_incident_status_id, to_incident_status_id, changed_by_user_id, note, created_at)
+      SELECT ?, ?, ?, ?, ?, ?, datetime('now') WHERE changes() = 1`).bind(
+        crypto.randomUUID(), id, fromStatus, toStatus, actorId, note ?? null),
+  ]);
+  return results[0]?.meta.changes === 1;
+}
+
+export async function updateIncidentReportDetails(db: Database, id: string,
+  input: import("../validators/report.schema").UpdateReportDetailsInput, admin: boolean): Promise<boolean> {
+  const columns = ["category", "priority_code", "location_description", "description_sanitized"] as const;
+  const fields = columns.filter(key => input[key] !== undefined);
+  if (fields.length === 0) return false;
+  const result = await db.prepare(`UPDATE incident_reports SET
+    ${fields.map(key => `${key} = ?`).join(', ')}, updated_at = datetime('now')
+    WHERE incident_id = ? ${admin ? '' : `AND closed_at IS NULL AND incident_status_id IN
+      (SELECT incident_status_id FROM incident_statuses WHERE is_terminal = 0)`}`)
+    .bind(...fields.map(key => input[key]!), id).run();
+  return result.meta.changes === 1;
+}

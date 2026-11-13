@@ -1,6 +1,7 @@
 import type { AppEnv, AuthUser } from "../types/env";
 import type { CreateReportInput, ListReportsQuery } from "../validators/report.schema";
 import {
+  findIncidentStatus, hasActiveReportAssignment, updateIncidentReportStatus, updateIncidentReportDetails,
   createIncidentReportBundle, findIncidentReportById, findLanguageFlagsByIncidentId,
   findStatusEventsByIncidentId, listIncidentReports,
   type IncidentReportRecord, type IncidentStatusEventRecord,
@@ -118,4 +119,46 @@ export async function getIncidentReportDetails(db: Database, id: string, user?: 
     findLanguageFlagsByIncidentId(db, report.incident_id),
   ]);
   return { ...report, status_events, language_flags };
+}
+
+export async function updateReportStatus(db: Database, id: string,
+  input: import("../validators/report.schema").UpdateReportStatusInput, user?: AuthUser) {
+  if (!user) throw new ReportError("Authentication required.", 401);
+  const privileged = user.role === "admin" || user.role === "bdrrmo";
+  const responder = ["tanod", "police", "fire"].includes(user.role);
+  if (!privileged && !(responder && await hasActiveReportAssignment(db, id, user.id))) {
+    throw new ReportError("You do not have permission to change this report's status.", 403);
+  }
+  const report = await findIncidentReportById(db, id);
+  if (!report) throw new ReportError("Incident report not found.", 404);
+  const status = await findIncidentStatus(db, input.status_id);
+  if (!status) throw new ReportError("Unknown incident status.", 400);
+  if (report.incident_status_id === input.status_id) throw new ReportError("Report already has this status.", 409);
+  if (!await updateIncidentReportStatus(db, id, report.incident_status_id, input.status_id,
+    status.is_terminal === 1, user.id, input.note)) {
+    throw new ReportError("Report status changed. Reload and try again.", 409);
+  }
+  return findIncidentReportById(db, id);
+}
+
+export async function updateReportDetails(db: Database, id: string,
+  input: import("../validators/report.schema").UpdateReportDetailsInput, user?: AuthUser, guestToken?: string) {
+  if (user && user.role !== "admin" && user.role !== "resident") {
+    throw new ReportError("You do not have permission to edit report details.", 403);
+  }
+  if (!user && !guestToken) throw new ReportError("Authentication required.", 401);
+  // Reuses owner/admin and live guest-credential verification, never trusts a session ID in a payload.
+  const report = await getIncidentReportDetails(db, id, user, guestToken);
+  const admin = user?.role === "admin";
+  if (!admin && (report.is_terminal === 1 || report.closed_at !== null)) {
+    throw new ReportError("Closed reports cannot be edited.", 409);
+  }
+  const values = { ...input };
+  if (values.description_sanitized !== undefined) {
+    values.description_sanitized = filterLanguage(values.description_sanitized).sanitizedText ?? "";
+  }
+  if (!await updateIncidentReportDetails(db, id, values, admin)) {
+    throw new ReportError("Report is no longer editable. Reload and try again.", 409);
+  }
+  return findIncidentReportById(db, id);
 }
