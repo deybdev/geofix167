@@ -32,6 +32,7 @@ export async function createReportController(c: Context<AppEnv>) {
       c.env.geofix167_db,
       validation.data,
       c.get("user"),
+      c.req.header("X-Guest-Token"),
     );
 
     return c.json(
