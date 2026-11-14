@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { ChevronLeft, FileText, MapPin } from "lucide-react";
 import { Button } from "../../shared/components/ui/button";
 import { PATHS } from "../../router/paths";
-import { getReportDetails, updateReportDetails } from "../../services/residentService";
+import { getReportAttachments, getReportDetails, updateReportDetails } from "../../services/residentService";
 
 function formatTime(value) {
   const date = value ? new Date(value) : null;
@@ -35,7 +35,11 @@ function ReportDetailsView({ id }) {
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState("");
   const [notice, setNotice] = useState("");
+  const [retryingMedia, setRetryingMedia] = useState(false);
   const savingRef = useRef(false);
+  const mediaRetryRef = useRef(null);
+
+  useEffect(() => () => mediaRetryRef.current?.abort(), []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -65,9 +69,29 @@ function ReportDetailsView({ id }) {
     setEditing(true);
   }
 
+  async function retryAttachments() {
+    if (!report || loading || savingRef.current || mediaRetryRef.current) return;
+    const controller = new AbortController();
+    mediaRetryRef.current = controller;
+    setRetryingMedia(true);
+    try {
+      const { data } = await getReportAttachments(id, { signal: controller.signal });
+      if (!controller.signal.aborted) {
+        setReport(previous => ({ ...previous, attachments: data.attachments, attachments_error: null }));
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        setReport(previous => ({ ...previous, attachments_error: error.message || "Unable to load photos and videos." }));
+      }
+    } finally {
+      mediaRetryRef.current = null;
+      if (!controller.signal.aborted) setRetryingMedia(false);
+    }
+  }
+
   async function saveDetails(event) {
     event.preventDefault();
-    if (!editable || savingRef.current) return;
+    if (!editable || savingRef.current || mediaRetryRef.current) return;
     savingRef.current = true;
     setSaving(true);
     setEditError("");
@@ -76,7 +100,8 @@ function ReportDetailsView({ id }) {
         description_sanitized: description.trim(), location_description: address.trim(),
       });
       // PATCH returns the report, while GET also returns its event history.
-      setReport(previous => ({ ...data.report, status_events: previous.status_events, attachments: previous.attachments }));
+      setReport(previous => ({ ...data.report, status_events: previous.status_events,
+        attachments: previous.attachments, attachments_error: previous.attachments_error }));
       setEditing(false);
       setNotice("Report details saved.");
       try {
@@ -108,7 +133,7 @@ function ReportDetailsView({ id }) {
           <ChevronLeft size={18} />
         </button>
         <h1 className="text-lg font-bold text-slate-900">Report Details</h1>
-        <button type="button" disabled={loading || saving || editing || !id} onClick={refresh}
+        <button type="button" disabled={loading || saving || editing || retryingMedia || !id} onClick={refresh}
           className="ml-auto text-xs font-semibold text-primary disabled:opacity-50">Refresh</button>
       </div>
 
@@ -139,9 +164,14 @@ function ReportDetailsView({ id }) {
           <p className="mt-1 text-xs text-slate-400">Submitted: {formatTime(report.created_at)}</p>
         </div>
 
-        {report.attachments.length > 0 && <section className="mt-4 space-y-3" aria-label="Report attachments">
+        {(report.attachments.length > 0 || report.attachments_error) && <section className="mt-4 space-y-3" aria-label="Report attachments" aria-busy={retryingMedia}>
           <h2 className="text-sm font-semibold">Photos and videos</h2>
-          <p className="text-xs text-slate-500">If a media link expires, use Refresh to load a new link.</p>
+          {report.attachments_error ? <div role="alert" className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
+            <p className="font-semibold">Photos and videos could not be loaded.</p>
+            <p className="mt-1">{report.attachments_error}</p>
+            <Button type="button" variant="outline" onClick={retryAttachments} disabled={retryingMedia || saving}
+              className="mt-3 h-11 rounded-lg">{retryingMedia ? "Retrying media…" : "Retry media"}</Button>
+          </div> : <p className="text-xs text-slate-500">If a media link expires, use Refresh to load a new link.</p>}
           {report.attachments.map(attachment => <figure key={attachment.id} className="rounded-xl border border-slate-200 p-2">
             {attachment.media_type === "VIDEO"
               ? <video controls playsInline preload="metadata" src={attachment.url} className="max-h-80 w-full rounded-lg bg-black" />
@@ -166,7 +196,7 @@ function ReportDetailsView({ id }) {
           {editError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-xs text-red-600">{editError}</p>}
           <div className="flex gap-2">
             <Button type="button" variant="outline" disabled={saving} onClick={() => setEditing(false)} className="h-11 flex-1 rounded-lg">Cancel</Button>
-            <Button type="submit" disabled={saving || !editable} className="h-11 flex-1 rounded-lg">{saving ? "Saving…" : "Save Changes"}</Button>
+            <Button type="submit" disabled={saving || retryingMedia || !editable} className="h-11 flex-1 rounded-lg">{saving ? "Saving…" : "Save Changes"}</Button>
           </div>
         </form>}
 

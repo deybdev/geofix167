@@ -54,6 +54,7 @@ export function normalizeReport(record) {
     is_terminal: record.is_terminal === 1 || record.is_terminal === true || [10, 11, 12].includes(statusId),
     photo_url: record.photo_url ?? null,
     attachments: record.attachments ?? [],
+    attachments_error: record.attachments_error ?? null,
     created_at: timestamp(record.submitted_at ?? record.received_at),
     updated_at: timestamp(record.updated_at),
     status_events: events,
@@ -116,9 +117,24 @@ function reportResult(data) {
 }
 
 export async function getReportDetails(id, { signal } = {}) {
-  const data = await reportRequest(`/${encodeURIComponent(id)}`, { signal });
+  // Report access and payload validation must succeed before media is attempted.
+  const result = reportResult(await reportRequest(`/${encodeURIComponent(id)}`, { signal }));
+  let attachments = [];
+  let attachments_error = null;
+  try {
+    const { data } = await getReportAttachments(id, { signal });
+    attachments = data.attachments;
+  } catch (error) {
+    if (signal?.aborted || error.name === "AbortError") throw error;
+    attachments_error = error.message || "Unable to load photos and videos.";
+  }
+  return { data: { ...result.data, report: { ...result.data.report, attachments, attachments_error } } };
+}
+
+export async function getReportAttachments(id, { signal } = {}) {
   const { attachments } = await reportRequest(`/${encodeURIComponent(id)}/attachments`, { signal });
-  return reportResult({ ...data, report: { ...data.report, attachments } });
+  if (!Array.isArray(attachments)) throw new Error("Unable to load photos and videos.");
+  return { data: { attachments } };
 }
 
 export async function uploadReportAttachment(reportId, file, uploadId) {
