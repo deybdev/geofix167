@@ -7,10 +7,10 @@ import {
   Radio,
   Grid2X2,
   Megaphone,
+  Menu,
   Settings,
   ShieldCheck,
   Users,
-  X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -109,7 +109,7 @@ const navigation = [
   },
 ];
 
-export default function AdminSidebar({ open = false, onClose }) {
+export default function AdminSidebar({ open = false, onClose, onToggle }) {
   const location = useLocation();
   const navigate = useNavigate();
   const activeGroup = navigation.find(
@@ -149,15 +149,15 @@ export default function AdminSidebar({ open = false, onClose }) {
           <div className={`text-[11px] font-bold leading-tight text-(--gf-green) ${open ? "" : "md:hidden"}`}>
             GeoFix <span className="block text-[8px]">Barangay 167</span>
           </div>
-          {open && (
-            <button
-              className="ml-auto text-slate-400 md:hidden"
-              onClick={onClose}
-              aria-label="Close menu"
-            >
-              <X size={17} />
-            </button>
-          )}
+          <button
+            type="button"
+            className="ml-auto rounded-md p-1 text-slate-500 hover:bg-(--gf-green-soft) hover:text-(--gf-green)"
+            onClick={onToggle}
+            aria-expanded={open}
+            aria-label={open ? "Close menu" : "Open menu"}
+          >
+            <Menu size={19} />
+          </button>
         </div>
         <nav className="max-h-[calc(100vh-118px)] space-y-1 overflow-y-auto pr-0.5">
           {navigation.map(({ label, icon: Icon, path, children, section }) => {

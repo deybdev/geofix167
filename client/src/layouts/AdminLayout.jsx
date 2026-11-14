@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Bell, Menu, Search } from "lucide-react";
+import { Bell, Search } from "lucide-react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../shared/hooks/useAuth";
 import { PATHS } from "../router/paths";
@@ -53,20 +53,12 @@ const AdminLayout = () => {
     <div className="min-h-screen bg-[#f7f9fa] text-[#263246]">
       <AdminSidebar
         open={sidebarOpen}
+        onToggle={() => setSidebarOpen((open) => !open)}
         onClose={() => setSidebarOpen(false)}
       />
       <div className={`transition-[margin] duration-300 ${sidebarOpen ? "md:ml-[250px]" : "md:ml-[72px]"}`}>
         <header className="flex h-[54px] items-center justify-between border-b border-[#e4e9ec] bg-white px-5 md:px-6">
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              className="rounded-md p-1 text-slate-500 hover:bg-(--gf-green-soft) hover:text-(--gf-green)"
-              onClick={() => setSidebarOpen((open) => !open)}
-              aria-expanded={sidebarOpen}
-              aria-label={sidebarOpen ? "Close menu" : "Open menu"}
-            >
-              <Menu size={19} />
-            </button>
             <h1 className="text-[15px] font-bold text-primary">{pageTitles[location.pathname] || "Barangay 167 Operations Dashboard"}</h1>
             <span className="rounded bg-[#fff0c1] px-2 py-1 text-[8px] font-semibold text-[#d68d00]">System Admin</span>
           </div>
