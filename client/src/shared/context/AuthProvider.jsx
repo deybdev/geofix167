@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { AuthContext } from "../hooks/useAuth";
 import { getMe, login, logout } from "../../services/authService";
+import FullScreenLoader from "../components/loading/FullScreenLoader";
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -35,6 +36,8 @@ export function AuthProvider({ children }) {
     await logout();
     setUser(null);
   };
+
+  if (loading) return <FullScreenLoader />;
 
   return (
     <AuthContext.Provider value={{ user, role: user?.role ?? null, loading, signIn, commitSignIn, signOut }}>

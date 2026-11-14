@@ -2,17 +2,17 @@
 import { ArrowLeft } from "lucide-react";
 import { Link } from "react-router-dom";
 
-export default function TermsOfService() {
+export default function TermsOfService({ embedded = false }) {
   return (
     <main className="min-h-screen bg-white px-5 py-8 text-slate-700 sm:px-8">
       <article className="mx-auto max-w-3xl">
-        <Link
+        {!embedded && <Link
           to="/register"
           className="inline-flex items-center gap-1.5 text-sm leading-none text-slate-800 hover:underline"
         >
           <ArrowLeft size={16} className="shrink-0" />
           <span>Back</span>
-        </Link>
+        </Link>}
 
         <header className="mt-8 border-b border-slate-200 pb-6">
 

@@ -36,6 +36,8 @@ export const registerSchema = z
 
     dateOfBirth: z.string().min(1, "Date of birth is required."),
 
+    email: z.string().trim().email("Enter a valid Gmail/email address."),
+
     phoneNumber: z
       .string()
       .trim()
@@ -45,34 +47,18 @@ export const registerSchema = z
         "Enter a valid Philippine mobile number."
       ),
 
-    password: z
-      .string()
-      .min(8, "Password must be at least 8 characters.")
-      .max(128, "Password must not exceed 128 characters.")
-      .refine(
-        (value) => value.trim().length > 0,
-        "Password cannot contain only spaces."
-      )
-      .regex(/[A-Z]/, "Include at least one uppercase letter.")
-      .regex(/[a-z]/, "Include at least one lowercase letter.")
-      .regex(/[0-9]/, "Include at least one number.")
-      .regex(
-        /[^A-Za-z0-9\s]/,
-        "Include at least one special character."
-      ),
-
-    confirmPassword: z
-      .string()
-      .min(1, "Please confirm your password."),
+    google: z.boolean().default(false),
+    password: z.string(),
+    confirmPassword: z.string(),
 
     acceptedTerms: z.literal(true, {
       error: "Please agree to the Terms of Service and Privacy Policy.",
     }),
   })
-  .refine(
-    (data) => data.password === data.confirmPassword,
-    {
-      message: "Passwords do not match.",
-      path: ["confirmPassword"],
+  .superRefine((data, ctx) => {
+    if (data.google) return;
+    if (data.password.length < 8 || new TextEncoder().encode(data.password).length > 72 || !/[A-Z]/.test(data.password) || !/[a-z]/.test(data.password) || !/[0-9]/.test(data.password) || !/[^A-Za-z0-9\s]/.test(data.password)) {
+      ctx.addIssue({ code: "custom", path: ["password"], message: "Use 8–72 bytes with uppercase, lowercase, number, and special character." });
     }
-  );
+    if (data.password !== data.confirmPassword) ctx.addIssue({ code: "custom", path: ["confirmPassword"], message: "Passwords do not match." });
+  });

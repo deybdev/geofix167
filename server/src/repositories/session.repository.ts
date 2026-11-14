@@ -36,8 +36,17 @@ export async function findUserBySession(
           ON account_status.status_id = u.account_status_id
         WHERE s.token_hash = ?
           AND s.expires_at > ?
-          AND s.revoked_at IS NULL
-          AND account_status.status_code = 'ACTIVE'
+           AND s.revoked_at IS NULL
+           AND account_status.status_code = 'ACTIVE'
+           AND (
+             r.code != 'resident'
+             OR EXISTS (
+               SELECT 1 FROM resident_verifications v
+               WHERE v.user_id = u.user_id
+                 AND v.verification_id = u.approved_verification_id
+                 AND v.status = 'APPROVED'
+             )
+           )
         LIMIT 1`,
     )
     .bind(tokenHash, new Date().toISOString())

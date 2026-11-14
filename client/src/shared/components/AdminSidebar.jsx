@@ -21,6 +21,7 @@ const navigation = [
   { label: "Resolution Verification", icon: CheckSquare, path: PATHS.adminResolutionVerification },
   { label: "Accomplishment Log", icon: BookOpen, path: PATHS.adminAccomplishmentLog },
   { label: "Residents", icon: Users, path: PATHS.adminResidents },
+  { label: "Registrations", icon: ShieldCheck, path: "/admin/registrations" },
   { label: "Reports & Analytics", icon: BarChart3, path: PATHS.adminReportsAnalytics },
   { label: "Settings", icon: Settings, path: PATHS.adminSettings },
 ];

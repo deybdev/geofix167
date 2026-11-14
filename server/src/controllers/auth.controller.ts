@@ -7,6 +7,7 @@ import {
 } from "hono/cookie";
 
 import type { AppEnv } from "../types/env";
+import { assertOrigin, sourceThrottle, throttle } from "../services/registration-security";
 import { loginSchema } from "../validators/auth.schema";
 import {
   AuthError,
@@ -15,6 +16,8 @@ import {
 } from "../services/auth.service";
 
 export async function loginController(c: Context<AppEnv>) {
+  assertOrigin(c);
+  await sourceThrottle(c, "login", 60);
   const body = await c.req.json().catch(() => null);
   const validation = loginSchema.safeParse(body);
 
@@ -24,6 +27,8 @@ export async function loginController(c: Context<AppEnv>) {
       400,
     );
   }
+
+  await throttle(c, "login:mobile", validation.data.mobile_number, 10, 900);
 
   try {
     const result = await login(
@@ -59,6 +64,7 @@ export async function loginController(c: Context<AppEnv>) {
 }
 
 export async function logoutController(c: Context<AppEnv>) {
+  assertOrigin(c);
   try {
     const token = getCookie(c, "geofix_session");
 
@@ -70,6 +76,15 @@ export async function logoutController(c: Context<AppEnv>) {
       sameSite: "Lax",
       path: "/",
     });
+
+    for (const kind of ["identity", "email", "oauth"]) {
+      const value = getCookie(c, `geofix_${kind}`);
+      if (value) {
+        const { hash } = await import("../services/registration-security");
+        await c.env.geofix167_db.prepare("DELETE FROM auth_flows WHERE token_hash = ?").bind(await hash(value)).run();
+      }
+      deleteCookie(c, `geofix_${kind}`, { path: "/" });
+    }
 
     return c.json({ message: "Logged out successfully." });
   } catch (error) {

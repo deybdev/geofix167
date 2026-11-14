@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 
 import { AuthProvider } from "../shared/context/AuthProvider";
 import { LocationProvider } from "../shared/context/LocationProvider";
-import NotFoundPage from "../pages/NotFound";
+import NotFoundPage from "../pages/errors/NotFound";
 
 import { publicRoutes } from "./PublicRoutes";
 import { authRoutes } from "./AuthRoutes";
