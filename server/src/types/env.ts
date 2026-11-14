@@ -18,6 +18,7 @@ export type AppEnv = {
   Bindings: {
     geofix167_db: D1Database;
     geofix167_uploads: R2Bucket;
+    MEDIA_SIGNING_SECRET: string;
     FRONTEND_ORIGIN: string;
     BREVO_API_KEY: string;
     BREVO_API_URL: string;

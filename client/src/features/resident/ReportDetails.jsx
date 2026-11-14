@@ -76,7 +76,7 @@ function ReportDetailsView({ id }) {
         description_sanitized: description.trim(), location_description: address.trim(),
       });
       // PATCH returns the report, while GET also returns its event history.
-      setReport(previous => ({ ...data.report, status_events: previous.status_events }));
+      setReport(previous => ({ ...data.report, status_events: previous.status_events, attachments: previous.attachments }));
       setEditing(false);
       setNotice("Report details saved.");
       try {
@@ -139,6 +139,17 @@ function ReportDetailsView({ id }) {
           <p className="mt-1 text-xs text-slate-400">Submitted: {formatTime(report.created_at)}</p>
         </div>
 
+        {report.attachments.length > 0 && <section className="mt-4 space-y-3" aria-label="Report attachments">
+          <h2 className="text-sm font-semibold">Photos and videos</h2>
+          <p className="text-xs text-slate-500">If a media link expires, use Refresh to load a new link.</p>
+          {report.attachments.map(attachment => <figure key={attachment.id} className="rounded-xl border border-slate-200 p-2">
+            {attachment.media_type === "VIDEO"
+              ? <video controls playsInline preload="metadata" src={attachment.url} className="max-h-80 w-full rounded-lg bg-black" />
+              : <a href={attachment.url} target="_blank" rel="noreferrer"><img src={attachment.url} alt={attachment.original_filename || "Incident photo"} loading="lazy" className="max-h-80 w-full rounded-lg object-contain" /></a>}
+            <figcaption className="mt-1 truncate text-xs text-slate-500">{attachment.original_filename}</figcaption>
+            <a href={attachment.url} target="_blank" rel="noreferrer" className="text-xs text-primary underline">Open original file</a>
+          </figure>)}
+        </section>}
         {notice && <p role="status" className="mt-3 rounded-lg bg-emerald-50 p-3 text-xs text-emerald-700">{notice}</p>}
         {editable && !editing && <Button type="button" variant="outline" onClick={startEditing}
           className="mt-4 h-11 w-full rounded-xl text-sm font-semibold">Edit Details</Button>}
