@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useOutletContext } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { ArrowRight, MapPinned } from "lucide-react";
 import GetInvolvedSection from "../features/landing/components/GetInvolvedSection";
 import QuickReportModal from "../features/landing/components/QuickReportModal";
@@ -7,12 +7,13 @@ import { PATHS } from "../router/paths";
 
 export default function HomePage() {
   const navigate = useNavigate();
-  const { headerReportRequest } = useOutletContext();
   const [isQuickReportOpen, setIsQuickReportOpen] = useState(false);
 
   useEffect(() => {
-    if (headerReportRequest > 0) setIsQuickReportOpen(true);
-  }, [headerReportRequest]);
+    const openQuickReport = () => setIsQuickReportOpen(true);
+    window.addEventListener("geofix:open-report", openQuickReport);
+    return () => window.removeEventListener("geofix:open-report", openQuickReport);
+  }, []);
 
   return <div className="font-sans text-slate-900">
       <section className="relative isolate overflow-hidden bg-[#0d2d20] px-5 py-20 text-white sm:px-10 sm:py-28">

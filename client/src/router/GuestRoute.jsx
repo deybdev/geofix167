@@ -1,4 +1,4 @@
-import { Navigate, Outlet, useOutletContext } from "react-router-dom";
+import { Navigate, Outlet } from "react-router-dom";
 import { useAuth } from "../shared/hooks/useAuth";
 import { PATHS } from "./paths";
 
@@ -13,7 +13,6 @@ const ROLE_PATHS = {
 
 export default function GuestRoute() {
   const { user, loading } = useAuth();
-  const outletContext = useOutletContext();
 
   if (loading) return null;
 
@@ -21,5 +20,5 @@ export default function GuestRoute() {
     return <Navigate to={ROLE_PATHS[user.role] ?? PATHS.home} replace />;
   }
 
-  return <Outlet context={outletContext} />;
+  return <Outlet />;
 }

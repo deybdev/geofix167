@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import LandingHeader from "../features/landing/components/LandingHeader";
 import LandingFooter from "../features/landing/components/LandingFooter";
@@ -8,10 +7,9 @@ import { PATHS } from "../router/paths";
 export default function MainLayout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [headerReportRequest, setHeaderReportRequest] = useState(0);
   const handleReportClick = () => {
     if (location.pathname === PATHS.home || location.pathname === PATHS.publicMap) {
-      setHeaderReportRequest((request) => request + 1);
+      window.dispatchEvent(new Event("geofix:open-report"));
       return;
     }
     navigate(PATHS.publicMap);
@@ -22,7 +20,7 @@ export default function MainLayout() {
       <LandingHeader onReportClick={handleReportClick} />
       <BarangayStatusBanner />
       <main className="public-app-main">
-        <Outlet context={{ headerReportRequest }} />
+        <Outlet />
       </main>
       <LandingFooter />
     </div>

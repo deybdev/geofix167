@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { useOutletContext } from "react-router-dom";
 import LandingMapViewer from "../features/landing/components/LandingMapViewer";
 import ResidentReportingCard from "../features/landing/components/ResidentReportingCard";
 import BarangayAnnouncementsCard from "../features/landing/components/BarangayAnnouncementsCard";
@@ -26,7 +25,6 @@ function toMapReport(report) {
 }
 
 export default function LiveMapPage() {
-  const { headerReportRequest } = useOutletContext();
   const [reports, setReports] = useState([]);
   const [selectedReport, setSelectedReport] = useState(null);
   const [selectedCoordinates, setSelectedCoordinates] = useState(null);
@@ -36,8 +34,10 @@ export default function LiveMapPage() {
   const handleAddReport = (report) => { setReports((current) => [report, ...current]); setSelectedReport(report); setSelectedCoordinates(null); };
 
   useEffect(() => {
-    if (headerReportRequest > 0) setIsQuickReportOpen(true);
-  }, [headerReportRequest]);
+    const openQuickReport = () => setIsQuickReportOpen(true);
+    window.addEventListener("geofix:open-report", openQuickReport);
+    return () => window.removeEventListener("geofix:open-report", openQuickReport);
+  }, []);
 
   useEffect(() => {
     let active = true;
