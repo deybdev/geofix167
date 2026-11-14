@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { toast } from "../../shared/components/ui/toast";
 import MapViewer from "../../shared/components/MapViewer";
+import { useSearchParams } from "react-router-dom";
 import {
   Badge, ModalSection, ModalShell, QRMatrix, RowList, SelectFilter, fmtClock, hash32, stamp,
 } from "../../shared/components/GovernanceUi";
@@ -1316,8 +1317,17 @@ const seededAudit = () => [
 ];
 
 export default function IncidentReports() {
+  const [searchParams] = useSearchParams();
+  const selectedQueue = searchParams.get("queue") || "";
+  const queueTab = {
+    "pending-triage": "Pending Triage",
+    "active-emergencies": "Active Emergencies",
+    "external-agencies": "Active Emergencies",
+    infrastructure: "Infrastructure & Routine",
+    "dispatch-tracking": "Active Emergencies",
+  }[selectedQueue];
   const [reports, setReports] = useState(initialReports);
-  const [tab, setTab] = useState(TABS[0]);
+  const [tab, setTab] = useState(queueTab || TABS[0]);
   const [menuFor, setMenuFor] = useState(null);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("All Statuses");
@@ -1336,6 +1346,10 @@ export default function IncidentReports() {
   const [strikes, setStrikes] = useState(seededStrikes);
   const [auditLog, setAuditLog] = useState(seededAudit);
   const [now, setNow] = useState(() => NEW_CALLS());
+
+  useEffect(() => {
+    if (queueTab) setTab(queueTab);
+  }, [queueTab]);
 
   const logAudit = useCallback((entry) => {
     setAuditLog((log) => [{ key: `${log.length + 1}-${NEW_CALLS()}-${entry.reportId}`, at: stamp(true), ...entry }, ...log]);
@@ -1463,15 +1477,25 @@ export default function IncidentReports() {
     setFlagReport(null);
   }
 
+  const queueMatches = (report) => {
+    if (selectedQueue === "pending-triage") return bucketFor(report) === "Pending Triage";
+    if (selectedQueue === "active-emergencies") return bucketFor(report) === "Active Emergencies";
+    if (selectedQueue === "external-agencies") return Boolean(report.external?.length);
+    if (selectedQueue === "infrastructure") return bucketFor(report) === "Infrastructure & Routine";
+    if (selectedQueue === "dispatch-tracking") return Boolean(report.responders);
+    return true;
+  };
+
   const filteredReports = useMemo(() => reports.filter((report) => {
     const search = query.trim().toLowerCase();
     const matchesQuery = !search || `${report.id} ${report.title} ${report.category} ${report.location} ${report.reporter} ${report.status} ${report.team}`.toLowerCase().includes(search);
     return matchesQuery
       && bucketFor(report) === tab
+      && queueMatches(report)
       && (status === "All Statuses" || report.status === status)
       && (category === "All Categories" || report.category === category)
       && (location === "All Locations" || report.location === location);
-  }), [category, location, query, reports, status, tab]);
+  }), [category, location, query, reports, selectedQueue, status, tab]);
 
   const restrictedReporters = Object.entries(strikes).filter(([, s]) => s.count >= 2).map(([name]) => name);
 

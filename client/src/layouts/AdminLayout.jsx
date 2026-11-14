@@ -23,7 +23,9 @@ const AdminLayout = () => {
   const { signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia("(min-width: 768px)").matches : false,
+  );
   const [isSignOutDialogOpen, setIsSignOutDialogOpen] = useState(false);
 
   async function handleSignOut() {
@@ -47,11 +49,20 @@ const AdminLayout = () => {
 
   return (
     <div className="min-h-screen bg-[#f7f9fa] text-[#263246]">
-      <AdminSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <div className="md:ml-[178px]">
+      <AdminSidebar
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
+      <div className={`transition-[margin] duration-300 ${sidebarOpen ? "md:ml-[250px]" : "md:ml-[72px]"}`}>
         <header className="flex h-[54px] items-center justify-between border-b border-[#e4e9ec] bg-white px-5 md:px-6">
           <div className="flex items-center gap-3">
-            <button type="button" className="md:hidden" onClick={() => setSidebarOpen(true)} aria-label="Open menu">
+            <button
+              type="button"
+              className="rounded-md p-1 text-slate-500 hover:bg-(--gf-green-soft) hover:text-(--gf-green)"
+              onClick={() => setSidebarOpen((open) => !open)}
+              aria-expanded={sidebarOpen}
+              aria-label={sidebarOpen ? "Close menu" : "Open menu"}
+            >
               <Menu size={19} />
             </button>
             <h1 className="text-[15px] font-bold text-primary">{pageTitles[location.pathname] || "Barangay 167 Operations Dashboard"}</h1>
