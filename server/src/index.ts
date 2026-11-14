@@ -6,6 +6,7 @@ import type { AppEnv } from "./types/env";
 import authRoutes from "./routes/auth.route";
 import communicationRoutes from "./routes/communication.route";
 import reportRoutes from "./routes/report.route";
+import mediaRoutes from "./routes/media.route";
 import adminDispatchRoutes from "./routes/admin-dispatch.route";
 
 const app = new Hono<AppEnv>();
@@ -19,8 +20,8 @@ app.use(
         : "";
     },
     credentials: true,
-    allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allowHeaders: ["Content-Type", "X-Guest-Token"],
+    allowMethods: ["GET", "HEAD", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allowHeaders: ["Content-Type", "X-Guest-Token", "Range", "If-Range"],
   }),
 );
 
@@ -36,6 +37,7 @@ app.route("/api/communication", communicationRoutes);
 // GET  /api/reports
 // GET  /api/reports/:id
 app.route("/api/reports", reportRoutes);
+app.route("/api/media", mediaRoutes);
 app.route("/api/admin/dispatch", adminDispatchRoutes);
 
 export default app;

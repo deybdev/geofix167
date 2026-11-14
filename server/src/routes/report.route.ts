@@ -2,6 +2,9 @@ import { getCookie } from "hono/cookie";
 import { requireAuth } from "../middleware/auth";
 import { Hono } from "hono";
 import type { AppEnv } from "../types/env";
+import { bodyLimit } from "hono/body-limit";
+import { listAttachments, uploadAttachment } from "../controllers/attachment.controller";
+import { MAX_UPLOAD_BYTES } from "../services/attachment.service";
 import {
   createReportController,
   updateReportStatusController, updateReportDetailsController,
@@ -23,6 +26,11 @@ reportRoutes.get("/public", async (c) => {
   return c.json({ reports: result.results, count: result.results.length });
 });
 reportRoutes.post("/", createReportController);
+reportRoutes.get("/:id/attachments", requireAuth, listAttachments);
+reportRoutes.post("/:id/attachments", requireAuth, bodyLimit({
+  maxSize: MAX_UPLOAD_BYTES,
+  onError: c => c.json({ error: "Upload exceeds the 25 MiB video limit." }, 413),
+}), uploadAttachment);
 reportRoutes.patch("/:id/status", updateReportStatusController);
 reportRoutes.patch("/:id", updateReportDetailsController);
 reportRoutes.get("/", listReportsController);

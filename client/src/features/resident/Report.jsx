@@ -2,7 +2,6 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import {
   CarFront,
-  Camera,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -17,18 +16,15 @@ import {
   ShieldAlert,
   Siren,
   Trash2,
-  Upload,
-  Video,
   Waves,
   Wrench,
-  X,
   Zap,
 } from "lucide-react";
 import { Button } from "../../shared/components/ui/button";
-import { Input } from "../../shared/components/ui/input";
+import MediaPicker from "./components/MediaPicker";
 import MapViewer from "../../shared/components/MapViewer";
 import { isInside } from "../../shared/utils/mapUtils";
-import { buildResidentReportPayload, submitReport } from "../../services/residentService";
+import { buildResidentReportPayload, submitReport, uploadReportAttachment } from "../../services/residentService";
 import { PATHS } from "../../router/paths";
 import { useGeoLocation } from "../../shared/context/LocationProvider";
 
@@ -70,61 +66,57 @@ export const CATEGORIES = {
 
 const URGENCY_LEVELS = ["Low", "Moderate", "High", "Critical"];
 
-function EvidenceButton({ icon: Icon, label, onClick }) {
-  return (
-    <Button
-      type="button"
-      onClick={onClick}
-      variant="outline"
-      size="sm"
-      className="flex h-11 flex-1 flex-col items-center justify-center gap-0.5 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-primary transition hover:border-primary/40 hover:bg-primary/5"
-    >
-      <Icon size={16} strokeWidth={2} />
-      {label}
-    </Button>
-  );
+function initialFiles(state) {
+  const files = state?.draft?.files ?? [];
+  if (!state?.capturedPhoto || files.length >= 5) return files;
+  const [header, data] = state.capturedPhoto.split(",");
+  const type = header.match(/data:([^;]+)/)?.[1] || "image/jpeg";
+  const bytes = Uint8Array.from(atob(data), char => char.charCodeAt(0));
+  const file = new File([bytes], `incident-${Date.now()}.${type === "image/png" ? "png" : "jpg"}`, { type });
+  return [...files, { id: crypto.randomUUID(), file }];
 }
 
 export default function Report() {
   const navigate = useNavigate();
   const routeLocation = useLocation();
+  const draft = routeLocation.state?.draft;
   // Returning from the camera with an emergency already in flight?
   // Rehydrate the quick flow instead of restarting it.
   const emergencyFlowReturn = routeLocation.state?.emergencyFlow === true;
   const [step, setStep] = useState(
     routeLocation.state?.capturedPhoto ? 4 : 0,
   );
-  const [reportType, setReportType] = useState(emergencyFlowReturn ? "emergency" : null);
+  const [reportType, setReportType] = useState(draft?.reportType ?? (emergencyFlowReturn ? "emergency" : null));
   const [emergencyStep, setEmergencyStep] = useState(emergencyFlowReturn ? 2 : 0);
   const [category, setCategory] = useState(
-    emergencyFlowReturn ? (routeLocation.state?.emergencyType ?? null) : null,
+    draft?.category ?? (emergencyFlowReturn ? (routeLocation.state?.emergencyType ?? null) : null),
   );
-  const [description, setDescription] = useState("");
-  const [urgency, setUrgency] = useState("High");
-  const [injured, setInjured] = useState("Yes");
+  const [description, setDescription] = useState(draft?.description ?? "");
+  const [urgency, setUrgency] = useState(draft?.urgency ?? "High");
+  const [injured, setInjured] = useState(draft?.injured ?? "Yes");
   const [submitted, setSubmitted] = useState(false);
   const [savedReport, setSavedReport] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const submittingRef = useRef(false);
   const attemptRef = useRef(null);
-  const photoInputRef = useRef(null);
-  const videoInputRef = useRef(null);
-  const [photos, setPhotos] = useState(
-    routeLocation.state?.capturedPhoto ? [routeLocation.state.capturedPhoto] : [],
-  );
-  const [previewPhoto, setPreviewPhoto] = useState(null);
+  const [files, setFiles] = useState(() => initialFiles(routeLocation.state));
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState("");
+  const [uploadErrors, setUploadErrors] = useState([]);
+  const uploadedIds = useRef(new Set());
+  const uploadingRef = useRef(false);
 
   // Location: comes from the photo page if a photo was just taken,
   // otherwise from this device's GPS
   const photoState = routeLocation.state;
   const [position, setPosition] = useState(
-    Number.isFinite(photoState?.latitude) && Number.isFinite(photoState?.longitude)
+    draft?.position ?? (Number.isFinite(photoState?.latitude) && Number.isFinite(photoState?.longitude)
       ? { lat: photoState.latitude, lng: photoState.longitude }
-      : null,
+      : null),
   );
-  const [address, setAddress] = useState(photoState?.address ?? "");
-  const [addressEdited, setAddressEdited] = useState(false);
+  const [address, setAddress] = useState(draft?.address ?? photoState?.address ?? "");
+  const [addressEdited, setAddressEdited] = useState(Boolean(draft?.address));
   const [touched, setTouched] = useState(false);
   const geoCtx = useGeoLocation();
   const locating = geoCtx.locating;
@@ -197,6 +189,40 @@ export default function Report() {
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
   }
 
+  function capturePhoto() {
+    navigate(PATHS.photoCapture, { state: {
+      emergencyFlow: reportType === "emergency", emergencyType: category,
+      draft: { reportType, category, description, urgency, injured, position, address, files },
+    } });
+  }
+
+  async function uploadFiles(report) {
+    if (uploadingRef.current) return;
+    const pending = files.filter(item => !uploadedIds.current.has(item.id));
+    if (!pending.length) return;
+    uploadingRef.current = true;
+    setUploading(true);
+    setUploadErrors([]);
+    const errors = [];
+    try {
+      // Sequential uploads bound memory and preserve successful files on retry.
+      for (const [index, item] of pending.entries()) {
+        setUploadProgress(`Uploading ${index + 1} of ${pending.length}: ${item.file.name}`);
+        try {
+          await uploadReportAttachment(report.public_id, item.file, item.id);
+          uploadedIds.current.add(item.id);
+        } catch (error) {
+          errors.push({ id: item.id, name: item.file.name, message: error.message });
+        }
+      }
+      setUploadErrors(errors);
+      setUploadProgress(errors.length ? `${uploadedIds.current.size} of ${files.length} files uploaded.` : `${files.length} files uploaded.`);
+    } finally {
+      uploadingRef.current = false;
+      setUploading(false);
+    }
+  }
+
   async function handleSubmit(event) {
     event?.preventDefault();
     if (!category || submittingRef.current) return;
@@ -217,6 +243,7 @@ export default function Report() {
       const { data } = await submitReport({ ...payload, idempotency_key: attemptRef.current.key });
       setSavedReport(data.report);
       setSubmitted(true);
+      await uploadFiles(data.report);
     } catch (error) {
       setSubmitError(error.message || "Unable to submit your report. Please try again.");
     } finally {
@@ -242,8 +269,18 @@ export default function Report() {
         </p>
         <p className="mt-3 break-all font-mono text-xs text-slate-600">Reference: {savedReport.reference_number}</p>
         <p className="mt-1 text-sm font-semibold text-primary">{savedReport.status_label}</p>
+        {files.length > 0 && <div className="mt-4 w-full space-y-2 text-left" aria-busy={uploading}>
+          <p role="status" aria-live="polite" className="text-sm text-slate-600">{uploadProgress}</p>
+          {uploading && <p className="text-xs text-slate-500">Your report is saved. Keep this page open while media uploads.</p>}
+          {uploadErrors.length > 0 && <div role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+            <p>Your report was submitted, but some attachments could not be uploaded.</p>
+            <ul className="mt-2 list-disc pl-4">{uploadErrors.map(error => <li key={error.id}>{error.name}: {error.message}</li>)}</ul>
+            <Button type="button" variant="outline" onClick={() => uploadFiles(savedReport)} disabled={uploading} className="mt-3">Retry failed uploads</Button>
+          </div>}
+        </div>}
         <Button
           type="button"
+          disabled={uploading}
           onClick={() => navigate(`${PATHS.reportDetails}/${encodeURIComponent(savedReport.public_id)}`)}
           className="mt-6 h-11 rounded-lg px-6 text-sm font-semibold"
         >
@@ -264,7 +301,7 @@ export default function Report() {
     const subtitles = [
       "What kind of emergency is it?",
       "Tap the map to drop a pin inside Barangay 167, Caloocan.",
-      "Attach a photo so responders can verify what's happening.",
+      "Attach photos or a short video so responders can verify what's happening.",
       "Review your emergency, then send it out.",
     ];
     const chosen = CATEGORIES.emergency.find(
@@ -283,6 +320,7 @@ export default function Report() {
                 ? setReportType(null)
                 : setEmergencyStep((s) => s - 1)
             }
+            disabled={submitting}
             aria-label="Go back"
             className="flex size-9 items-center justify-center rounded-full border border-slate-200 text-slate-600 transition hover:border-primary hover:text-primary"
           >
@@ -406,77 +444,9 @@ export default function Report() {
 
         {emergencyStep === 2 && (
           <section>
-            <Input
-              ref={photoInputRef}
-              type="file"
-              accept="image/*"
-              multiple
-              className="hidden"
-              onChange={(event) => {
-                const files = Array.from(event.target.files ?? []).map((file) =>
-                  URL.createObjectURL(file),
-                );
-                setPhotos((prev) => [...prev, ...files]);
-                event.target.value = "";
-              }}
-            />
-            <div className="flex gap-2">
-              <EvidenceButton
-                icon={Camera}
-                label="Take Photo"
-                onClick={() =>
-                  navigate(PATHS.photoCapture, {
-                    state: {
-                      emergencyFlow: true,
-                      emergencyType: category,
-                      address,
-                    },
-                  })
-                }
-              />
-              <EvidenceButton
-                icon={Upload}
-                label="Upload Photo"
-                onClick={() => photoInputRef.current?.click()}
-              />
-            </div>
-            {photos.length === 0 ? (
-              <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-400">
-                Optional, but a photo of the incident helps responders verify
-                the situation.
-              </p>
-            ) : (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {photos.map((photo, index) => (
-                  <div key={photo} className="relative">
-                    <img
-                      src={photo}
-                      alt={`Incident photo ${index + 1}`}
-                      onClick={() => setPreviewPhoto(photo)}
-                      className="h-20 w-20 cursor-zoom-in rounded-lg object-cover object-center"
-                    />
-                    <button
-                      type="button"
-                      aria-label={`Remove photo ${index + 1}`}
-                      onClick={() =>
-                        setPhotos((prev) => prev.filter((_, i) => i !== index))
-                      }
-                      className="absolute -right-1.5 -top-1.5 flex size-5 items-center justify-center rounded-full bg-slate-800 text-white shadow hover:bg-red-600"
-                    >
-                      <X size={12} strokeWidth={3} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-            <Button
-              type="button"
-              size="lg"
-              onClick={() => setEmergencyStep(3)}
-              className="mt-4 h-12 w-full rounded-xl text-sm font-semibold"
-            >
-              {photos.length > 0 ? "Continue" : "Skip for now"}
-              <ChevronRight size={16} />
+            <MediaPicker files={files} onChange={setFiles} onCapture={capturePhoto} />
+            <Button type="button" size="lg" onClick={() => setEmergencyStep(3)} className="mt-4 h-12 w-full rounded-xl text-sm font-semibold">
+              {files.length > 0 ? "Continue" : "Skip for now"}<ChevronRight size={16} />
             </Button>
           </section>
         )}
@@ -501,8 +471,8 @@ export default function Report() {
                 {address || "Current location"}
               </p>
               <p>
-                <span className="font-medium">Photo:</span>{" "}
-                {photos.length > 0 ? `${photos.length} selected locally (not uploaded)` : "None"}
+                <span className="font-medium">Media:</span>{" "}
+                {files.length > 0 ? `${files.length} files ready to upload` : "None"}
               </p>
               <p>
                 <span className="font-medium">Coordinates:</span>{" "}
@@ -522,18 +492,6 @@ export default function Report() {
           </>
         )}
 
-        {previewPhoto && (
-          <div
-            onClick={() => setPreviewPhoto(null)}
-            className="fixed inset-0 z-[1100] flex cursor-zoom-out items-center justify-center bg-black/80 p-4"
-          >
-            <img
-              src={previewPhoto}
-              alt="Photo preview"
-              className="max-h-full max-w-full rounded-lg object-contain"
-            />
-          </div>
-        )}
       </section>
     );
   }
@@ -548,6 +506,7 @@ export default function Report() {
         <button
           type="button"
           onClick={() => (step === 0 ? navigate(-1) : setStep((s) => s - 1))}
+          disabled={submitting}
           aria-label="Go back"
           className="flex size-9 items-center justify-center rounded-full border border-slate-200 text-slate-600 transition hover:border-primary hover:text-primary"
         >
@@ -716,76 +675,7 @@ export default function Report() {
       )}
 
       {/* Step 5: Evidence */}
-      {step === 4 && (
-        <section>
-          <div className="flex gap-2">
-            <EvidenceButton
-              icon={Camera}
-              label="Take Photo"
-              onClick={() => navigate(PATHS.photoCapture)}
-            />
-            <EvidenceButton
-              icon={Upload}
-              label="Upload Photo"
-              onClick={() => photoInputRef.current?.click()}
-            />
-            <EvidenceButton
-              icon={Video}
-              label="Upload Video"
-              onClick={() => videoInputRef.current?.click()}
-            />
-          </div>
-          <Input
-            ref={photoInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            className="hidden"
-            onChange={(event) => {
-              const files = Array.from(event.target.files ?? []).map((file) =>
-                URL.createObjectURL(file),
-              );
-              setPhotos((prev) => [...prev, ...files]);
-              event.target.value = "";
-            }}
-          />
-          <Input
-            ref={videoInputRef}
-            type="file"
-            accept="video/*"
-            className="hidden"
-          />
-          {photos.length === 0 && (
-            <p className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-400">
-              Optional, but evidence helps responders act faster.
-            </p>
-          )}
-          {photos.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-2">
-              {photos.map((photo, index) => (
-                <div key={photo} className="relative">
-                  <img
-                    src={photo}
-                    alt={`Evidence ${index + 1}`}
-                    onClick={() => setPreviewPhoto(photo)}
-                    className="h-20 w-20 cursor-zoom-in rounded-lg object-cover object-center"
-                  />
-                  <button
-                    type="button"
-                    aria-label={`Remove evidence ${index + 1}`}
-                    onClick={() =>
-                      setPhotos((prev) => prev.filter((_, i) => i !== index))
-                    }
-                    className="absolute -right-1.5 -top-1.5 flex size-5 items-center justify-center rounded-full bg-slate-800 text-white shadow hover:bg-primary"
-                  >
-                    <X size={12} strokeWidth={3} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-      )}
+      {step === 4 && <MediaPicker files={files} onChange={setFiles} onCapture={capturePhoto} />}
 
       {/* Step 6: Review */}
       {step === 5 && (
@@ -808,8 +698,8 @@ export default function Report() {
             </p>
             <p>
               <span className="font-medium">Evidence:</span>{" "}
-              {photos.length > 0
-                ? `${photos.length} photo${photos.length > 1 ? "s" : ""} selected locally (not uploaded)`
+              {files.length > 0
+                ? `${files.length} files ready to upload`
                 : "None"}
             </p>
             <p><span className="font-medium">Details:</span> {description || "None"}</p>
@@ -824,6 +714,7 @@ export default function Report() {
             type="button"
             variant="outline"
             size="lg"
+            disabled={submitting}
             onClick={() => setStep((s) => s - 1)}
             className="h-12 flex-1 rounded-lg text-sm font-semibold sm:h-11"
           >
@@ -855,18 +746,6 @@ export default function Report() {
         )}
       </div>
 
-      {previewPhoto && (
-        <div
-          onClick={() => setPreviewPhoto(null)}
-          className="fixed inset-0 z-[1100] flex cursor-zoom-out items-center justify-center bg-black/80 p-4"
-        >
-          <img
-            src={previewPhoto}
-            alt="Evidence preview"
-            className="max-h-full max-w-full rounded-lg object-contain"
-          />
-        </div>
-      )}
     </form>
   );
 }

@@ -53,6 +53,7 @@ export function normalizeReport(record) {
     status_label: record.status_label ?? label,
     is_terminal: record.is_terminal === 1 || record.is_terminal === true || [10, 11, 12].includes(statusId),
     photo_url: record.photo_url ?? null,
+    attachments: record.attachments ?? [],
     created_at: timestamp(record.submitted_at ?? record.received_at),
     updated_at: timestamp(record.updated_at),
     status_events: events,
@@ -77,7 +78,8 @@ async function reportRequest(path = "", { method = "GET", body, signal } = {}) {
   try {
     response = await fetch(`/api/reports${path}`, {
       method, credentials: "include", cache: "no-store", signal,
-      ...(body === undefined ? {} : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
+      ...(body === undefined ? {} : body instanceof FormData ? { body }
+        : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
     });
   } catch (error) {
     if (error.name === "AbortError") throw error;
@@ -114,7 +116,17 @@ function reportResult(data) {
 }
 
 export async function getReportDetails(id, { signal } = {}) {
-  return reportResult(await reportRequest(`/${encodeURIComponent(id)}`, { signal }));
+  const data = await reportRequest(`/${encodeURIComponent(id)}`, { signal });
+  const { attachments } = await reportRequest(`/${encodeURIComponent(id)}/attachments`, { signal });
+  return reportResult({ ...data, report: { ...data.report, attachments } });
+}
+
+export async function uploadReportAttachment(reportId, file, uploadId) {
+  const body = new FormData();
+  body.append("file", file, file.name);
+  body.append("upload_id", uploadId);
+  // The browser supplies Content-Type including the multipart boundary.
+  return reportRequest(`/${encodeURIComponent(reportId)}/attachments`, { method: "POST", body });
 }
 
 export function buildResidentReportPayload({ category, urgency, isEmergency, description, position, address, landmark, callbackContact }) {
