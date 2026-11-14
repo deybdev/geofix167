@@ -4,6 +4,7 @@ import {
   CheckSquare,
   ClipboardList,
   Grid2X2,
+  Megaphone,
   Settings,
   ShieldCheck,
   Users,
@@ -14,6 +15,7 @@ import { PATHS } from "../../router/paths";
 
 const navigation = [
   { label: "Dashboard", icon: Grid2X2, path: PATHS.admin },
+  { label: "Announcements", icon: Megaphone, path: PATHS.adminAnnouncements },
   { label: "Incident Reports", icon: ClipboardList, path: PATHS.adminIncidentReports },
   { label: "Maintenance Tasks", icon: ShieldCheck, path: PATHS.adminMaintenanceTasks },
   { label: "Resolution Verification", icon: CheckSquare, path: PATHS.adminResolutionVerification },

@@ -21,6 +21,7 @@ export const PATHS = {
   resident: "/resident",
   responder: "/responder",
   admin: "/admin",
+  adminAnnouncements: "/admin/announcements",
   adminIncidentReports: "/admin/incident-reports",
   adminMaintenanceTasks: "/admin/maintenance-tasks",
   adminResolutionVerification: "/admin/resolution-verification",
