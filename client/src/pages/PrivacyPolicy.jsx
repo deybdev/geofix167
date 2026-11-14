@@ -1,103 +1,44 @@
-
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, LockKeyhole, MapPin, ShieldCheck } from "lucide-react";
 import { Link } from "react-router-dom";
+import { PATHS } from "../router/paths";
+import LandingHeader from "../features/landing/components/LandingHeader";
+import BarangayStatusBanner from "../features/landing/components/BarangayStatusBanner";
+import LandingFooter from "../features/landing/components/LandingFooter";
 
-export default function PrivacyPolicy({ embedded = false }) {
+export default function PrivacyPolicy() {
   return (
-    <main className="min-h-screen bg-white px-5 py-8 text-slate-700 sm:px-8">
-      <article className="mx-auto max-w-3xl">
-        {!embedded && <Link
-          to="/register"
-          className="inline-flex items-center gap-1.5 text-sm leading-none text-slate-800 hover:underline"
-        >
-          <ArrowLeft size={16} className="shrink-0" />
-          <span>Back</span>
-        </Link>}
-
-        <header className="mt-8 border-b border-slate-200 pb-6">
-
-          <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">
-            Privacy Policy
-          </h1>
-
-          <p className="mt-2 text-sm text-slate-500">
-            Learn how GeoFix 167 collects, uses, and protects your
-            personal information.
-          </p>
-        </header>
-
-        <div className="prose prose-slate mt-8 max-w-none prose-headings:text-slate-900 prose-a:text-primary">
-          <h2>Part II: Privacy Policy</h2>
-
-          <p>
-            This Privacy Policy explains how GeoFix 167 collects, uses,
-            and protects your information in accordance with the project
-            objectives detailed in “GeoFix 167 UPDATED.docx.pdf”.
-          </p>
-
-          <h3>1. Information We Collect</h3>
-
-          <ul>
-            <li>
-              <strong>Location Data:</strong> To enable the core mapping
-              and routing features, the system collects precise
-              geographical coordinates (geotags) when you submit a report.
-            </li>
-
-            <li>
-              <strong>Media and Content:</strong> We collect the photos,
-              videos, and text descriptions you submit as evidence of an
-              incident or infrastructure issue.
-            </li>
-
-            <li>
-              <strong>Account Information:</strong> Basic contact details
-              may be collected to provide you with real-time updates
-              regarding the status of your submitted reports.
-            </li>
-          </ul>
-
-          <h3>2. How We Use Your Information</h3>
-
-          <p>
-            Your data is used strictly for Barangay 167 administrative,
-            emergency, and maintenance purposes, specifically to:
-          </p>
-
-          <ul>
-            <li>
-              Verify the exact location of community hazards or emergencies.
-            </li>
-
-            <li>
-              Dispatch the appropriate Emergency Response Teams or Barangay
-              Maintenance/Engineering personnel.
-            </li>
-
-            <li>
-              Generate efficient response routes from the barangay hall
-              or current responder location to the incident site (and to
-              hospitals, if applicable).
-            </li>
-
-            <li>
-              Provide you with progress updates and resolution verifications.
-            </li>
-          </ul>
-
-          <h3>3. Data Sharing and Security</h3>
-
-          <p>
-            Your submitted reports, including media and location data,
-            are shared directly with authorized Barangay 167 officials
-            and the specific department assigned to handle your request.
-            GeoFix 167 employs standard security measures to protect
-            your data from unauthorized access. We do not sell or share
-            your personal information with third parties outside of the
-            necessary local government and emergency response networks.
-          </p>
-        </div>
-      </article>
-    </main>
+    <div className="min-h-screen bg-[#f5f8f6] text-slate-800">
+      <LandingHeader />
+      <BarangayStatusBanner />
+      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-8 sm:py-12">
+        <Link to={PATHS.home} className="inline-flex items-center gap-2 text-sm font-semibold text-[#247447] hover:text-[#174f31]">
+          <ArrowLeft size={16} /> Back to Home
+        </Link>
+        <article className="mt-6 overflow-hidden rounded-2xl border border-emerald-900/10 bg-white shadow-[0_12px_40px_rgba(15,64,42,0.07)]">
+          <header className="bg-[#103725] px-6 py-8 text-white sm:px-10 sm:py-10">
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.18em] text-emerald-100"><ShieldCheck size={13} /> GeoFix 167 · Legal</div>
+            <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Privacy Policy</h1>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-emerald-50/80">A short explanation of the information used to receive and respond to Barangay 167 reports.</p>
+          </header>
+          <div className="grid gap-5 p-6 sm:grid-cols-2 sm:p-10">
+            <section className="rounded-xl border border-slate-200 bg-slate-50/70 p-5">
+              <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-[#247447]"><MapPin size={17} /></div>
+              <h2 className="font-bold text-slate-900">Information in a report</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">Reports may include your description, selected location or coordinates, category, urgency, and any photo or video you attach. Signed-in accounts also provide account details needed to manage your reports.</p>
+            </section>
+            <section className="rounded-xl border border-slate-200 bg-slate-50/70 p-5">
+              <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-[#247447]"><LockKeyhole size={17} /></div>
+              <h2 className="font-bold text-slate-900">How it is used</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">Authorized barangay staff use report details to review, assign, respond, and update the report. Access to private report details is limited by account permissions.</p>
+            </section>
+            <section className="rounded-xl border border-slate-200 p-5 sm:col-span-2">
+              <h2 className="font-bold text-slate-900">Public information and questions</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">Only information selected for publication, such as approved community updates or accomplishment summaries, appears in public areas. Do not include information in a report that is unrelated to resolving the issue. For privacy questions, contact Barangay 167 through its official channels.</p>
+            </section>
+          </div>
+        </article>
+      </main>
+      <LandingFooter />
+    </div>
   );
 }
