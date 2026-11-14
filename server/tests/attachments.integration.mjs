@@ -137,12 +137,15 @@ try {
   const residentService = await import('../../client/src/services/residentService.js');
   const originalFetch = globalThis.fetch;
   let loseUploadResponse = true;
+  let serviceEnv = env;
+  const serviceRequests = [];
   globalThis.fetch = async (path, options) => {
     assert.equal(options.credentials, 'include');
     const headers = new Headers(options.headers);
     headers.set('Cookie', 'geofix_session=a');
     if (options.body instanceof FormData) assert.equal(headers.has('Content-Type'), false);
-    const response = await request(path, { ...options, headers });
+    const response = await request(path, { ...options, headers }, serviceEnv);
+    serviceRequests.push({ path, status: response.status });
     if (options.body instanceof FormData && loseUploadResponse) {
       loseUploadResponse = false;
       throw new TypeError('Simulated lost response');
@@ -159,7 +162,62 @@ try {
     const details = await residentService.getReportDetails(clientId);
     assert.equal(details.data.report.attachments.length, 1);
     assert.equal(details.data.report.attachments[0].id, replay.attachment.id);
+    assert.equal(details.data.report.attachments_error, null);
     assert.equal(sql.prepare('SELECT count(*) n FROM incident_reports WHERE incident_id=?').get(clientId).n, 1);
+
+    // A real signing outage must leave the authorized report and timeline intact.
+    serviceEnv = { ...env, MEDIA_SIGNING_SECRET: '' };
+    serviceRequests.length = 0;
+    const degraded = await residentService.getReportDetails(clientId);
+    assert.deepEqual(serviceRequests, [
+      { path: `/api/reports/${clientId}`, status: 200 },
+      { path: `/api/reports/${clientId}/attachments`, status: 503 },
+    ]);
+    assert.equal(degraded.data.report.public_id, clientId);
+    assert.equal(degraded.data.report.description, 'Client upload');
+    assert.equal(degraded.data.report.status_id, details.data.report.status_id);
+    assert.ok(degraded.data.report.status_events.length > 0);
+    assert.deepEqual(degraded.data.report.status_events, details.data.report.status_events);
+    assert.deepEqual(degraded.data.report.attachments, []);
+    assert.equal(degraded.data.report.attachments_error, 'Media signing is not configured.');
+    // A failed media-only retry still throws so the section can retain its alert.
+    await assert.rejects(residentService.getReportAttachments(clientId), error => error.status === 503);
+
+    serviceEnv = env;
+    serviceRequests.length = 0;
+    const recovered = await residentService.getReportAttachments(clientId);
+    assert.deepEqual(serviceRequests, [{ path: `/api/reports/${clientId}/attachments`, status: 200 }]);
+    assert.equal(recovered.data.attachments.length, 1);
+    assert.equal(recovered.data.attachments[0].id, replay.attachment.id);
+    assert.equal((await residentService.getReportDetails(clientId)).data.report.attachments_error, null);
+
+    // Main report failures must reject before the attachment endpoint is called.
+    const serviceFetch = globalThis.fetch;
+    for (const status of [401, 403, 404, 500]) {
+      const paths = [];
+      globalThis.fetch = async path => {
+        paths.push(path);
+        return Response.json({ error: 'Report unavailable' }, { status });
+      };
+      await assert.rejects(residentService.getReportDetails(clientId), error => error.status === status);
+      assert.deepEqual(paths, [`/api/reports/${clientId}`]);
+    }
+
+    // An aborted attachment request is cancellation, not degraded success.
+    const controller = new AbortController();
+    globalThis.fetch = async (path, options) => {
+      assert.equal(options.signal, controller.signal);
+      if (path.endsWith('/attachments')) {
+        controller.abort();
+        options.signal.throwIfAborted();
+      }
+      return serviceFetch(path, options);
+    };
+    await assert.rejects(residentService.getReportDetails(clientId, { signal: controller.signal }), { name: 'AbortError' });
+    await assert.rejects(residentService.getReportAttachments(clientId, { signal: controller.signal }), { name: 'AbortError' });
+
+    globalThis.fetch = serviceFetch;
+    console.log('PASS resident media isolation: saved report/timeline on 503, media-only recovery, report errors and abort propagation');
   } finally { globalThis.fetch = originalFetch; }
   console.log('PASS attachments: local R2 bytes, migration, validation, ownership, signatures, ranges, retries, concurrency, caps and failure cleanup');
 } finally {
