@@ -52,8 +52,8 @@ export default function LandingHeader({ onReportClick }) {
 
   return (
     <>
-      <header className="sticky top-0 z-40 border-b border-emerald-900/10 bg-[#fdfefd]/95 shadow-[0_8px_30px_rgba(15,64,42,0.08)] backdrop-blur-xl transition-all">
-        <div className="flex h-[76px] sm:h-[88px] w-full items-center justify-between px-4 sm:px-8 lg:px-10 xl:px-12">
+      <header className="sticky top-0 z-40 h-[76px] shrink-0 border-b border-emerald-900/10 bg-[#fdfefd]/95 shadow-[0_8px_30px_rgba(15,64,42,0.08)] backdrop-blur-xl transition-all sm:h-[88px]">
+        <div className="site-container flex h-full items-center justify-between">
           
           {/* Brand Logo & Name (Responsive) */}
           <Link to={PATHS.home} className="flex items-center gap-2 sm:gap-3 transition-opacity hover:opacity-90 min-w-0 mr-2">

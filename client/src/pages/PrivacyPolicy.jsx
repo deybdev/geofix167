@@ -1,14 +1,9 @@
 import { LockKeyhole, MapPin, ShieldCheck } from "lucide-react";
-import LandingHeader from "../features/landing/components/LandingHeader";
-import BarangayStatusBanner from "../features/landing/components/BarangayStatusBanner";
-import LandingFooter from "../features/landing/components/LandingFooter";
 
 export default function PrivacyPolicy() {
   return (
-    <div className="min-h-screen bg-[#f5f8f6] text-slate-800">
-      <LandingHeader />
-      <BarangayStatusBanner />
-      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-8 sm:py-12">
+    <div className="site-container public-page-content flex justify-center bg-[#f5f8f6] text-slate-800">
+      <div className="w-full max-w-5xl px-4 sm:px-0">
         <article className="overflow-hidden rounded-2xl border border-emerald-900/10 bg-white shadow-[0_12px_40px_rgba(15,64,42,0.07)]">
           <header className="bg-[#103725] px-6 py-8 text-white sm:px-10 sm:py-10">
             <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-200/30 bg-emerald-300/15 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.18em] text-emerald-100"><ShieldCheck size={13} /> Privacy · GeoFix 167</div>
@@ -32,8 +27,7 @@ export default function PrivacyPolicy() {
             </section>
           </div>
         </article>
-      </main>
-      <LandingFooter />
+      </div>
     </div>
   );
 }
