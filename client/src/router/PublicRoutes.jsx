@@ -15,19 +15,22 @@ import OfflinePage from "../pages/errors/Offline";
 import TestPage from "../pages/Test";
 import AdminLogin from "../features/auth/AdminLogin";
 import GuestRoute from "./GuestRoute";
+import MainLayout from "../layouts/MainLayout";
 
 export const publicRoutes = (
   <>
     <Route path="/" element={<Navigate to={PATHS.home} replace />} />
-    <Route element={<GuestRoute />}>
-      <Route path={PATHS.home} element={<HomePage />} />
+    <Route element={<MainLayout />}>
+      <Route element={<GuestRoute />}>
+        <Route path={PATHS.home} element={<HomePage />} />
+      </Route>
+      <Route path={PATHS.about} element={<AboutPage />} />
+      <Route path={PATHS.publicMap} element={<LiveMapPage />} />
+      <Route path={PATHS.services} element={<ServicesPage />} />
+      <Route path={PATHS.accomplishments} element={<AccomplishmentsPage />} />
+      <Route path={PATHS.privacy} element={<PrivacyPolicy />} />
+      <Route path={PATHS.terms} element={<TermsOfService />} />
     </Route>
-    <Route path={PATHS.about} element={<AboutPage />} />
-    <Route path={PATHS.publicMap} element={<LiveMapPage />} />
-    <Route path={PATHS.services} element={<ServicesPage />} />
-    <Route path={PATHS.accomplishments} element={<AccomplishmentsPage />} />
-    <Route path={PATHS.privacy} element={<PrivacyPolicy />} />
-    <Route path={PATHS.terms} element={<TermsOfService />} />
     <Route element={<GuestRoute />}>
       <Route path={PATHS.adminLogin} element={<AdminLogin />} />
     </Route>

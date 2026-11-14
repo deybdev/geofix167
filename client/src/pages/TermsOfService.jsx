@@ -1,108 +1,33 @@
+import { ClipboardCheck, Siren, UsersRound } from "lucide-react";
 
-import { ArrowLeft } from "lucide-react";
-import { Link } from "react-router-dom";
-
-export default function TermsOfService({ embedded = false }) {
+export default function TermsOfService() {
   return (
-    <main className="min-h-screen bg-white px-5 py-8 text-slate-700 sm:px-8">
-      <article className="mx-auto max-w-3xl">
-        {!embedded && <Link
-          to="/register"
-          className="inline-flex items-center gap-1.5 text-sm leading-none text-slate-800 hover:underline"
-        >
-          <ArrowLeft size={16} className="shrink-0" />
-          <span>Back</span>
-        </Link>}
-
-        <header className="mt-8 border-b border-slate-200 pb-6">
-
-
-          <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">
-            Terms of Service
-          </h1>
-
-          <p className="mt-2 text-sm text-slate-500">
-            Please review the terms and conditions for using the
-            GeoFix 167 platform.
-          </p>
-        </header>
-
-        <div className="prose prose-slate mt-8 max-w-none prose-headings:text-slate-900 prose-a:text-primary">
-          <h2>Part I: Terms of Service</h2>
-
-          <p>
-            Welcome to GeoFix 167. By accessing or using the GeoFix 167
-            application—an integrated geotagged incident reporting,
-            infrastructure issue dispatch, monitoring, and emergency
-            response route system—you agree to be bound by these
-            Terms of Service.
-          </p>
-
-          <h3>1. Use of the System</h3>
-
-          <p>
-            GeoFix 167 is provided to the residents and officials of
-            Barangay 167 to facilitate the reporting of emergency
-            incidents (e.g., accidents, fires, health emergencies)
-            and non-emergency infrastructure and maintenance issues
-            (e.g., broken streetlights, clogged drainage, damaged roads).
-          </p>
-
-          <ul>
-            <li>
-              <strong>Accuracy of Reports:</strong> Users must provide
-              accurate geotagged locations and truthful descriptions
-              of incidents.
-            </li>
-
-            <li>
-              <strong>Media Uploads:</strong> Users are encouraged to
-              upload clear photos or videos as supporting evidence
-              for their reports. Do not upload graphic, unlawful,
-              or unrelated media.
-            </li>
-
-            <li>
-              <strong>Emergency Alerts:</strong> Critical reports
-              submitted through the system will automatically trigger
-              a system alert for immediate response. Misuse of the
-              critical urgency classification for non-emergencies is
-              strictly prohibited and may result in penalties or
-              account suspension.
-            </li>
-          </ul>
-
-          <h3>2. Response and Resolution</h3>
-
-          <p>
-            While GeoFix 167 aims to expedite emergency and maintenance
-            responses through efficient routing and department-level
-            dispatching, the Barangay does not guarantee specific
-            response times. Real-time updates and estimated times of
-            arrival (ETA) are provided for informational purposes and
-            may fluctuate due to traffic, weather, or concurrent
-            emergencies.
-          </p>
-
-          <p>
-            A submitted report will only be marked as “Resolved” or
-            “Repaired” once the assigned department or maintenance
-            worker uploads verified photo or video proof of the
-            completed work, ensuring accountability.
-          </p>
-
-          <h3>3. User Accountability and Public Logs</h3>
-
-          <p>
-            To foster transparency, GeoFix 167 maintains a publicly
-            accessible accomplishment log displaying resolved
-            incidents and completed infrastructure repairs. By
-            submitting a report, you acknowledge that the general
-            nature and location of the resolved issue may be displayed
-            publicly to demonstrate barangay initiatives.
-          </p>
-        </div>
-      </article>
-    </main>
+    <div className="public-page-content flex justify-center bg-[#f5f8f6] text-slate-800">
+      <div className="site-container flex justify-center">
+        <article className="w-full max-w-5xl overflow-hidden rounded-2xl border border-emerald-900/10 bg-white shadow-[0_12px_40px_rgba(15,64,42,0.07)]">
+          <header className="bg-[#103725] px-6 py-8 text-white sm:px-10 sm:py-10">
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-200/30 bg-emerald-300/15 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.18em] text-emerald-100"><ClipboardCheck size={13} /> Terms of Use · GeoFix 167</div>
+            <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Terms of Service</h1>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-emerald-50/80">Use GeoFix 167 to submit and follow community reports responsibly.</p>
+          </header>
+          <div className="grid gap-5 p-6 sm:grid-cols-2 sm:p-10">
+            <section className="rounded-xl border border-slate-200 bg-slate-50/70 p-5">
+              <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-[#247447]"><UsersRound size={17} /></div>
+              <h2 className="font-bold text-slate-900">Use reports responsibly</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">Provide honest descriptions and accurate locations. Submit only relevant information and media. False, abusive, or unrelated reports can delay responses for the community.</p>
+            </section>
+            <section className="rounded-xl border border-slate-200 bg-slate-50/70 p-5">
+              <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-[#247447]"><Siren size={17} /></div>
+              <h2 className="font-bold text-slate-900">Emergency response</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">GeoFix helps route reports to barangay staff and responders, but it does not guarantee a response time. For immediate danger, contact the appropriate emergency service directly.</p>
+            </section>
+            <section className="rounded-xl border border-slate-200 p-5 sm:col-span-2">
+              <h2 className="font-bold text-slate-900">Report updates and public summaries</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">Authorized staff review reports and update their status. Only information approved for publication may appear in public accomplishment or community-update sections. Continued use of the service means you agree to follow these guidelines.</p>
+            </section>
+          </div>
+        </article>
+      </div>
+    </div>
   );
 }
