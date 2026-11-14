@@ -5,13 +5,13 @@ type Database = AppEnv["Bindings"]["geofix167_db"];
 
 export async function createSession(
   db: Database,
-  userId: number,
+  userId: string,
   tokenHash: string,
   expiresAt: Date,
 ): Promise<void> {
   await db
     .prepare(
-      `INSERT INTO sessions (user_id, token_hash, expires_at)
+       `INSERT INTO user_sessions_and_devices (user_id, token_hash, expires_at)
        VALUES (?, ?, ?)`,
     )
     .bind(userId, tokenHash, expiresAt.toISOString())
@@ -24,13 +24,30 @@ export async function findUserBySession(
 ): Promise<AuthUser | null> {
   return db
     .prepare(
-      `SELECT u.id, u.public_id, u.full_name, u.mobile_number, u.role
-       FROM sessions s
-       INNER JOIN users u ON u.id = s.user_id
-       WHERE s.token_hash = ?
-         AND s.expires_at > ?
-         AND u.is_verified = 1
-       LIMIT 1`,
+       `SELECT
+          u.user_id AS id,
+          trim(u.first_name || ' ' || u.last_name) AS full_name,
+          u.mobile_number,
+          r.code AS role
+        FROM user_sessions_and_devices AS s
+        INNER JOIN users AS u ON u.user_id = s.user_id
+        INNER JOIN roles AS r ON r.role_id = u.role_id
+        INNER JOIN account_statuses AS account_status
+          ON account_status.status_id = u.account_status_id
+        WHERE s.token_hash = ?
+          AND s.expires_at > ?
+           AND s.revoked_at IS NULL
+           AND account_status.status_code = 'ACTIVE'
+           AND (
+             r.code != 'resident'
+             OR EXISTS (
+               SELECT 1 FROM resident_verifications v
+               WHERE v.user_id = u.user_id
+                 AND v.verification_id = u.approved_verification_id
+                 AND v.status = 'APPROVED'
+             )
+           )
+        LIMIT 1`,
     )
     .bind(tokenHash, new Date().toISOString())
     .first<AuthUser>();
@@ -41,7 +58,7 @@ export async function deleteSession(
   tokenHash: string,
 ): Promise<void> {
   await db
-    .prepare("DELETE FROM sessions WHERE token_hash = ?")
+     .prepare("DELETE FROM user_sessions_and_devices WHERE token_hash = ?")
     .bind(tokenHash)
     .run();
 }

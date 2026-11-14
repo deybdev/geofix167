@@ -28,5 +28,5 @@ CREATE TABLE IF NOT EXISTS sessions (
         ON DELETE CASCADE
 );
 
-ALTER TABLE users
-RENAME COLUMN email TO mobile_number;
+CREATE INDEX IF NOT EXISTS idx_sessions_user_id
+ON sessions(user_id);

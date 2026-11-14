@@ -1,10 +1,19 @@
 import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import VerificationCodeField from "../../shared/components/VerificationCodeField";
 import { Button } from "../../shared/components/ui/button";
+import { verifyRegistrationOtp } from "../../services/authService";
+import { toast } from "../../shared/components/ui/toast";
+import { PATHS } from "../../router/paths";
 
 const VerifyCode = () => {
   const [code, setCode] = useState("");
   const [timeLeft, setTimeLeft] = useState(60);
+  const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const mobileNumber = location.state?.mobileNumber ?? "your mobile number";
 
   // Countdown timer
   useEffect(() => {
@@ -17,12 +26,25 @@ const VerifyCode = () => {
     return () => clearInterval(timer);
   }, [timeLeft]);
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
 
     if (code.length !== 6) return;
-
-    // TODO: Verify code using your API
+    if (mobileNumber === "your mobile number") {
+      setError("Start registration again before verifying a code.");
+      return;
+    }
+    setError("");
+    setIsSubmitting(true);
+    try {
+      await verifyRegistrationOtp(mobileNumber, code);
+      toast.add({ title: "Account verified", description: "You can now sign in to GeoFix 167.", type: "success" });
+      navigate(PATHS.login, { replace: true });
+    } catch (requestError) {
+      setError(requestError.response?.data?.error ?? "We could not verify your code. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleResendCode = () => {
@@ -46,7 +68,7 @@ const VerifyCode = () => {
         </p>
 
         <span className="text-lg font-semibold leading-5 text-slate-800">
-          09123456789
+          {mobileNumber}
         </span>
       </div>
 
@@ -55,14 +77,16 @@ const VerifyCode = () => {
 
         <VerificationCodeField value={code} onChange={setCode} />
 
+        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+
         <p className="text-sm text-slate-500">
           Enter all six digits to enable verification.
         </p>
       </div>
 
       <div className="mt-8 flex flex-col items-center gap-3">
-        <Button type="submit" className="h-12 w-full" disabled={code.length !== 6}>
-          Verify Code
+        <Button type="submit" className="h-12 w-full" disabled={code.length !== 6 || isSubmitting}>
+          {isSubmitting ? "Verifying…" : "Verify Code"}
         </Button>
 
         <p className="text-sm text-slate-500">Didn't receive a code?</p>

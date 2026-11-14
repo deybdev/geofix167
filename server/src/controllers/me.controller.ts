@@ -7,7 +7,7 @@ export function meController(c: Context<AppEnv>) {
 
   return c.json({
     user: {
-      id: user.public_id,
+      id: user.id,
       full_name: user.full_name,
       mobile_number: user.mobile_number,
       role: user.role,

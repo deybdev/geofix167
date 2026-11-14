@@ -4,6 +4,7 @@ import {
   CheckSquare,
   ChevronDown,
   ClipboardList,
+  Radio,
   Grid2X2,
   Megaphone,
   Settings,
@@ -29,6 +30,7 @@ const navigation = [
       { label: "Monitor Dispatch & Tracking", queue: "dispatch-tracking" },
     ],
   },
+  { label: "Dispatch Responders", icon: Radio, path: PATHS.adminDispatch },
   {
     label: "Maintenance Tasks",
     icon: ShieldCheck,
@@ -81,6 +83,7 @@ const navigation = [
       "Account Recovery",
     ],
   },
+  { label: "Registrations", icon: ShieldCheck, path: "/admin/registrations" },
   {
     label: "Reports & Analytics",
     icon: BarChart3,
