@@ -6,9 +6,9 @@ const ROLE_PATHS = {
   admin: PATHS.admin,
   tanod: PATHS.responder,
   resident: PATHS.resident,
-  bdrrmo: PATHS.unauthorized,
-  police: PATHS.unauthorized,
-  fire: PATHS.unauthorized,
+  bdrrmo: PATHS.forbidden,
+  police: PATHS.forbidden,
+  fire: PATHS.forbidden,
 };
 
 export default function GuestRoute() {

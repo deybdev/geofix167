@@ -13,6 +13,7 @@ import Residents from "../features/admin/Residents";
 import ReportsAnalytics from "../features/admin/ReportsAnalytics";
 import AdminSettings from "../features/admin/Settings";
 import AdminDispatch from "../features/admin/AdminDispatch";
+import RegistrationReview from "../features/admin/RegistrationReview";
 
 export const adminRoutes = (
   <Route
@@ -31,6 +32,7 @@ export const adminRoutes = (
       <Route path="resolution-verification" element={<ResolutionVerification />} />
       <Route path="accomplishment-log" element={<AccomplishmentLog />} />
       <Route path="residents" element={<Residents />} />
+      <Route path="registrations" element={<RegistrationReview />} />
       <Route path="reports-analytics" element={<ReportsAnalytics />} />
       <Route path="settings" element={<AdminSettings />} />
     </Route>

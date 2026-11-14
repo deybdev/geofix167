@@ -9,6 +9,9 @@ export const PATHS = {
   terms: "/terms-of-service",
   adminLogin: "/admin-login",
   unauthorized: "/unauthorized",
+  forbidden: "/forbidden",
+  serverError: "/server-error",
+  offline: "/offline",
   test: "/test",
 
   // Auth routes

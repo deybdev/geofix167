@@ -8,7 +8,10 @@ import ServicesPage from "../pages/ServicesPage";
 import AccomplishmentsPage from "../pages/AccomplishmentsPage";
 import PrivacyPolicy from "../pages/PrivacyPolicy";
 import TermsOfService from "../pages/TermsOfService";
-import UnauthorizedPage from "../pages/Unauthorized";
+import UnauthorizedPage from "../pages/errors/Unauthorized";
+import ForbiddenPage from "../pages/errors/Forbidden";
+import ServerErrorPage from "../pages/errors/ServerError";
+import OfflinePage from "../pages/errors/Offline";
 import TestPage from "../pages/Test";
 import AdminLogin from "../features/auth/AdminLogin";
 import GuestRoute from "./GuestRoute";
@@ -29,6 +32,9 @@ export const publicRoutes = (
       <Route path={PATHS.adminLogin} element={<AdminLogin />} />
     </Route>
     <Route path={PATHS.unauthorized} element={<UnauthorizedPage />} />
+    <Route path={PATHS.forbidden} element={<ForbiddenPage />} />
+    <Route path={PATHS.serverError} element={<ServerErrorPage />} />
+    <Route path={PATHS.offline} element={<OfflinePage />} />
     {import.meta.env.DEV && (
       <Route path={PATHS.test} element={<TestPage />} />
     )}

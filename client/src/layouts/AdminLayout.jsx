@@ -15,6 +15,7 @@ const pageTitles = {
   [PATHS.adminResolutionVerification]: "Resolution Verification",
   [PATHS.adminAccomplishmentLog]: "Accomplishment Log",
   [PATHS.adminResidents]: "Residents",
+  "/admin/registrations": "Registration Verification",
   [PATHS.adminReportsAnalytics]: "Reports & Analytics",
   [PATHS.adminSettings]: "Settings",
 };

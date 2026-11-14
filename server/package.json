@@ -7,7 +7,9 @@
     "dev": "wrangler dev",
     "start": "wrangler dev",
     "db:migrate": "wrangler d1 migrations apply geofix167_db --local",
-    "cf-typegen": "wrangler types"
+    "cf-typegen": "wrangler types",
+    "typecheck": "tsc --noEmit -p tsconfig.worker.json",
+    "test:auth": "wrangler deploy --dry-run --outdir .wrangler/auth-test-build && node --test tests/auth.test.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -16,6 +18,8 @@
   },
   "devDependencies": {
     "@types/node": "^25.9.9",
+    "miniflare": "^5.20261023.0-beta",
+    "typescript": "^7.0.2",
     "wrangler": "^4.153.0"
   }
 }

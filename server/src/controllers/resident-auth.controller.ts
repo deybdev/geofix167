@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import type { Context } from "hono";
 import type { AppEnv } from "../types/env";
+import { assertOrigin, sourceThrottle } from "../services/registration-security";
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 
@@ -101,8 +102,10 @@ export async function issueOtp(c: Context<AppEnv>, userId: string, mobile: strin
 }
 
 export async function verifyRegistrationOtp(c: Context<AppEnv>) {
+  assertOrigin(c);
+  await sourceThrottle(c, "legacy-otp");
   const body = await c.req.json().catch(() => null) as { mobile_number?: string; code?: string } | null;
-  if (!body?.mobile_number || !/^\d{6}$/.test(body.code ?? "")) {
+  if (!body?.mobile_number || typeof body.code !== "string" || !/^\d{6}$/.test(body.code)) {
     return c.json({ error: "Enter the six-digit verification code." }, 400);
   }
 
@@ -124,6 +127,11 @@ export async function verifyRegistrationOtp(c: Context<AppEnv>) {
     ).bind(challenge.otp_challenge_id).run();
     return c.json({ error: "That verification code is incorrect." }, 400);
   }
+
+  // New registrations use verified email + resident approval, never this
+  // legacy SMS endpoint. An old OTP must not bypass document review.
+  const modern = await c.env.geofix167_db.prepare("SELECT request_id FROM registration_requests WHERE user_id = ?").bind(challenge.user_id).first();
+  if (modern) return c.json({ error: "Complete verification through your registration page." }, 400);
 
   await c.env.geofix167_db.batch([
     c.env.geofix167_db.prepare(

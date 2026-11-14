@@ -8,8 +8,11 @@ import communicationRoutes from "./routes/communication.route";
 import reportRoutes from "./routes/report.route";
 import mediaRoutes from "./routes/media.route";
 import adminDispatchRoutes from "./routes/admin-dispatch.route";
+import registrationReviewRoutes from "./routes/registration-review.route";
 
 const app = new Hono<AppEnv>();
+
+app.get("/", (c) => c.redirect("/cdn-cgi/local/explorer/"));
 
 app.use(
   "/api/*",
@@ -39,5 +42,6 @@ app.route("/api/communication", communicationRoutes);
 app.route("/api/reports", reportRoutes);
 app.route("/api/media", mediaRoutes);
 app.route("/api/admin/dispatch", adminDispatchRoutes);
+app.route("/api/admin/registrations", registrationReviewRoutes);
 
 export default app;
