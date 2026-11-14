@@ -13,7 +13,7 @@ function toMapReport(report) {
   const lng = report.longitude == null ? null : Number(report.longitude);
   return {
     id: report.incident_id,
-    reportNumber: report.reference_number,
+    reportNumber: "",
     type: report.is_emergency ? "sudden" : "maintenance",
     category: report.incident_category || report.category,
     title: report.title,

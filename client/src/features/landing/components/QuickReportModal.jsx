@@ -84,7 +84,7 @@ export default function QuickReportModal({
 
       const newReport = {
         id: savedReport.incident_id,
-        reportNumber: savedReport.reference_number,
+        reportNumber: "",
         type: reportType,
         category: savedReport.category || savedReport.incident_category || category,
         title: savedReport.title || `${category} Incident Report`,
@@ -109,8 +109,8 @@ export default function QuickReportModal({
 
       onClose();
       toast.add({
-        title: "Incident Report Submitted",
-        description: `Reference #${savedReport.reference_number} was saved successfully.`,
+        title: "Report submitted successfully",
+        description: "Your report is saved and will be reviewed by a barangay admin.",
         type: "success",
       });
     } catch (error) {
