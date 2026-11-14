@@ -67,7 +67,7 @@ try {
   let response = await upload(id, photo(), uploadId);
   assert.equal(response.status, 201, await response.clone().text());
   const { attachment } = await response.json();
-  assert.equal(attachment.media_type, 'PHOTO');
+  assert.equal(attachment.media_type, 'PHOTO'); assert.equal(attachment.upload_id, uploadId);
   const row = sql.prepare('SELECT * FROM incident_media WHERE incident_media_id=?').get(attachment.id);
   assert.equal(row.media_url, `/api/media/${attachment.id}`);
   assert.equal(row.byte_size, png.length);
@@ -83,6 +83,7 @@ try {
   assert.equal((await list(id, 'b')).status, 404);
   assert.equal((await list(id, 'admin')).status, 200);
   assert.equal((await (await list(id)).json()).attachments.length, 1);
+  assert.equal((await (await list(id)).json()).attachments[0].upload_id, uploadId);
   response = await request(attachment.url);
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('Content-Type'), 'image/png');
@@ -219,6 +220,134 @@ try {
     globalThis.fetch = serviceFetch;
     console.log('PASS resident media isolation: saved report/timeline on 503, media-only recovery, report errors and abort propagation');
   } finally { globalThis.fetch = originalFetch; }
+
+  // Priority 3: recovering unfinished uploads on an existing report via upload_id.
+  const recovery = await import('../../client/src/features/resident/uploadRecovery.js');
+  const memoryStorage = ({ failWrites = false } = {}) => {
+    const map = new Map();
+    return { map, getItem: key => map.get(key) ?? null, removeItem: key => { map.delete(key); },
+      setItem(key, value) {
+        if (failWrites && !key.endsWith(':probe')) throw Object.assign(new Error('Quota exceeded'), { name: 'QuotaExceededError' });
+        map.set(key, String(value));
+      } };
+  };
+  const variant = (label, name = `${label}.png`, type = 'image/png') => new File([png, label], name, { type });
+  const rows = reportId => sql.prepare('SELECT upload_key FROM incident_media WHERE incident_id=? ORDER BY created_at, incident_media_id').all(reportId).map(r => r.upload_key);
+  {
+    const fetchBefore = globalThis.fetch;
+    const drops = []; // per upload: 'response' (saved, reply lost) | 'request' (never reached server) | null
+    const posts = [];
+    globalThis.fetch = async (path, options) => {
+      const headers = new Headers(options.headers);
+      headers.set('Cookie', 'geofix_session=a');
+      const isUpload = options.body instanceof FormData;
+      const drop = isUpload ? drops.shift() ?? null : null;
+      if (drop === 'request') throw new TypeError('Simulated offline');
+      const response = await request(path, { ...options, headers }, env);
+      if (isUpload) posts.push({ upload_id: options.body.get('upload_id'), status: response.status });
+      if (drop === 'response') throw new TypeError('Simulated lost response');
+      return response;
+    };
+    try {
+      const reportId = await create();
+      const storage = memoryStorage();
+      const store = recovery.createAttemptStore({ userId: 'a', incidentId: reportId, storage });
+      assert.equal(store.persistent, true);
+      const A = { id: crypto.randomUUID(), file: variant('alpha') };
+      const B = { id: crypto.randomUUID(), file: variant('bravo') };
+      const failingList = async () => { throw Object.assign(new Error('Media signing is not configured.'), { status: 503 }); };
+      const uploadedIds = new Set();
+      drops.push('response', 'request');
+      let result = await recovery.uploadQueue({ reportId, items: [A, B], store, uploadedIds, list: failingList,
+        upload: async (id, file, uploadId) => {
+          // Attempt metadata is persisted before each request is sent.
+          assert.ok(store.load().some(attempt => attempt.upload_id === uploadId));
+          return residentService.uploadReportAttachment(id, file, uploadId);
+        } });
+      // A was saved but its reply was lost; listing failed, so both stay unresolved.
+      assert.deepEqual(rows(reportId), [A.id]);
+      assert.deepEqual(result.errors.map(e => [e.id, e.kind]), [[A.id, 'ambiguous'], [B.id, 'ambiguous']]);
+      assert.equal(result.listError, 'Media signing is not configured.');
+      assert.equal(uploadedIds.size, 0);
+      const persisted = JSON.parse(storage.map.get(recovery.attemptStorageKey('a', reportId)));
+      assert.equal(persisted.version, 1);
+      const recordedA = persisted.attempts.find(a => a.upload_id === A.id);
+      assert.equal(recordedA.sha256, Buffer.from(await crypto.subtle.digest('SHA-256', await A.file.arrayBuffer())).toString('hex'));
+      assert.deepEqual([recordedA.type, recordedA.size, recordedA.name], ['image/png', A.file.size, 'alpha.png']);
+      assert.ok(!JSON.stringify(persisted).includes('data:'), 'File bytes are never serialized');
+
+      // Refresh: File objects are gone; a new store reads the same scoped metadata.
+      const reloaded = recovery.createAttemptStore({ userId: 'a', incidentId: reportId, storage });
+      assert.deepEqual(reloaded.load().map(a => a.upload_id).sort(), [A.id, B.id].sort());
+      assert.deepEqual(recovery.createAttemptStore({ userId: 'b', incidentId: reportId, storage }).load(), []);
+      const listed = (await residentService.getReportAttachments(reportId)).data.attachments;
+      assert.deepEqual(listed.map(a => a.upload_id), [A.id]);
+      let reconciled = recovery.reconcileUploads({ attempts: reloaded.load(), attachments: listed });
+      assert.deepEqual(reconciled.confirmed, [A.id]);
+      assert.deepEqual(reconciled.attempts.map(a => a.upload_id), [B.id]);
+      reloaded.remove(reconciled.confirmed);
+
+      // Reselection: the filename alone, or the bytes with another type, never matches.
+      assert.equal(await recovery.matchReselectedFile(variant('different', 'bravo.png'), reconciled.attempts), null);
+      assert.equal(await recovery.matchReselectedFile(variant('bravo', 'bravo.webp', 'image/webp'), reconciled.attempts), null);
+      const match = await recovery.matchReselectedFile(variant('bravo', 'renamed.png'), reconciled.attempts);
+      assert.equal(match.upload_id, B.id);
+      assert.equal(await recovery.matchReselectedFile(variant('bravo'), reconciled.attempts, new Set([B.id])), null);
+      posts.length = 0;
+      result = await recovery.uploadQueue({ reportId, items: [{ id: match.upload_id, file: variant('bravo', 'renamed.png') }],
+        store: reloaded, uploadedIds: new Set() });
+      assert.deepEqual(result.errors, []);
+      assert.deepEqual(posts, [{ upload_id: B.id, status: 201 }]);
+      assert.deepEqual(reloaded.load(), []);
+      assert.equal(storage.map.has(recovery.attemptStorageKey('a', reportId)), false);
+      // Preserved UUIDs replay instead of duplicating.
+      assert.equal((await residentService.uploadReportAttachment(reportId, A.file, A.id)).idempotent_replay, true);
+      assert.deepEqual(rows(reportId), [A.id, B.id]);
+
+      // Fill to 5 where the 5th reply is lost, then reconcile while every slot is full.
+      const C = { id: crypto.randomUUID(), file: variant('charlie') };
+      const D = { id: crypto.randomUUID(), file: variant('delta') };
+      drops.push(null, null, 'response');
+      result = await recovery.uploadQueue({ reportId, items: [
+        { id: crypto.randomUUID(), file: variant('x1') }, { id: crypto.randomUUID(), file: variant('x2') }, C,
+      ], store: reloaded, uploadedIds: new Set() });
+      // The ambiguous failure was reconciled after the fact using upload_id.
+      assert.deepEqual(result.errors, []);
+      assert.equal(rows(reportId).length, 5);
+      reloaded.record(await recovery.describeAttempt(C)); // e.g. tab closed before reconciliation
+      const full = (await residentService.getReportAttachments(reportId)).data.attachments;
+      reconciled = recovery.reconcileUploads({ queue: [C, D], attempts: reloaded.load(), attachments: full });
+      assert.deepEqual(reconciled.confirmed, [C.id]);
+      assert.deepEqual(reconciled.queue.map(i => i.id), [D.id]);
+      posts.length = 0;
+      const capIds = new Set();
+      result = await recovery.uploadQueue({ reportId, items: [C, D], store: reloaded, uploadedIds: capIds });
+      assert.deepEqual(posts, [{ upload_id: D.id, status: 409 }], 'confirmed C is not re-sent');
+      assert.ok(capIds.has(C.id));
+      assert.deepEqual(result.errors.map(e => [e.id, e.status, e.kind]), [[D.id, 409, 'retryable']]);
+      assert.deepEqual(reloaded.load().map(a => a.upload_id), [D.id], 'cap rejection keeps the attempt recoverable');
+      assert.equal(rows(reportId).length, 5);
+
+      // Invalid files are terminal rejections: their attempt is dropped.
+      const rejectId = await create();
+      const rejectStore = recovery.createAttemptStore({ userId: 'a', incidentId: rejectId, storage });
+      result = await recovery.uploadQueue({ reportId: rejectId, items: [{ id: crypto.randomUUID(), file: new File(['fake'], 'bad.png', { type: 'image/png' }) }],
+        store: rejectStore, uploadedIds: new Set() });
+      assert.deepEqual(result.errors.map(e => [e.status, e.kind]), [[415, 'rejected']]);
+      assert.deepEqual(rejectStore.load(), []);
+
+      // Storage blocked or full: uploads still work; recovery is reported as unavailable.
+      for (const blocked of [null, memoryStorage({ failWrites: true }), { getItem() { throw new Error('denied'); }, setItem() { throw new Error('denied'); }, removeItem() {} }]) {
+        const noStore = recovery.createAttemptStore({ userId: 'a', incidentId: rejectId, storage: blocked });
+        result = await recovery.uploadQueue({ reportId: rejectId, items: [{ id: crypto.randomUUID(), file: variant(`blocked-${Math.random()}`) }],
+          store: noStore, uploadedIds: new Set() });
+        assert.deepEqual(result.errors, []);
+        assert.equal(result.persistent, false);
+      }
+      assert.equal(rows(rejectId).length, 3);
+      console.log('PASS upload recovery: upload_id reconciliation, persisted-before-send metadata, content-verified reselection, false failures, full-slot reconciliation, 5-file cap and storage fallback');
+    } finally { globalThis.fetch = fetchBefore; }
+  }
   console.log('PASS attachments: local R2 bytes, migration, validation, ownership, signatures, ranges, retries, concurrency, caps and failure cleanup');
 } finally {
   await mf.dispose();

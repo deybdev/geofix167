@@ -51,6 +51,7 @@ export function normalizeReport(record) {
     urgency, status: group, status_id: statusId,
     status_code: record.status_code ?? code,
     status_label: record.status_label ?? label,
+    reported_by_user_id: record.reported_by_user_id ?? null,
     is_terminal: record.is_terminal === 1 || record.is_terminal === true || [10, 11, 12].includes(statusId),
     photo_url: record.photo_url ?? null,
     attachments: record.attachments ?? [],

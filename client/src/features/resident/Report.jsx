@@ -24,9 +24,11 @@ import { Button } from "../../shared/components/ui/button";
 import MediaPicker from "./components/MediaPicker";
 import MapViewer from "../../shared/components/MapViewer";
 import { isInside } from "../../shared/utils/mapUtils";
-import { buildResidentReportPayload, submitReport, uploadReportAttachment } from "../../services/residentService";
+import { buildResidentReportPayload, submitReport } from "../../services/residentService";
 import { PATHS } from "../../router/paths";
 import { useGeoLocation } from "../../shared/context/LocationProvider";
+import { useAuth } from "../../shared/hooks/useAuth";
+import { createAttemptStore, PERSISTENCE_WARNING, uploadQueue } from "./uploadRecovery";
 
 const STEPS = ["Report type", "What happened?", "Where is it?", "Tell us more", "Add photos or video", "Review and send"];
 
@@ -104,8 +106,19 @@ export default function Report() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState("");
   const [uploadErrors, setUploadErrors] = useState([]);
+  const [persistWarning, setPersistWarning] = useState("");
+  // Each item's id is its upload_id; it never changes across retries or navigation.
   const uploadedIds = useRef(new Set());
   const uploadingRef = useRef(false);
+  const { user } = useAuth();
+
+  // Uploads do not continue in the background once this page is left.
+  useEffect(() => {
+    if (!uploading) return undefined;
+    const warn = event => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [uploading]);
 
   // Location: comes from the photo page if a photo was just taken,
   // otherwise from this device's GPS
@@ -203,20 +216,18 @@ export default function Report() {
     uploadingRef.current = true;
     setUploading(true);
     setUploadErrors([]);
-    const errors = [];
     try {
       // Sequential uploads bound memory and preserve successful files on retry.
-      for (const [index, item] of pending.entries()) {
-        setUploadProgress(`Uploading ${index + 1} of ${pending.length}: ${item.file.name}`);
-        try {
-          await uploadReportAttachment(report.public_id, item.file, item.id);
-          uploadedIds.current.add(item.id);
-        } catch (error) {
-          errors.push({ id: item.id, name: item.file.name, message: error.message });
-        }
-      }
-      setUploadErrors(errors);
-      setUploadProgress(errors.length ? `${uploadedIds.current.size} of ${files.length} files uploaded.` : `${files.length} files uploaded.`);
+      // Attempt metadata (never the File itself) is persisted before sending.
+      const store = createAttemptStore({ userId: user?.id, incidentId: report.public_id });
+      const result = await uploadQueue({
+        reportId: report.public_id, items: pending, store, uploadedIds: uploadedIds.current,
+        onProgress: ({ index, total, item }) => setUploadProgress(`Uploading ${index + 1} of ${total}: ${item.file.name}`),
+      });
+      setPersistWarning(result.persistent ? "" : PERSISTENCE_WARNING);
+      setUploadErrors(result.errors);
+      const done = files.filter(item => uploadedIds.current.has(item.id)).length;
+      setUploadProgress(result.errors.length ? `${done} of ${files.length} files uploaded.` : `${files.length} files uploaded.`);
     } finally {
       uploadingRef.current = false;
       setUploading(false);
@@ -271,17 +282,26 @@ export default function Report() {
         <p className="mt-1 text-sm font-semibold text-primary">{savedReport.status_label}</p>
         {files.length > 0 && <div className="mt-4 w-full space-y-2 text-left" aria-busy={uploading}>
           <p role="status" aria-live="polite" className="text-sm text-slate-600">{uploadProgress}</p>
-          {uploading && <p className="text-xs text-slate-500">Your report is saved. Keep this page open while media uploads.</p>}
+          {uploading && <p className="text-xs text-slate-500">Your report is saved. Keep this page open while media uploads; uploads do not continue in the background after you leave.</p>}
+          {persistWarning && <p role="alert" className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">{persistWarning}</p>}
           {uploadErrors.length > 0 && <div role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
             <p>Your report was submitted, but some attachments could not be uploaded.</p>
             <ul className="mt-2 list-disc pl-4">{uploadErrors.map(error => <li key={error.id}>{error.name}: {error.message}</li>)}</ul>
             <Button type="button" variant="outline" onClick={() => uploadFiles(savedReport)} disabled={uploading} className="mt-3">Retry failed uploads</Button>
+            <p className="mt-2 text-xs">You can also finish these uploads later from Report Details.</p>
           </div>}
         </div>}
         <Button
           type="button"
           disabled={uploading}
-          onClick={() => navigate(`${PATHS.reportDetails}/${encodeURIComponent(savedReport.public_id)}`)}
+          onClick={() => {
+            // Convenience hand-off of live File objects; refresh/tab-close recovery
+            // relies on the persisted attempt metadata instead.
+            const remaining = files.filter(item => !uploadedIds.current.has(item.id));
+            navigate(`${PATHS.reportDetails}/${encodeURIComponent(savedReport.public_id)}`, {
+              state: remaining.length ? { pendingUploads: { reportId: savedReport.public_id, items: remaining } } : undefined,
+            });
+          }}
           className="mt-6 h-11 rounded-lg px-6 text-sm font-semibold"
         >
           View Report Details

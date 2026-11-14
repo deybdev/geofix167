@@ -62,7 +62,9 @@ export async function attachmentResponse(row: Attachment, secret: string) {
   const hex = Array.from(signature, b => b.toString(16).padStart(2, "0")).join("");
   // Relative to the API origin: works with the existing same-origin /api proxy.
   const url = `/api/media/${encodeURIComponent(row.incident_media_id)}?expires=${expires}&signature=${hex}`;
-  return { id: row.incident_media_id, media_type: row.media_type, content_type: row.content_type,
+  // upload_id echoes the client-generated idempotency key so an authenticated
+  // client can reconcile attempts whose upload response was lost.
+  return { id: row.incident_media_id, upload_id: row.upload_key, media_type: row.media_type, content_type: row.content_type,
     byte_size: row.byte_size, original_filename: row.original_filename, created_at: row.created_at,
     url, expires_at: new Date(expires * 1000).toISOString() };
 }
