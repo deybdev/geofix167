@@ -11,14 +11,22 @@ import { toast } from "../../shared/components/ui/toast";
 
 import { FormField, PhoneNumberField } from "../../shared/components/FormField";
 import { loginSchema } from "../../schemas/login.schema";
+import { PATHS } from "../../router/paths";
+import AuthLoading from "./AuthLoading";
+import { getApiErrorMessage } from "../../shared/utils/apiError";
+import LoadingOverlay from "../../shared/components/loading/LoadingOverlay";
 
 const ROLE_PATHS = {
-  responder: "/responder",
+  tanod: "/responder",
+  responder: PATHS.responder,
   resident: "/resident",
+  bdrrmo: "/unauthorized",
+  police: "/unauthorized",
+  fire: "/unauthorized",
 };
 
 export default function Login() {
-  const { signIn } = useAuth();
+  const { signIn, commitSignIn, signOut } = useAuth();
   const navigate = useNavigate();
 
   const [showPassword, setShowPassword] = useState(false);
@@ -44,40 +52,33 @@ export default function Login() {
     try {
       const user = await signIn(values.phoneNumber, values.password);
 
+      // The admin portal lives on its own login; reject admin accounts here
+      if (user.role === "admin") {
+        await signOut();
+        const message = "Invalid mobile number or password.";
+        setServerError(message);
+        return;
+      }
+
+      commitSignIn(user);
+
       toast.add({
         title: "Login successful",
         description: "Welcome back!",
         type: "success",
       });
 
-      navigate(ROLE_PATHS[user.role] ?? "/", {
-        replace: true,
-      });
+      // Straight into the app — location is pinned inside the report flows
+      navigate(ROLE_PATHS[user.role] ?? PATHS.home, { replace: true });
     } catch (err) {
-      const message =
-        err.response?.data?.error ?? "Login failed. Please try again.";
-
+      const message = getApiErrorMessage(err, "Login failed. Please try again.");
       setServerError(message);
-      toast.add({
-        title: "Login failed",
-        description: message,
-        type: "error",
-      });
     }
   };
 
   return (
-    <form onSubmit={handleSubmit(handleLogin)} noValidate>
-      {serverError && (
-        <p
-          role="alert"
-          className="rounded-lg bg-destructive/10 px-3 py-2.5 text-sm leading-5 text-destructive"
-        >
-          {serverError}
-        </p>
-      )}
-
-      <div className="mt-7 flex flex-col items-center gap-1.5">
+    <><LoadingOverlay open={isSubmitting} message="Signing you in…" /><form onSubmit={handleSubmit(handleLogin)} noValidate>
+      <div className="mt-5 flex flex-col items-center gap-1">
         <h2 className="text-[22px] font-bold leading-7 text-primary">
           Welcome Back
         </h2>
@@ -87,8 +88,17 @@ export default function Login() {
           community updates.
         </p>
       </div>
-
-      <div className="mt-8 flex flex-col gap-5">
+      <a href="/api/auth/google/start" className="mt-5 block rounded-lg bg-primary p-3 text-center text-sm font-semibold text-white transition hover:bg-primary/90">Continue with Google</a>
+      <div className="my-4 flex items-center gap-3 text-xs text-slate-400"><span className="h-px flex-1 bg-slate-200" /><span>or log in with mobile</span><span className="h-px flex-1 bg-slate-200" /></div>
+      <div className="flex flex-col gap-4">
+        {serverError && (
+          <p
+            role="alert"
+            className="rounded-lg bg-destructive/10 px-3 py-2.5 text-sm leading-5 text-destructive"
+          >
+            {serverError}
+          </p>
+        )}
         <Controller
           control={control}
           name="phoneNumber"
@@ -118,7 +128,7 @@ export default function Login() {
               aria-invalid={!!errors.password}
               aria-describedby={errors.password ? "password-error" : undefined}
               {...register("password")}
-              className="placeholder:font-normal placeholder:text-slate-400"
+              className="font-normal placeholder:font-normal placeholder:text-slate-400"
             />
 
             <Button
@@ -127,7 +137,7 @@ export default function Login() {
               size="icon-sm"
               onClick={() => setShowPassword((visible) => !visible)}
               aria-label={showPassword ? "Hide password" : "Show password"}
-              className="absolute right-1 top-1/2 -translate-y-1/2 text-slate-400 hover:bg-transparent hover:text-slate-600"
+                className="absolute right-1 top-1/2 -translate-y-1/2 text-slate-400 hover:bg-transparent hover:text-slate-600 active:-translate-y-1/2!"
             >
               {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
             </Button>
@@ -147,8 +157,11 @@ export default function Login() {
         disabled={isSubmitting}
         className="mt-3 h-12 w-full rounded-lg bg-primary text-sm font-semibold text-white transition-colors hover:bg-primary/90 focus-visible:ring-primary/20 sm:h-11"
       >
-        {isSubmitting ? "Logging in…" : "Log In"}
+        {isSubmitting ? <AuthLoading label="Logging in…" /> : "Log In"}
       </Button>
+
+      <button type="button" onClick={() => navigate("/guest")} className="mt-3 w-full text-center text-sm font-semibold text-primary hover:underline">Continue as guest</button>
+      <p className="mt-1 text-center text-xs text-slate-400">Guests can browse updates. Sign in to submit and track reports.</p>
 
       <p className="mt-2 text-center text-[13px] leading-5 text-slate-500">
         Don&apos;t have an account?{" "}
@@ -159,6 +172,6 @@ export default function Login() {
           Create Account
         </Link>
       </p>
-    </form>
+    </form></>
   );
 }

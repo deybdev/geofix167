@@ -5,8 +5,14 @@ import { cors } from "hono/cors";
 import type { AppEnv } from "./types/env";
 import authRoutes from "./routes/auth.route";
 import communicationRoutes from "./routes/communication.route";
+import reportRoutes from "./routes/report.route";
+import mediaRoutes from "./routes/media.route";
+import adminDispatchRoutes from "./routes/admin-dispatch.route";
+import registrationReviewRoutes from "./routes/registration-review.route";
 
 const app = new Hono<AppEnv>();
+
+app.get("/", (c) => c.redirect("/cdn-cgi/local/explorer/"));
 
 app.use(
   "/api/*",
@@ -17,8 +23,8 @@ app.use(
         : "";
     },
     credentials: true,
-    allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
-    allowHeaders: ["Content-Type"],
+    allowMethods: ["GET", "HEAD", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allowHeaders: ["Content-Type", "X-Guest-Token", "Range", "If-Range"],
   }),
 );
 
@@ -28,5 +34,14 @@ app.use(
 // POST /api/auth/logout
 app.route("/api/auth", authRoutes);
 app.route("/api/communication", communicationRoutes);
+
+// Incident report routes:
+// POST /api/reports
+// GET  /api/reports
+// GET  /api/reports/:id
+app.route("/api/reports", reportRoutes);
+app.route("/api/media", mediaRoutes);
+app.route("/api/admin/dispatch", adminDispatchRoutes);
+app.route("/api/admin/registrations", registrationReviewRoutes);
 
 export default app;

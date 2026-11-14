@@ -4,7 +4,17 @@ import {
   Flame, RotateCcw, ScanLine, Search, Siren, TriangleAlert, Video, Wrench, X,
 } from "lucide-react";
 import { toast } from "../../shared/components/ui/toast";
+import { PATHS } from "../../router/paths";
 import MapViewer from "../../shared/components/MapViewer";
+import {
+  FACILITY_PIN_CATEGORY,
+  RESPONSE_FACILITIES,
+  STAGE_PROGRESS,
+  distanceKm,
+  facilityInfo,
+  pointAtFraction,
+  routePoints,
+} from "../../shared/utils/dispatch";
 
 const initialReports = [
   {
@@ -57,15 +67,6 @@ const EXTERNAL_AGENCIES = {
 const agenciesFor = (report) => Object.entries(EXTERNAL_AGENCIES).filter(([, agency]) => !agency.accidentOnly || report.accident);
 const TEAM_OPTIONS = ["BDRRMO Response", "Maintenance Team A", "Engineering Crew B", "Barangay Sanitizers", "Meralco Dispatch", "Barangay Public Works"];
 
-/* Mocked response-station coordinates around Barangay 167, matched to
-   MapViewer pin categories (crime/fire/incident). */
-const RESPONSE_FACILITIES = {
-  police: { name: "Police Community Precinct 7", lat: 14.7331, lng: 121.0158, via: "Quezon Ave" },
-  fire: { name: "Caloocan Fire Sub-Station 167", lat: 14.7301, lng: 121.0201, via: "Rizal St Ext." },
-  hospital: { name: "Rizal Medical Center", lat: 14.7284, lng: 121.0106, via: "Magsaysay Blvd" },
-};
-const FACILITY_PIN_CATEGORY = { police: "crime", fire: "fire", hospital: "incident" };
-
 /* Mocked road-status advisories surfaced during unit tracking so dispatch can
    anticipate slowdowns on the responder's route. */
 const ROAD_CLOSURES = {
@@ -82,53 +83,6 @@ const ROAD_CLOSURES = {
     { road: "Barangay Road 3", section: "School frontage", note: "Clear, no obstructions" },
   ],
 };
-
-/* Three-point route walked by the responder, departing the responding station
-   and terminating at the incident, with a perpendicular bend at the midpoint
-   so it reads as a road rather than a straight line. */
-function routePoints(unitKey, report) {
-  const facility = RESPONSE_FACILITIES[unitKey];
-  const mid = { lat: (report.lat + facility.lat) / 2, lng: (report.lng + facility.lng) / 2 };
-  const bend = { lat: mid.lat + (report.lng - facility.lng) * 0.14, lng: mid.lng - (report.lat - facility.lat) * 0.14 };
-  return [{ lat: facility.lat, lng: facility.lng }, bend, { lat: report.lat, lng: report.lng }];
-}
-
-/* Progress fraction of each tracking stage along the responder's route. */
-const STAGE_PROGRESS = [0.18, 0.62, 1];
-
-/* Position on a polyline at fraction t of its total length. */
-function pointAtFraction(points, t) {
-  const seg = (point, start) => Math.hypot(point.lat - start.lat, point.lng - start.lng);
-  const total = points.slice(1).reduce((sum, point, index) => sum + seg(point, points[index]), 0);
-  let walked = t * total;
-  for (let index = 0; index < points.length - 1; index += 1) {
-    const span = seg(points[index + 1], points[index]);
-    if (walked <= span || index === points.length - 2) {
-      const ratio = span ? Math.min(1, walked / span) : 1;
-      return {
-        lat: points[index].lat + (points[index + 1].lat - points[index].lat) * ratio,
-        lng: points[index].lng + (points[index + 1].lng - points[index].lng) * ratio,
-      };
-    }
-    walked -= span;
-  }
-  return points[points.length - 1];
-}
-
-/* Straight-line distance (km) and driving ETA at ~28 km/h + 1 min dispatch overhead. */
-function distanceKm(point, facility) {
-  const R = 6371, rad = Math.PI / 180;
-  const dLat = (facility.lat - point.lat) * rad, dLng = (facility.lng - point.lng) * rad;
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(point.lat * rad) * Math.cos(facility.lat * rad) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(h));
-}
-
-function facilityInfo(agencyKey, report) {
-  const facility = RESPONSE_FACILITIES[agencyKey];
-  const km = Number(distanceKm(report, facility).toFixed(1));
-  const mins = Math.max(2, Math.round((km / 28) * 60) + 1);
-  return { name: facility.name, via: facility.via, km, eta: `${mins} mins` };
-}
 
 const isEmergency = (report) => report.urgency === "Critical" || report.urgency === "Emergency";
 
@@ -217,7 +171,7 @@ function IncidentDetailsModal({ report, onClose, onResolve, onSaved }) {
           {/* Geotagged map (shared MapViewer) showing where the incident happened */}
           <div className="mt-2 overflow-hidden rounded-lg border border-[#dfe7ea]">
             <div className="h-[340px]">
-              <MapViewer compact incidents={[{ id: report.id, title: report.title, category: report.category, status: report.status, lat: report.lat, lng: report.lng }]} selectedIncident={{ id: report.id, lat: report.lat, lng: report.lng }} />
+              <MapViewer compact incidents={[{ id: report.id, title: report.title, category: report.category, status: report.status, lat: report.lat, lng: report.lng }]} selectedIncident={{ id: report.id, lat: report.lat, lng: report.lng }} expandPath={PATHS.adminMapView} />
             </div>
             <div className="flex items-center justify-between px-3 py-2 text-[9px] font-bold text-[#60738f]">
               <span>{report.location}, Barangay 167</span>
@@ -337,7 +291,7 @@ function DispatchModal({ report, onClose, onDispatch, onTransaction }) {
                 <MapViewer compact incidents={[
                   { id: report.id, title: report.title, category: report.category, status: report.status, lat: report.lat, lng: report.lng },
                   ...agencies.map(([key]) => { const facility = RESPONSE_FACILITIES[key]; return { id: `facility-${key}`, title: facility.name, category: FACILITY_PIN_CATEGORY[key], status: "Ready", lat: facility.lat, lng: facility.lng }; }),
-                ]} selectedIncident={{ id: report.id, lat: report.lat, lng: report.lng }} />
+                ]} selectedIncident={{ id: report.id, lat: report.lat, lng: report.lng }} expandPath={PATHS.adminMapView} />
               </div>
               <div className="px-3 py-2 text-[9px] font-medium text-[#60738f]">Pulsing pin = accident location. Station icons mark the requestable units below.</div>
             </div>
@@ -432,7 +386,7 @@ function DispatchTransactionModal({ data, onClose, onTrack }) {
               <MapViewer compact incidents={[
                 { id: report.id, title: report.title, category: report.category, status: report.status, lat: report.lat, lng: report.lng },
                 ...units.map((unit) => { const facility = RESPONSE_FACILITIES[unit.key]; return { id: `facility-${unit.key}`, title: facility.name, category: FACILITY_PIN_CATEGORY[unit.key], status: "Ready", lat: facility.lat, lng: facility.lng }; }),
-              ]} selectedIncident={{ id: report.id, lat: report.lat, lng: report.lng }} />
+              ]} selectedIncident={{ id: report.id, lat: report.lat, lng: report.lng }} expandPath={PATHS.adminMapView} />
             </div>
             <div className="px-3 py-2 text-[9px] font-medium text-[#60738f]">Pulsing pin = incident location{units.length ? ". Station icons mark the dispatched units." : "."}</div>
           </div>
@@ -510,7 +464,7 @@ function UnitTrackModal({ units, report, onClose }) {
               <MapViewer compact incidents={[
                 { id: report.id, title: report.title, category: report.category, status: report.status, lat: report.lat, lng: report.lng },
                 ...routes.map((route) => { const facility = RESPONSE_FACILITIES[route.key]; return { id: `facility-${route.key}`, title: facility.name, category: FACILITY_PIN_CATEGORY[route.key], status: "Ready", lat: facility.lat, lng: facility.lng }; }),
-              ]} selectedIncident={{ id: report.id, lat: report.lat, lng: report.lng }} routes={routes} trackers={trackers} dropOffs={dropOffs} />
+              ]} selectedIncident={{ id: report.id, lat: report.lat, lng: report.lng }} routes={routes} trackers={trackers} dropOffs={dropOffs} expandPath={PATHS.adminMapView} />
             </div>
             <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-[9px] font-medium text-[#60738f]">
               <span>Pulsing pin = incident location. Dashed lines are station → scene routes; moving agency icons are responding units en route; the green arrow pin marks the drop-off.</span>

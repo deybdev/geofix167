@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, NavLink, useNavigate } from "react-router-dom";
 import {
   Menu,
   X,
@@ -19,6 +19,8 @@ import logoImg from "../../../assets/images/logo.png";
 import { PATHS } from "../../../router/paths";
 
 export default function LandingHeader({ onReportClick }) {
+  const navigate = useNavigate();
+  const reportAction = onReportClick ?? (() => navigate(PATHS.publicMap));
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Prevent body scroll when mobile menu drawer is open
@@ -34,11 +36,11 @@ export default function LandingHeader({ onReportClick }) {
   }, [mobileMenuOpen]);
 
   const navLinks = [
-    { label: "Home", href: "#top", icon: House },
-    { label: "About Us", href: "#about", icon: Info },
-    { label: "Live Map & Reports", href: "#map-section", icon: MapPin },
-    { label: "Barangay Services", href: "#services", icon: Wrench },
-    { label: "Accomplishments", href: "#accomplishments", icon: CheckCircle2 },
+    { label: "Home", href: PATHS.home, icon: House },
+    { label: "About Us", href: PATHS.about, icon: Info },
+    { label: "Live Map & Reports", href: PATHS.publicMap, icon: MapPin },
+    { label: "Barangay Services", href: PATHS.services, icon: Wrench },
+    { label: "Accomplishments", href: PATHS.accomplishments, icon: CheckCircle2 },
   ];
 
   const handleNavClick = (e, link) => {
@@ -50,11 +52,11 @@ export default function LandingHeader({ onReportClick }) {
 
   return (
     <>
-      <header className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/95 backdrop-blur-md transition-all">
-        <div className="flex h-16 sm:h-20 w-full items-center justify-between px-4 sm:px-8 lg:px-10 xl:px-12">
+      <header className="sticky top-0 z-40 h-[76px] shrink-0 border-b border-emerald-900/10 bg-[#fdfefd]/95 shadow-[0_8px_30px_rgba(15,64,42,0.08)] backdrop-blur-xl transition-all sm:h-[88px]">
+        <div className="site-container flex h-full items-center justify-between">
           
           {/* Brand Logo & Name (Responsive) */}
-          <a href="#top" className="flex items-center gap-2 sm:gap-3 transition-opacity hover:opacity-90 min-w-0 mr-2">
+          <Link to={PATHS.home} className="flex items-center gap-2 sm:gap-3 transition-opacity hover:opacity-90 min-w-0 mr-2">
             <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-white p-1 shadow-sm ring-1 ring-slate-900/10">
               <img src={logoImg} alt="GeoFix 167 Logo" className="h-8 w-8 sm:h-10 sm:w-10 object-contain" />
             </div>
@@ -71,19 +73,20 @@ export default function LandingHeader({ onReportClick }) {
                 Barangay 167<span className="hidden sm:inline"> · Caloocan City</span>
               </span>
             </div>
-          </a>
+          </Link>
 
           {/* Desktop Navigation Links */}
           <nav className="hidden items-center gap-8 md:flex">
             {navLinks.map((link) => (
-              <a
+              <NavLink
                 key={link.label}
-                href={link.href}
+                to={link.href}
                 onClick={(e) => handleNavClick(e, link)}
-                className="text-sm font-semibold text-slate-600 transition-colors hover:text-[#2E8B57]"
+                end={link.href === PATHS.home}
+                className={({ isActive }) => `relative py-2 text-[13px] font-bold transition-colors ${isActive ? "text-[#17633f] after:absolute after:inset-x-0 after:-bottom-1 after:h-0.5 after:rounded-full after:bg-[#2e8b57]" : "text-slate-600 hover:text-[#2E8B57]"}`}
               >
                 {link.label}
-              </a>
+              </NavLink>
             ))}
           </nav>
 
@@ -98,7 +101,7 @@ export default function LandingHeader({ onReportClick }) {
 
             <button
               type="button"
-              onClick={onReportClick}
+              onClick={reportAction}
               className="group relative inline-flex h-9.5 items-center gap-1.5 overflow-hidden rounded-lg bg-gradient-to-r from-[#ea580c] to-[#dc2626] px-4.5 text-xs font-bold tracking-wide text-white shadow-md shadow-orange-500/25 transition-all hover:from-[#c2410c] hover:to-[#b91c1c] hover:shadow-orange-600/30 active:scale-[0.98]"
             >
               <AlertTriangle size={15} className="transition-transform group-hover:scale-110" />
@@ -112,7 +115,7 @@ export default function LandingHeader({ onReportClick }) {
             {/* Direct Emergency Button on Phone / Tablet */}
             <button
               type="button"
-              onClick={onReportClick}
+              onClick={reportAction}
               aria-label="Report emergency incident immediately"
               className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-gradient-to-r from-[#ea580c] to-[#dc2626] px-3 sm:px-3.5 text-xs font-bold text-white shadow-md shadow-orange-600/30 active:scale-95 transition-all"
             >
@@ -192,9 +195,9 @@ export default function LandingHeader({ onReportClick }) {
                 {navLinks.map((link) => {
                   const Icon = link.icon;
                   return (
-                    <a
+                    <NavLink
                       key={link.label}
-                      href={link.href}
+                      to={link.href}
                       onClick={(e) => handleNavClick(e, link)}
                       className="group flex items-center justify-between rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-700 hover:bg-emerald-50 hover:text-[#2E8B57] transition-all active:scale-[0.99]"
                     >
@@ -205,7 +208,7 @@ export default function LandingHeader({ onReportClick }) {
                         <span>{link.label}</span>
                       </div>
                       <ChevronRight size={14} className="text-slate-300 group-hover:text-[#2E8B57] transition-colors" />
-                    </a>
+                    </NavLink>
                   );
                 })}
               </nav>

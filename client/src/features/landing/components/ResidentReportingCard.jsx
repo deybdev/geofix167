@@ -29,7 +29,7 @@ export default function ResidentReportingCard({
   const [formData, setFormData] = useState({
     type: "sudden",
     category: "Fire Incident",
-    street: "Molave St.",
+    street: "",
     description: "",
     urgency: "High",
   });
@@ -45,7 +45,7 @@ export default function ResidentReportingCard({
     }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.description.trim()) {
       toast.add({
@@ -58,39 +58,91 @@ export default function ResidentReportingCard({
 
     setIsSubmitting(true);
 
-    const lat = selectedCoordinates?.lat || 14.735 + (Math.random() - 0.5) * 0.006;
-    const lng = selectedCoordinates?.lng || 121.015 + (Math.random() - 0.5) * 0.006;
-
-    const newReport = {
-      id: `REP-${Date.now().toString().slice(-4)}`,
-      reportNumber: Math.floor(124 + Math.random() * 50).toString(),
-      type: formData.type,
-      category: formData.category,
-      title: `${formData.category}`,
-      location: formData.street,
-      status: "in-progress",
-      statusLabel: "In Progress - ETA: 15 mins",
-      urgency: formData.urgency,
-      reportedAt: "Just now",
-      lat,
-      lng,
-      description: formData.description,
-      hasProof: false,
+    const payload = {
+      reporter_type: "RESIDENT",
+      is_emergency: formData.type === "sudden" ? 1 : 0,
+      incident_category: formData.category,
+      priority_level: formData.urgency ? formData.urgency.toUpperCase() : "HIGH",
+      description: formData.description.trim(),
+      reverse_geocoded_address: formData.street.trim() || null,
+      ...(selectedCoordinates?.lat != null && selectedCoordinates?.lng != null
+        ? {
+            latitude: Number(selectedCoordinates.lat),
+            longitude: Number(selectedCoordinates.lng),
+            pin_manually_adjusted: 1,
+          }
+        : {}),
     };
 
-    setTimeout(() => {
+    try {
+      const response = await fetch("/api/reports", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok || (response.status !== 200 && response.status !== 201)) {
+        throw new Error(
+          data?.error || "Failed to submit incident report. Please try again.",
+        );
+      }
+
+      const savedReport = data?.report ?? data;
+      if (!savedReport?.incident_id || !savedReport?.reference_number) {
+        throw new Error("The server did not return the saved report details. Please try again.");
+      }
+      const lat = savedReport.latitude == null ? null : Number(savedReport.latitude);
+      const lng = savedReport.longitude == null ? null : Number(savedReport.longitude);
+
+      const newReport = {
+        id: savedReport.incident_id,
+        reportNumber: "",
+        type: formData.type,
+        category: formData.category,
+        title: savedReport.title || `${formData.category} Incident Report`,
+        location: savedReport.location_description || formData.street,
+        status: savedReport.status_code || "pending",
+        statusLabel: savedReport.status_label || "Submitted",
+        urgency: savedReport.priority_level || formData.urgency || "High",
+        reportedAt: savedReport.received_at || savedReport.submitted_at,
+        ...(Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : {}),
+        description: savedReport?.sanitized_description ?? formData.description,
+        hasProof: false,
+      };
+
       onSubmitNewReport(newReport);
-      setIsSubmitting(false);
-      setFormData((prev) => ({ ...prev, description: "" }));
+      setFormData({
+        type: "sudden",
+        category: "Fire Incident",
+        street: "",
+        description: "",
+        urgency: "High",
+      });
       setIsPickingLocation(false);
       setActiveTab("active");
 
       toast.add({
-        title: "Report Submitted Successfully!",
-        description: `Ticket #${newReport.reportNumber} has been logged and pinned on Barangay 167 map.`,
+        title: "Report submitted successfully",
+        description: "Your report is saved and will be reviewed by a barangay admin.",
         type: "success",
       });
-    }, 600);
+    } catch (error) {
+      toast.add({
+        title: "Submission Failed",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Unable to submit your report right now.",
+        type: "error",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -175,7 +227,7 @@ export default function ResidentReportingCard({
 
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-bold text-slate-900 group-hover:text-[#2E8B57] transition-colors leading-snug">
-                      Report {report.reportNumber}: {report.title} - {report.location}
+                      {report.title} - {report.location}
                     </p>
                     <p className="text-[11px] font-medium text-slate-500 mt-0.5">
                       ({report.statusLabel})

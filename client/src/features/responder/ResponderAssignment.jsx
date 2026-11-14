@@ -1,14 +1,23 @@
-import { ArrowLeft, MapPin, X } from "lucide-react";
+import { ArrowLeft, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useState } from "react";
 import { useEffect } from "react";
 import { setResponderMeta } from "./responderMeta";
+import MapViewer from "../../shared/components/MapViewer";
 
 const cardClass =
   "rounded-2xl border-2 border-slate-200 bg-white p-5 shadow-sm sm:p-6";
 
 const mapsUrl =
   "https://www.google.com/maps/dir/?api=1&destination=Mabini+Street%2C+Barangay+167";
+const assignmentIncident = {
+  id: "GF-018",
+  title: "Road obstruction on Mabini Street",
+  category: "infrastructure",
+  status: "ongoing",
+  lat: 14.733586,
+  lng: 121.013336,
+};
 
 export default function ResponderAssignment() {
   const [status, setStatus] = useState("Dispatched");
@@ -27,7 +36,6 @@ export default function ResponderAssignment() {
             <ArrowLeft size={38} strokeWidth={1.8} />
           </Link>
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Responder dashboard</p>
             <h1 className="truncate text-2xl font-bold tracking-tight text-primary sm:text-3xl">Assignment Details</h1>
           </div>
         </div>
@@ -52,7 +60,7 @@ export default function ResponderAssignment() {
         </section>
 
         <section className={cardClass}>
-          <h2 className="text-xl font-bold text-primary">Assignment details</h2>
+          <h2 className="text-xl font-bold text-primary">Assignment</h2>
           <p className="mt-3 text-base">Department: Traffic/Road Response</p>
           <p className="mt-2 text-lg font-bold">Traffic/Road Response Team A</p>
           <p className="mt-3 text-sm leading-5 text-slate-500">
@@ -66,13 +74,19 @@ export default function ResponderAssignment() {
         </section>
 
         <section className={cardClass}>
-          <h2 className="text-xl font-bold text-primary">Incident location</h2>
-          <p className="mt-2 text-lg">Mabini Street, Barangay 167</p>
-          <div className="relative mt-3 h-24 overflow-hidden rounded-[20px] bg-[#e8e4da]">
-            <div className="absolute inset-0 opacity-60 [background-image:linear-gradient(28deg,transparent_45%,#c9c4b8_46%,#c9c4b8_48%,transparent_49%),linear-gradient(112deg,transparent_42%,#c9c4b8_43%,#c9c4b8_45%,transparent_46%)] [background-size:120px_90px,150px_100px]" />
-            <MapPin className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-[#f6a500]" size={42} strokeWidth={3} />
+          <div className="flex items-start gap-4">
+            <h2 className="shrink-0 text-xl font-bold text-primary">Location</h2>
+            <div className="min-w-0 border-l border-slate-200 pl-4">
+              <p className="truncate text-lg font-semibold">Mabini Street</p>
+              <p className="truncate text-sm font-medium text-slate-500">Barangay 167, Caloocan</p>
+            </div>
           </div>
-          <p className="mt-3 text-sm text-slate-500">Location confirmed by barangay</p>
+          <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200">
+            <MapViewer compact showBackButton={false} expandPath={null}
+              incidents={[assignmentIncident]} selectedIncident={assignmentIncident}
+              highlightBoundary mapHeight="h-[220px] sm:h-[260px]" hideMapLabel />
+          </div>
+          <p className="mt-3 text-sm text-slate-500">Location confirmed by Barangay 167</p>
         </section>
 
         <p className="pt-1 text-base leading-6">A stalled delivery vehicle and debris block one lane.</p>

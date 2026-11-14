@@ -12,7 +12,7 @@ export default function QuickReportModal({
 }) {
   const [reportType, setReportType] = useState("sudden");
   const [category, setCategory] = useState("Fire Incident");
-  const [street, setStreet] = useState("Molave St., Barangay 167");
+  const [street, setStreet] = useState("");
   const [description, setDescription] = useState("");
   const [urgency, setUrgency] = useState("High");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -24,7 +24,7 @@ export default function QuickReportModal({
     setCategory(type === "sudden" ? "Fire Incident" : "Drainage / Flooding");
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!description.trim()) {
       toast.add({
@@ -37,36 +37,94 @@ export default function QuickReportModal({
 
     setIsSubmitting(true);
 
-    const lat = defaultCoordinates?.lat || 14.734 + (Math.random() - 0.5) * 0.005;
-    const lng = defaultCoordinates?.lng || 121.015 + (Math.random() - 0.5) * 0.005;
-
-    const newReport = {
-      id: `REP-${Date.now().toString().slice(-4)}`,
-      reportNumber: Math.floor(124 + Math.random() * 50).toString(),
-      type: reportType,
-      category,
-      title: `${category}`,
-      location: street,
-      status: "in-progress",
-      statusLabel: "In Progress - Dispatched",
-      urgency,
-      reportedAt: "Just now",
-      lat,
-      lng,
-      description,
-      hasProof: false,
+    const payload = {
+      reporter_type: "GUEST",
+      is_emergency: reportType === "sudden" ? 1 : 0,
+      incident_category: category,
+      priority_level: urgency ? urgency.toUpperCase() : "HIGH",
+      description: description.trim(),
+      reverse_geocoded_address: street.trim() || null,
+      ...(defaultCoordinates?.lat != null && defaultCoordinates?.lng != null
+        ? {
+            latitude: Number(defaultCoordinates.lat),
+            longitude: Number(defaultCoordinates.lng),
+            pin_manually_adjusted: 1,
+          }
+        : {}),
     };
 
-    setTimeout(() => {
-      onSubmitNewReport(newReport);
-      setIsSubmitting(false);
+    try {
+      const response = await fetch("/api/reports", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok || (response.status !== 200 && response.status !== 201)) {
+        throw new Error(
+          data?.error || "Failed to submit incident report. Please try again.",
+        );
+      }
+
+      const savedReport = data?.report ?? data;
+      if (!savedReport?.incident_id || !savedReport?.reference_number) {
+        throw new Error("The server did not return the saved report details. Please try again.");
+      }
+      if (savedReport.guest_access_token) {
+        sessionStorage.setItem(`geofix:guest-report:${savedReport.incident_id}`, savedReport.guest_access_token);
+        sessionStorage.setItem("geofix:last-guest-report", savedReport.incident_id);
+      }
+      const lat = savedReport.latitude == null ? null : Number(savedReport.latitude);
+      const lng = savedReport.longitude == null ? null : Number(savedReport.longitude);
+
+      const newReport = {
+        id: savedReport.incident_id,
+        reportNumber: "",
+        type: reportType,
+        category: savedReport.category || savedReport.incident_category || category,
+        title: savedReport.title || `${category} Incident Report`,
+        location: savedReport.location_description || street,
+        status: savedReport.status_code || "pending",
+        statusLabel: savedReport.status_label || "Submitted",
+        urgency: savedReport.priority_level || urgency || "High",
+        reportedAt: savedReport.received_at || savedReport.submitted_at,
+        ...(Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : {}),
+        description: savedReport.sanitized_description ?? description,
+        hasProof: false,
+      };
+
+      onSubmitNewReport?.(newReport);
+
+      // Clear form state
+      setReportType("sudden");
+      setCategory("Fire Incident");
+      setStreet("");
+      setDescription("");
+      setUrgency("High");
+
       onClose();
       toast.add({
-        title: "Incident Report Logged!",
-        description: `Ticket #${newReport.reportNumber} has been dispatched to Barangay 167 BDRRMO.`,
+        title: "Report submitted successfully",
+        description: "Your report is saved and will be reviewed by a barangay admin.",
         type: "success",
       });
-    }, 500);
+    } catch (error) {
+      toast.add({
+        title: "Submission Failed",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Unable to submit your report right now.",
+        type: "error",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
