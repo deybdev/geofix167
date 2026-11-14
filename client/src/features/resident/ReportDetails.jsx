@@ -1,9 +1,22 @@
-﻿import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { ChevronLeft, FileText, MapPin } from "lucide-react";
 import { Button } from "../../shared/components/ui/button";
 import { PATHS } from "../../router/paths";
 import { getReportAttachments, getReportDetails, updateReportDetails } from "../../services/residentService";
+import { useAuth } from "../../shared/hooks/useAuth";
+import AttachmentRecovery from "./components/AttachmentRecovery";
+
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+
+// Live File objects handed over by Report.jsx (a convenience only; refresh and
+// tab-close recovery use persisted attempt metadata instead).
+function handedOffUploads(state, id) {
+  const pending = state?.pendingUploads;
+  if (!id || pending?.reportId !== id || !Array.isArray(pending.items)) return [];
+  return pending.items.filter(item => UUID.test(item?.id) && item.file instanceof File)
+    .map(item => ({ id: item.id, file: item.file, label: "Not uploaded yet" }));
+}
 
 function formatTime(value) {
   const date = value ? new Date(value) : null;
@@ -25,6 +38,9 @@ export default function ReportDetails() {
 
 function ReportDetailsView({ id }) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { user } = useAuth();
+  const [handedOff] = useState(() => handedOffUploads(location.state, id));
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(Boolean(id));
   const [error, setError] = useState(id ? "" : "No report ID was provided. Select a report from My Reports.");
@@ -41,6 +57,11 @@ function ReportDetailsView({ id }) {
 
   useEffect(() => () => mediaRetryRef.current?.abort(), []);
 
+  // Consume the hand-off once so history navigation does not resurrect it.
+  useEffect(() => {
+    if (location.state?.pendingUploads) navigate(location.pathname, { replace: true, state: null });
+  }, [location.state, location.pathname, navigate]);
+
   useEffect(() => {
     const controller = new AbortController();
     if (!id) {
@@ -54,6 +75,8 @@ function ReportDetailsView({ id }) {
   }, [id, reload]);
 
   const editable = report && !report.is_terminal && [1, 2, 3].includes(report.status_id);
+  // Mirrors the backend upload rule: only the reporting resident, at any stage.
+  const canUpload = Boolean(report && user?.id && report.reported_by_user_id === user.id);
 
   function refresh() {
     setLoading(true);
@@ -71,6 +94,11 @@ function ReportDetailsView({ id }) {
 
   async function retryAttachments() {
     if (!report || loading || savingRef.current || mediaRetryRef.current) return;
+    await reloadAttachments();
+  }
+
+  async function reloadAttachments() {
+    mediaRetryRef.current?.abort();
     const controller = new AbortController();
     mediaRetryRef.current = controller;
     setRetryingMedia(true);
@@ -84,7 +112,7 @@ function ReportDetailsView({ id }) {
         setReport(previous => ({ ...previous, attachments_error: error.message || "Unable to load photos and videos." }));
       }
     } finally {
-      mediaRetryRef.current = null;
+      if (mediaRetryRef.current === controller) mediaRetryRef.current = null;
       if (!controller.signal.aborted) setRetryingMedia(false);
     }
   }
@@ -180,6 +208,13 @@ function ReportDetailsView({ id }) {
             <a href={attachment.url} target="_blank" rel="noreferrer" className="text-xs text-primary underline">Open original file</a>
           </figure>)}
         </section>}
+      </>}
+      {/* Kept mounted across Refresh so queued File objects are not lost. */}
+      {report && canUpload && <div hidden={loading || Boolean(error)}>
+        <AttachmentRecovery key={user.id} reportId={report.public_id} userId={user.id} initialItems={handedOff}
+          attachments={report.attachments_error ? null : report.attachments} onUploaded={reloadAttachments} />
+      </div>}
+      {!loading && !error && report && <>
         {notice && <p role="status" className="mt-3 rounded-lg bg-emerald-50 p-3 text-xs text-emerald-700">{notice}</p>}
         {editable && !editing && <Button type="button" variant="outline" onClick={startEditing}
           className="mt-4 h-11 w-full rounded-xl text-sm font-semibold">Edit Details</Button>}

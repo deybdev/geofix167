@@ -21,15 +21,30 @@ function FilePreview({ file }) {
       </button>;
 }
 
-export default function MediaPicker({ files, onChange, onCapture }) {
+/**
+ * maxFiles is the maximum total number of items allowed in this picker's queue
+ * (not the number of additional selections). Existing items always stay
+ * visible and removable, even when capacity drops to zero.
+ * onAdd(files) lets a caller take over item creation (e.g. to reuse upload IDs).
+ */
+export default function MediaPicker({
+  files, onChange, onCapture, onAdd, maxFiles = 5, hideCamera = false, disabled = false,
+  hint = "Files upload after your report is saved.",
+}) {
   const inputRef = useRef(null);
   const [error, setError] = useState("");
+  const limit = Math.max(0, maxFiles);
+  const full = files.length >= limit;
+  const showCamera = Boolean(onCapture) && !hideCamera;
 
   function selectFiles(event) {
     const selected = Array.from(event.target.files ?? []);
     event.target.value = "";
-    if (files.length + selected.length > 5) {
-      setError("Choose at most 5 photos or videos per report.");
+    if (!selected.length) return;
+    if (files.length + selected.length > limit) {
+      const room = Math.max(0, limit - files.length);
+      setError(room ? `You can add ${room} more file${room === 1 ? "" : "s"} (${limit} maximum here).`
+        : "No attachment slots remain for this queue.");
       return;
     }
     for (const file of selected) {
@@ -40,27 +55,29 @@ export default function MediaPicker({ files, onChange, onCapture }) {
       }
     }
     setError("");
-    onChange([...files, ...selected.map(file => ({ id: crypto.randomUUID(), file }))]);
+    if (onAdd) onAdd(selected);
+    else onChange([...files, ...selected.map(file => ({ id: crypto.randomUUID(), file }))]);
   }
 
   return <section>
     <div className="flex gap-2">
-      <Button type="button" variant="outline" disabled={files.length >= 5} onClick={onCapture} className="h-11 flex-1">
+      {showCamera && <Button type="button" variant="outline" disabled={disabled || full} onClick={onCapture} className="h-11 flex-1">
         <Camera size={16} /> Take Photo
-      </Button>
-      <Button type="button" variant="outline" disabled={files.length >= 5} onClick={() => inputRef.current?.click()} className="h-11 flex-1">
+      </Button>}
+      <Button type="button" variant="outline" disabled={disabled || full} onClick={() => inputRef.current?.click()} className="h-11 flex-1">
         <Upload size={16} /> Add Photo / Video
       </Button>
     </div>
     <input ref={inputRef} type="file" multiple accept={TYPES.join(",")} className="hidden" onChange={selectFiles} />
-    <p className="mt-2 text-xs text-slate-500">Optional: up to 5 files. Photos up to 10 MiB; short videos up to 25 MiB. Files upload after your report is saved.</p>
+    <p className="mt-2 text-xs text-slate-500">Optional: up to {limit} file{limit === 1 ? "" : "s"}. Photos up to 10 MiB; short videos up to 25 MiB. {hint}</p>
     {error && <p role="alert" className="mt-2 text-xs text-red-600">{error}</p>}
     <div className="mt-3 grid grid-cols-2 gap-3">
       {files.map(item => <div key={item.id} className="relative rounded-lg border border-slate-200 p-2">
         <FilePreview file={item.file} />
         <p className="mt-1 truncate text-xs">{item.file.name}</p>
-        <button type="button" aria-label={`Remove ${item.file.name}`} onClick={() => { setError(""); onChange(files.filter(file => file.id !== item.id)); }}
-          className="absolute right-0 top-0 rounded-full bg-slate-800 p-1 text-white"><X size={14} /></button>
+        {item.label && <p className="truncate text-[10px] text-slate-500">{item.label}</p>}
+        <button type="button" aria-label={`Remove ${item.file.name}`} disabled={disabled} onClick={() => { setError(""); onChange(files.filter(file => file.id !== item.id)); }}
+          className="absolute right-0 top-0 rounded-full bg-slate-800 p-1 text-white disabled:opacity-50"><X size={14} /></button>
       </div>)}
     </div>
   </section>;
