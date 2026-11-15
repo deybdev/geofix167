@@ -1,6 +1,6 @@
 
 import bcrypt from "bcryptjs";
-import type { AppEnv, AuthUser } from "../types/env";
+import type { AppEnv, AuthUser, UserRole } from "../types/env";
 import {
   findUserByMobileNumber,
   type UserRecord,
@@ -37,6 +37,8 @@ async function hashToken(token: string): Promise<string> {
     .join("");
 }
 
+export { hashToken };
+
 function createToken(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
 
@@ -46,10 +48,26 @@ function createToken(): string {
     .replace(/=+$/, "");
 }
 
+// Creates an additional standalone session (used for mobile refresh tokens).
+export async function createMobileSession(
+  db: Database,
+  userId: string,
+  days: number,
+): Promise<string> {
+  const token = createToken();
+  const tokenHash = await hashToken(token);
+  const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+
+  await createSession(db, userId, tokenHash, expiresAt);
+
+  return token;
+}
+
 export async function login(
   db: Database,
   mobileNumber: string,
   password: string,
+  allowedRoles?: readonly UserRole[],
 ): Promise<LoginResult> {
   const user: UserRecord | null = await findUserByMobileNumber(db, mobileNumber);
 
@@ -57,9 +75,15 @@ export async function login(
     throw new AuthError("Invalid mobile number or password.", 401);
   }
 
-  if (user.account_status !== "ACTIVE" || user.resident_verification === "NOT_APPROVED") {
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
+    // Deliberately identical to the invalid-credentials message so the
+    // restricted client never reveals which accounts exist.
+    throw new AuthError("Invalid mobile number or password.", 401);
+  }
+
+  if (user.account_status !== "ACTIVE") {
     throw new AuthError(
-      user.account_status === "UNVERIFIED" || user.resident_verification === "NOT_APPROVED"
+      user.account_status === "UNVERIFIED"
         ? "Your account has not been verified."
         : "Your account is unavailable.",
       403,

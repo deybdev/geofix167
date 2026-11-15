@@ -16,7 +16,11 @@ async function hashToken(token: string): Promise<string> {
 
 export const requireAuth = createMiddleware<AppEnv>(
   async (c, next) => {
-    const token = getCookie(c, "geofix_session");
+    // Native mobile clients authenticate with a Bearer token; browsers use the session cookie.
+    const authHeader = c.req.header("Authorization");
+    const token = authHeader?.startsWith("Bearer ")
+      ? authHeader.slice(7)
+      : getCookie(c, "geofix_session");
 
     if (!token) {
       return c.json({ error: "Authentication required." }, 401);

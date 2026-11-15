@@ -8,8 +8,8 @@ INSERT OR IGNORE INTO users (
 )
 VALUES
 (
-    'usr_demo_admin_001',
     'Louise Moreno',
+    'usr_demo_admin_001',
     '09123123123',
     '$2b$12$JR1vp6bRLpq3RWPYfEbXoO8oexk8LiDdRuEbYB5JR4RohAYLl5Kg.',
     'admin',
@@ -19,9 +19,9 @@ VALUES
     'usr_demo_resident_001',
     'Neo Herminigildo',
     '09246246246',
-    '$2b$12$JR1vp6bRLpq3RWPYfEbXoO8oexk8LiDdRuEbYB5JR4RohAYLl5Kg.',
+    '$2b$12$JR1vp6bRLpq3RWPYfEbXoO8oex
+    1k8LiDdRuEbYB5JR4RohAYLl5Kg.',
     'resident',
-    1
 ),
 (
     'usr_demo_responder_001',

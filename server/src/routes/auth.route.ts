@@ -5,6 +5,9 @@ import type { AppEnv } from "../types/env";
 import {
   loginController,
   logoutController,
+  mobileLoginController,
+  mobileLogoutController,
+  mobileRefreshController,
 } from "../controllers/auth.controller";
 import { meController } from "../controllers/me.controller";
 import { requireAuth } from "../middleware/auth";
@@ -18,6 +21,9 @@ authRoutes.route("/", registrationIdentityRoutes);
 authRoutes.route("/registration", registrationRoutes);
 
 authRoutes.post("/login", loginController);
+authRoutes.post("/mobile/login", mobileLoginController);
+authRoutes.post("/mobile/refresh", mobileRefreshController);
+authRoutes.post("/mobile/logout", mobileLogoutController);
 authRoutes.post("/register", registerResident);
 authRoutes.post("/otp/verify-registration", verifyRegistrationOtp);
 authRoutes.get("/me", requireAuth, meController);
