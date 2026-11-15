@@ -17,7 +17,10 @@ export type InsertIncidentReportParams = {
   callback_mobile_number: string | null;
   latitude: number | null;
   longitude: number | null;
+  accuracy_meters: number | null;
+  within_barangay_boundary: 0 | 1 | null;
   location_description: string | null;
+  assigned_team: string;
   submitted_at: string;
   updated_at: string;
 };
@@ -25,12 +28,18 @@ export type IncidentReportRecord = Omit<InsertIncidentReportParams, "category" |
   category: string | null;
   priority_code: PriorityCode | null;
   reference_number: string;
+  reporter_name: string;
+  reporter_type: "GUEST" | "RESIDENT";
+  classification: "sudden" | "maintenance";
   reporter_user_id: string | null;
   status_id: number;
   incident_category: string | null;
   priority_level: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | null;
   sanitized_description: string | null;
   landmark_description: string | null;
+  accuracy_meters: number | null;
+  within_barangay_boundary: 0 | 1 | null;
+  assigned_team: string | null;
   received_at: string;
   closed_at: string | null;
   closed_by_user_id: string | null;
@@ -65,14 +74,21 @@ export type InsertGuestSessionParams = {
   created_at: string;
 };
 const PUBLIC_REPORT_COLUMNS = `
-  r.incident_id, r.incident_id AS reference_number,
+  r.incident_id,
+  COALESCE(printf('GF-%03d', rr.reference_sequence), r.incident_id) AS reference_number,
   r.reported_by_user_id, r.guest_session_id, r.incident_status_id,
   r.category, r.priority_code, r.is_emergency, r.title,
   r.description_original, r.description_sanitized,
   r.callback_mobile_number, r.latitude, r.longitude,
+  r.accuracy_meters, r.within_barangay_boundary, r.assigned_team,
   r.location_description, r.submitted_at, r.updated_at, r.closed_at,
   r.closed_by_user_id, r.parent_incident_id,
   r.reported_by_user_id AS reporter_user_id,
+  CASE WHEN r.guest_session_id IS NOT NULL THEN 'GUEST' ELSE 'RESIDENT' END AS reporter_type,
+  CASE WHEN r.is_emergency = 1 THEN 'sudden' ELSE 'maintenance' END AS classification,
+  CASE WHEN r.guest_session_id IS NOT NULL THEN COALESCE(gs.display_name, 'Guest')
+       ELSE COALESCE(NULLIF(trim(u.first_name || ' ' || u.last_name), ''), 'Resident')
+  END AS reporter_name,
   r.incident_status_id AS status_id,
   r.category AS incident_category,
   CASE r.priority_code
@@ -106,12 +122,16 @@ export async function createIncidentReportBundle(db: Database, params: {
     incident_id, reported_by_user_id, guest_session_id, incident_status_id,
     category, priority_code, is_emergency, title, description_original,
     description_sanitized, callback_mobile_number, latitude, longitude,
-    location_description, submitted_at, updated_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+    accuracy_meters, within_barangay_boundary, location_description, assigned_team,
+    submitted_at, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
     r.incident_id, r.reported_by_user_id, r.guest_session_id, r.incident_status_id,
     r.category, r.priority_code, r.is_emergency, r.title, r.description_original,
     r.description_sanitized, r.callback_mobile_number, r.latitude, r.longitude,
-    r.location_description, r.submitted_at, r.updated_at));
+    r.accuracy_meters, r.within_barangay_boundary, r.location_description,
+    r.assigned_team, r.submitted_at, r.updated_at));
+  statements.push(db.prepare("INSERT INTO incident_report_references (incident_id) VALUES (?)")
+    .bind(r.incident_id));
   const e = params.statusEvent;
   statements.push(db.prepare(`INSERT INTO incident_status_events (
     incident_status_event_id, incident_id, from_incident_status_id,
@@ -153,6 +173,9 @@ export async function listIncidentReports(db: Database, filters: ListReportsQuer
   }
   const result = await db.prepare(`SELECT ${PUBLIC_REPORT_COLUMNS}
     FROM incident_reports r JOIN incident_statuses s ON s.incident_status_id = r.incident_status_id
+    LEFT JOIN users u ON u.user_id = r.reported_by_user_id
+    LEFT JOIN guest_sessions gs ON gs.guest_session_id = r.guest_session_id
+    LEFT JOIN incident_report_references rr ON rr.incident_id = r.incident_id
     ${conditions.length ? `WHERE ${conditions.join(" AND ")}` : ""}
     ORDER BY r.is_emergency DESC, r.submitted_at DESC`).bind(...values).all<IncidentReportRecord>();
   return result.results ?? [];
@@ -161,6 +184,9 @@ export async function listIncidentReports(db: Database, filters: ListReportsQuer
 export async function findIncidentReportById(db: Database, id: string): Promise<IncidentReportRecord | null> {
   return db.prepare(`SELECT ${PUBLIC_REPORT_COLUMNS} FROM incident_reports r
     JOIN incident_statuses s ON s.incident_status_id = r.incident_status_id
+    LEFT JOIN users u ON u.user_id = r.reported_by_user_id
+    LEFT JOIN guest_sessions gs ON gs.guest_session_id = r.guest_session_id
+    LEFT JOIN incident_report_references rr ON rr.incident_id = r.incident_id
     WHERE r.incident_id = ? LIMIT 1`).bind(id).first<IncidentReportRecord>();
 }
 export async function findStatusEventsByIncidentId(db: Database, id: string): Promise<IncidentStatusEventRecord[]> {

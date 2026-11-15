@@ -5,6 +5,7 @@ import type { AppEnv } from "../types/env";
 import { bodyLimit } from "hono/body-limit";
 import { listAttachments, uploadAttachment } from "../controllers/attachment.controller";
 import { MAX_UPLOAD_BYTES } from "../services/attachment.service";
+import { reverseGeocodeCoordinates } from "../services/reverseGeocode.service";
 import {
   createReportController,
   updateReportStatusController, updateReportDetailsController,
@@ -24,6 +25,24 @@ reportRoutes.get("/public", async (c) => {
     "SELECT community_feed_post_id AS id, title, body AS description, published_at FROM community_feed_posts WHERE published_at IS NOT NULL AND datetime(published_at) <= datetime('now') AND archived_at IS NULL ORDER BY published_at DESC LIMIT 100"
   ).all();
   return c.json({ reports: result.results, count: result.results.length });
+});
+reportRoutes.get("/reverse-geocode", async (c) => {
+  const latitude = Number(c.req.query("lat"));
+  const longitude = Number(c.req.query("lng"));
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90
+    || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    return c.json({ error: "A valid latitude and longitude are required." }, 400);
+  }
+
+  try {
+    const address = await reverseGeocodeCoordinates(latitude, longitude);
+    return c.json({ address, attribution: "© OpenStreetMap contributors" }, 200, {
+      "Cache-Control": "public, max-age=86400",
+    });
+  } catch (error) {
+    console.error("Reverse geocoding failed:", error);
+    return c.json({ error: "Street lookup is temporarily unavailable." }, 502);
+  }
 });
 reportRoutes.post("/", createReportController);
 reportRoutes.get("/:id/attachments", requireAuth, listAttachments);

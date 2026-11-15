@@ -18,10 +18,12 @@ export async function createReportController(c: Context<AppEnv>) {
   const validation = createReportSchema.safeParse(body);
 
   if (!validation.success) {
+    const fieldErrors = validation.error.flatten().fieldErrors;
+    const firstFieldError = Object.values(fieldErrors).flat().find((message) => Boolean(message));
     return c.json(
       {
-        error: "Invalid incident report payload.",
-        details: validation.error.flatten().fieldErrors,
+        error: firstFieldError ?? "Invalid incident report payload.",
+        details: fieldErrors,
       },
       400,
     );

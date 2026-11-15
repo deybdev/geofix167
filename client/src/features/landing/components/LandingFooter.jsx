@@ -15,7 +15,7 @@ export default function LandingFooter() {
           <Link to={PATHS.terms} className="transition hover:text-[#2e8b57]">Terms</Link>
           <Link to={PATHS.adminLogin} className="font-semibold text-[#2e8b57] hover:text-[#17633f]">Admin portal</Link>
         </nav>
-        <p className="text-[11px] text-slate-400">© {new Date().getFullYear()} GeoFix 167 · Barangay 167, Caloocan</p>
+        <p className="text-[11px] text-slate-400">© {new Date().getFullYear()} GeoFix 167 · Barangay 167, Caloocan City</p>
       </div>
     </footer>
   );
