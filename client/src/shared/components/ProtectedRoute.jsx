@@ -10,7 +10,7 @@ export default function ProtectedRoute({ allowedRoles, loginPath = "/login" }) {
   if (!user) return <Navigate to={loginPath} replace />;
 
   if (allowedRoles?.length && !allowedRoles.includes(role)) {
-    return <Navigate to="/unauthorized" replace />;
+    return <Navigate to={PATHS.forbidden} replace />;
   }
 
   return <Outlet />;

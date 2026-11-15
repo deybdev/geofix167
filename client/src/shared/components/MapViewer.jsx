@@ -12,7 +12,13 @@ import {
 } from "react-leaflet";
 import L from "leaflet";
 import { HeatLayer as LeafletHeatLayer } from "leaflet.heat";
-import booleanPointInPolygon from "@turf/boolean-point-in-polygon";
+import {
+  getCategory,
+  getFeatures,
+  getStatus,
+  isInside,
+  STATUSES,
+} from "../utils/mapUtils";
 import "leaflet/dist/leaflet.css";
 
 const BOUNDARY_URL = "/barangay-167.geojson";
@@ -75,51 +81,6 @@ const CATEGORIES = {
       'a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
   },
 };
-
-const STATUSES = {
-  pending: { color: "#f59e0b", label: "Pending" },
-  ongoing: { color: "#3b82f6", label: "Ongoing" },
-  resolved: { color: "#16a34a", label: "Resolved" },
-};
-
-const STATUS_MATCH = [
-  ["ongoing", /progress|ongoing|responding|assigned/],
-  ["resolved", /resolv|done|complete|closed/],
-  ["rejected", /reject|invalid|declin/],
-];
-
-// Older data may still say "emergency"; it maps to "incident"
-const CATEGORY_ALIASES = { emergency: "incident" };
-
-function getCategory(value) {
-  const name = String(value).toLowerCase();
-  const alias = CATEGORY_ALIASES[name] ?? name;
-  const key = alias in CATEGORIES ? alias : "incident";
-  return { key, ...CATEGORIES[key] };
-}
-
-function getStatus(value) {
-  const text = String(value || "").toLowerCase();
-  const match = STATUS_MATCH.find(([, regex]) => regex.test(text));
-  const key = match ? match[0] : "pending";
-  return { key, ...STATUSES[key] };
-}
-
-export { getCategory, getStatus };
-
-/* ------------------------------ Geo helpers ------------------------------ */
-
-const getFeatures = (boundary) =>
-  boundary.type === "FeatureCollection" ? boundary.features : [boundary];
-
-// True when the point falls inside the barangay boundary.
-// Exported so report flows can enforce the Barangay-167-only rule.
-export const isInside = (lat, lng, boundary) =>
-  Number.isFinite(lat) &&
-  Number.isFinite(lng) &&
-  getFeatures(boundary).some(
-    (f) => f.geometry && booleanPointInPolygon([lng, lat], f),
-  );
 
 // A world-sized polygon with the barangay cut out, used to dim the outside
 function makeMask(boundary) {
@@ -343,7 +304,7 @@ function FlyToIncident({ incident, boundary }) {
         duration: 0.6,
       });
     }
-  }, [incident, map]);
+  }, [incident, boundary, map]);
 
   return null;
 }
@@ -448,19 +409,38 @@ export default function MapViewer({
   heatmap = false,
   variant = "viewer",
   expandPath,
+  backPath = "/resident",
+  mapHeight = null,
+  hideMapLabel = false,
 }) {
   const navigate = useNavigate();
   const [boundary, setBoundary] = useState(null);
   const [basemap, setBasemap] = useState("street");
+  const [layersOpen, setLayersOpen] = useState(false);
   const [legendOpen, setLegendOpen] = useState(false);
   const [map, setMap] = useState(null);
   const fitRef = useRef(null);
 
   useEffect(() => {
+    let active = true;
+
     fetch(BOUNDARY_URL)
-      .then((res) => res.json())
-      .then(setBoundary)
-      .catch((err) => console.error("Barangay boundary error:", err));
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(`Boundary request failed (${res.status})`);
+        }
+        return res.json();
+      })
+      .then((data) => {
+        if (active) setBoundary(data);
+      })
+      .catch((err) => {
+        if (active) console.error("Barangay boundary error:", err);
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const mask = useMemo(() => boundary && makeMask(boundary), [boundary]);
@@ -509,7 +489,7 @@ export default function MapViewer({
         zoomSnap={0.5}
         zoomControl={false}
         maxBoundsViscosity={1}
-        className={`${compact ? "h-[300px] sm:h-[340px]" : "h-full"} w-full`}
+        className={`${mapHeight || (compact ? "h-[300px] sm:h-[340px]" : "h-full")} w-full`}
         style={{ background: "#e5e7eb" }}
       >
         <TileLayer
@@ -650,10 +630,10 @@ export default function MapViewer({
                      flex flex-col items-start gap-2"
         >
         <div className="flex gap-2">
-          {showBackButton && <button
+          {showBackButton && !compact && <button
             type="button"
             aria-label="Back to resident home"
-            onClick={() => navigate("/resident")}
+            onClick={() => navigate(backPath)}
             className={`${BTN} bg-white/95 text-gray-700`}
           >
             <svg
@@ -669,12 +649,14 @@ export default function MapViewer({
               <path d="m15 18-6-6 6-6" />
             </svg>
           </button>}
-          <div className={`${CARD} px-3 py-2`}>
-            <p className="text-sm font-bold leading-tight">Barangay 167</p>
-            <p className="text-[11px] text-gray-500">
-              {visible.length} report{visible.length === 1 ? "" : "s"}
-            </p>
-          </div>
+          {!hideMapLabel && (
+            <div className={`${CARD} ${compact ? "rounded-lg px-1.5 py-1" : "px-3 py-2"}`}>
+              <p className={`${compact ? "text-[9px]" : "text-sm"} font-bold leading-tight`}>Barangay 167</p>
+              <p className={`${compact ? "text-[8px]" : "text-[11px]"} text-gray-500`}>
+                {visible.length} report{visible.length === 1 ? "" : "s"}
+              </p>
+            </div>
+          )}
 
           {!compact && (
             <button
@@ -732,22 +714,25 @@ export default function MapViewer({
           className="pointer-events-none absolute right-3 top-3 z-[1000]
                      flex flex-col items-end gap-2"
         >
-        <div
-          className="pointer-events-auto flex rounded-xl bg-white p-1
-                     text-xs font-semibold shadow-lg ring-1 ring-black/5"
-        >
-          {Object.entries(BASEMAPS).map(([key, { label }]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setBasemap(key)}
-              className={`rounded-lg px-3 py-2 ${
-                basemap === key ? "bg-emerald-600 text-white" : "text-gray-600"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+        <div className="pointer-events-auto relative">
+          <button type="button" aria-label="Choose map layers" aria-expanded={layersOpen}
+            onClick={() => setLayersOpen((open) => !open)}
+            className={`${BTN} ${compact ? "h-9 w-9 rounded-lg bg-white/95" : "bg-white"} text-gray-700`}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m12 2 9 5-9 5-9-5 9-5Z" /><path d="m3 12 9 5 9-5" /><path d="m3 17 9 5 9-5" />
+            </svg>
+          </button>
+          {layersOpen && (
+            <div className={`${CARD} absolute right-0 top-full mt-2 overflow-hidden p-1 text-xs`}>
+              {Object.entries(BASEMAPS).map(([key, { label }]) => (
+                <button key={key} type="button" onClick={() => { setBasemap(key); setLayersOpen(false); }}
+                  className={`block w-full rounded-lg px-3 py-2 text-left font-semibold ${
+                    basemap === key ? "bg-emerald-600 text-white" : "text-gray-600 hover:bg-gray-100"
+                  }`}>{label}</button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Expand: opens this map as a whole page (with its incidents) */}

@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { getCategory, getStatus } from "../../../shared/components/MapViewer";
+import { getCategory, getStatus } from "../../../shared/utils/mapUtils";
 
 const EXPANDED_H = "85vh";
 const MAX_DRAG_RATIO = 0.85; // keep in sync with EXPANDED_H

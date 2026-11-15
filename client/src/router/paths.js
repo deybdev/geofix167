@@ -9,6 +9,9 @@ export const PATHS = {
   terms: "/terms-of-service",
   adminLogin: "/admin-login",
   unauthorized: "/unauthorized",
+  forbidden: "/forbidden",
+  serverError: "/server-error",
+  offline: "/offline",
   test: "/test",
 
   // Auth routes
@@ -30,7 +33,9 @@ export const PATHS = {
   resident: "/resident",
   responder: "/responder",
   admin: "/admin",
+  adminAnnouncements: "/admin/announcements",
   adminIncidentReports: "/admin/incident-reports",
+  adminDispatch: "/admin/dispatch",
   adminMaintenanceTasks: "/admin/maintenance-tasks",
   adminResolutionVerification: "/admin/resolution-verification",
   adminAccomplishmentLog: "/admin/accomplishment-log",

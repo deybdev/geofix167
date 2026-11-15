@@ -23,6 +23,7 @@
 		"FRONTEND_ORIGIN": "http://localhost:5173",
 	},
 	"r2_buckets": [
+		// Resident attachments use this existing private bucket. Set MEDIA_SIGNING_SECRET via wrangler secret put.
 		{
 			"bucket_name": "geofix167-uploads",
 			"binding": "geofix167_uploads"

@@ -87,11 +87,11 @@ function ReportCard({ report }) {
           </span>
           <span className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${st.pill}`}>
             <span className={`h-1.5 w-1.5 rounded-full ${st.dot}`} />
-            {st.label}
+            {report.status_label || st.label}
           </span>
         </div>
         <p className="mt-0.5 text-sm font-semibold text-slate-800">
-          {CATEGORY_LABELS[report.category] ?? report.category}
+          {report.title || CATEGORY_LABELS[report.category] || report.category}
         </p>
         <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">{report.description}</p>
         <p className="mt-1 text-[10px] text-slate-400">

@@ -2,8 +2,13 @@ import { getCookie } from "hono/cookie";
 import { requireAuth } from "../middleware/auth";
 import { Hono } from "hono";
 import type { AppEnv } from "../types/env";
+import { bodyLimit } from "hono/body-limit";
+import { listAttachments, uploadAttachment } from "../controllers/attachment.controller";
+import { MAX_UPLOAD_BYTES } from "../services/attachment.service";
+import { reverseGeocodeCoordinates } from "../services/reverseGeocode.service";
 import {
   createReportController,
+  updateReportStatusController, updateReportDetailsController,
   getReportByIdController,
   listReportsController,
 } from "../controllers/report.controller";
@@ -21,7 +26,32 @@ reportRoutes.get("/public", async (c) => {
   ).all();
   return c.json({ reports: result.results, count: result.results.length });
 });
+reportRoutes.get("/reverse-geocode", async (c) => {
+  const latitude = Number(c.req.query("lat"));
+  const longitude = Number(c.req.query("lng"));
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90
+    || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    return c.json({ error: "A valid latitude and longitude are required." }, 400);
+  }
+
+  try {
+    const address = await reverseGeocodeCoordinates(latitude, longitude);
+    return c.json({ address, attribution: "© OpenStreetMap contributors" }, 200, {
+      "Cache-Control": "public, max-age=86400",
+    });
+  } catch (error) {
+    console.error("Reverse geocoding failed:", error);
+    return c.json({ error: "Street lookup is temporarily unavailable." }, 502);
+  }
+});
 reportRoutes.post("/", createReportController);
+reportRoutes.get("/:id/attachments", requireAuth, listAttachments);
+reportRoutes.post("/:id/attachments", requireAuth, bodyLimit({
+  maxSize: MAX_UPLOAD_BYTES,
+  onError: c => c.json({ error: "Upload exceeds the 25 MiB video limit." }, 413),
+}), uploadAttachment);
+reportRoutes.patch("/:id/status", updateReportStatusController);
+reportRoutes.patch("/:id", updateReportDetailsController);
 reportRoutes.get("/", listReportsController);
 reportRoutes.get("/:id", getReportByIdController);
 

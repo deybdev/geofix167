@@ -19,7 +19,6 @@ export default function Acceptance() {
             <ArrowLeft size={38} strokeWidth={1.8} />
           </Link>
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Responder dashboard</p>
             <h1 className="truncate text-2xl font-bold tracking-tight text-primary sm:text-3xl">Confirm Assignment</h1>
           </div>
         </div>
@@ -42,14 +41,14 @@ export default function Acceptance() {
         </section>
 
         <section className={cardClass}>
-          <h3 className="text-xl font-bold text-primary">Assignment details</h3>
+          <h3 className="text-xl font-bold text-primary">Assignment</h3>
           <p className="mt-3 text-base">Department: Traffic/Road Response</p>
           <p className="mt-3 text-lg font-bold">Traffic/Road Response Team A</p>
           <p className="mt-3 text-sm leading-5 text-slate-500">Assigned by Admin Moreno<br />April 23, 2026 <span aria-hidden="true">•</span> 10:15 AM</p>
         </section>
 
         <section className={cardClass}>
-          <h3 className="text-xl font-bold text-primary">Incident location</h3>
+          <h3 className="text-xl font-bold text-primary">Location</h3>
           <p className="mt-3 text-lg">Mabini Street, Barangay 167</p>
         </section>
 

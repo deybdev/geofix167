@@ -57,9 +57,9 @@ export async function login(
     throw new AuthError("Invalid mobile number or password.", 401);
   }
 
-  if (user.account_status !== "ACTIVE") {
+  if (user.account_status !== "ACTIVE" || user.resident_verification === "NOT_APPROVED") {
     throw new AuthError(
-      user.account_status === "UNVERIFIED"
+      user.account_status === "UNVERIFIED" || user.resident_verification === "NOT_APPROVED"
         ? "Your account has not been verified."
         : "Your account is unavailable.",
       403,

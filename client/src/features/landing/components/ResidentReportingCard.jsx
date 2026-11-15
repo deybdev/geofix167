@@ -101,7 +101,7 @@ export default function ResidentReportingCard({
 
       const newReport = {
         id: savedReport.incident_id,
-        reportNumber: savedReport.reference_number,
+        reportNumber: "",
         type: formData.type,
         category: formData.category,
         title: savedReport.title || `${formData.category} Incident Report`,
@@ -127,8 +127,8 @@ export default function ResidentReportingCard({
       setActiveTab("active");
 
       toast.add({
-        title: "Report Submitted Successfully!",
-        description: `Reference #${savedReport.reference_number} was saved successfully.`,
+        title: "Report submitted successfully",
+        description: "Your report is saved and will be reviewed by a barangay admin.",
         type: "success",
       });
     } catch (error) {
@@ -227,7 +227,7 @@ export default function ResidentReportingCard({
 
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-bold text-slate-900 group-hover:text-[#2E8B57] transition-colors leading-snug">
-                      Report {report.reportNumber}: {report.title} - {report.location}
+                      {report.title} - {report.location}
                     </p>
                     <p className="text-[11px] font-medium text-slate-500 mt-0.5">
                       ({report.statusLabel})
