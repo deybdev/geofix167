@@ -33,6 +33,16 @@ const URGENCY_COLORS = {
     option: "bg-red-50 text-red-800",
   },
 };
+const CLASSIFICATION_COLORS = {
+  sudden: "border-red-300 bg-red-50 text-red-800 focus:border-red-500",
+  maintenance: "border-amber-300 bg-amber-50 text-amber-800 focus:border-amber-500",
+};
+const CATEGORY_COLORS = {
+  "Road Damage": "border-amber-300 bg-amber-50 text-amber-800 focus:border-amber-500",
+  Electrical: "border-orange-300 bg-orange-50 text-orange-800 focus:border-orange-500",
+  Sanitation: "border-sky-300 bg-sky-50 text-sky-800 focus:border-sky-500",
+  "Incident / Emergency": "border-red-300 bg-red-50 text-red-800 focus:border-red-500",
+};
 
 const REPORT_PIN_ICON = L.divIcon({
   className: "guest-report-pin-icon",
@@ -362,7 +372,7 @@ function OpenQuickReportModal({ onClose, onSubmitNewReport, defaultCoordinates =
         <form onSubmit={handleSubmit} className="mt-5 space-y-4">
           <div>
             <label htmlFor="guest-report-classification" className="mb-1.5 block text-xs font-bold text-slate-700">Incident Classification</label>
-            <select id="guest-report-classification" value={reportType} onChange={(event) => handleTypeChange(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-[#2E8B57]">
+            <select id="guest-report-classification" value={reportType} onChange={(event) => handleTypeChange(event.target.value)} className={`w-full rounded-lg border px-3 py-2 text-xs font-semibold outline-none ${CLASSIFICATION_COLORS[reportType] ?? "border-slate-200 bg-white text-slate-800 focus:border-[#2E8B57]"}`}>
               {reportCatalog.classifications.map((option) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
@@ -371,8 +381,8 @@ function OpenQuickReportModal({ onClose, onSubmitNewReport, defaultCoordinates =
 
           <div>
             <label htmlFor="guest-report-category" className="mb-1.5 block text-xs font-bold text-slate-700">Category</label>
-            <select id="guest-report-category" value={category} onChange={(event) => setCategory(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-[#2E8B57]">
-              {reportCatalog.categories.map((item) => <option key={item} value={item}>{item}</option>)}
+            <select id="guest-report-category" value={category} onChange={(event) => setCategory(event.target.value)} className={`w-full rounded-lg border px-3 py-2 text-xs font-semibold outline-none ${CATEGORY_COLORS[category] ?? "border-slate-200 bg-white text-slate-800 focus:border-[#2E8B57]"}`}>
+              {reportCatalog.categories.map((item) => <option key={item} value={item} className={CATEGORY_COLORS[item]}>{item}</option>)}
             </select>
           </div>
 
