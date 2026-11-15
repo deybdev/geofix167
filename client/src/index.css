@@ -154,7 +154,6 @@
 @layer components {
   .site-container {
     width: 100%;
-    max-width: 90rem;
     margin-inline: auto;
     padding-inline: clamp(1.25rem, 3vw, 3rem);
   }

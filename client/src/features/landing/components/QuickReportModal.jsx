@@ -4,9 +4,7 @@ import {
   AlertTriangle,
   FileText,
   LocateFixed,
-  MapPin,
   Send,
-  ShieldAlert,
   UserRound,
   X,
 } from "lucide-react";
@@ -349,23 +347,12 @@ function OpenQuickReportModal({ onClose, onSubmitNewReport, defaultCoordinates =
 
         <form onSubmit={handleSubmit} className="mt-5 space-y-4">
           <div>
-            <label className="mb-1.5 block text-xs font-bold text-slate-700">Incident Classification</label>
-            <div className="grid grid-cols-2 gap-2">
+            <label htmlFor="guest-report-classification" className="mb-1.5 block text-xs font-bold text-slate-700">Incident Classification</label>
+            <select id="guest-report-classification" value={reportType} onChange={(event) => handleTypeChange(event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-[#2E8B57]">
               {reportCatalog.classifications.map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  aria-pressed={reportType === option.value}
-                  onClick={() => handleTypeChange(option.value)}
-                  className={`flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold transition ${reportType === option.value
-                    ? option.isEmergency ? "border-red-500 bg-red-50 text-red-900 shadow-sm" : "border-amber-500 bg-amber-50 text-amber-900 shadow-sm"
-                    : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}
-                >
-                  {option.isEmergency && <ShieldAlert size={14} className="text-red-600" />}
-                  <span>{option.label}</span>
-                </button>
+                <option key={option.value} value={option.value}>{option.label}</option>
               ))}
-            </div>
+            </select>
           </div>
 
           <div>
@@ -387,7 +374,7 @@ function OpenQuickReportModal({ onClose, onSubmitNewReport, defaultCoordinates =
 
           <div>
             <div className="mb-1.5 flex items-center justify-between gap-2">
-              <label className="block text-xs font-bold text-slate-700">Location / Street in Barangay 167</label>
+              <label className="block text-xs font-bold text-slate-700">Location / Street in Barangay 167, Caloocan City</label>
               <span className={`inline-flex items-center gap-1 text-[10px] font-semibold ${locationStatus === "error" ? "text-amber-700" : "text-emerald-700"}`} aria-live="polite">
                 <LocateFixed size={12} />
                 {locationStatus === "loading" ? "Getting your location..." : locationStatus === "pinned" ? "Location pinned" : "Location unavailable"}
@@ -429,15 +416,11 @@ function OpenQuickReportModal({ onClose, onSubmitNewReport, defaultCoordinates =
             <textarea id="guest-report-description" rows={3} value={description} onChange={(event) => setDescription(event.target.value)} maxLength={10000} placeholder="Provide exact details of the situation, visible risks, or landmarks..." required className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#2E8B57]" />
           </div>
 
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-700">Urgency Level:</span>
-            <div className="flex gap-2">
-              {reportCatalog.formUrgencies.map(({ label }) => (
-                <button key={label} type="button" aria-pressed={urgency === label} onClick={() => setUrgency(label)} className={`rounded-md px-3 py-1 text-xs font-bold transition ${urgency === label ? "bg-[#ea580c] text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
-                  {label}
-                </button>
-              ))}
-            </div>
+          <div className="flex items-center justify-between gap-3">
+            <label htmlFor="guest-report-urgency" className="text-xs font-bold text-slate-700">Urgency Level:</label>
+            <select id="guest-report-urgency" value={urgency} onChange={(event) => setUrgency(event.target.value)} className="min-w-32 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-[#2E8B57]">
+              {reportCatalog.formUrgencies.map(({ label }) => <option key={label} value={label}>{label}</option>)}
+            </select>
           </div>
 
           <div className="flex flex-col gap-2 pt-2">
