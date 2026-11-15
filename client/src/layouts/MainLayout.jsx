@@ -1,8 +1,9 @@
-import { memo, useCallback, useLayoutEffect, useRef } from "react";
-import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { memo, useCallback, useLayoutEffect, useRef, useState } from "react";
+import { Outlet, useLocation } from "react-router-dom";
 import LandingHeader from "../features/landing/components/LandingHeader";
 import LandingFooter from "../features/landing/components/LandingFooter";
 import BarangayStatusBanner from "../features/landing/components/BarangayStatusBanner";
+import QuickReportModal from "../features/landing/components/QuickReportModal";
 import { PATHS } from "../router/paths";
 
 const SharedLandingHeader = memo(LandingHeader);
@@ -11,8 +12,8 @@ const SharedStatusBanner = memo(BarangayStatusBanner);
 
 export default function MainLayout() {
   const location = useLocation();
-  const navigate = useNavigate();
   const pathnameRef = useRef(location.pathname);
+  const [isQuickReportOpen, setIsQuickReportOpen] = useState(false);
 
   useLayoutEffect(() => {
     pathnameRef.current = location.pathname;
@@ -23,8 +24,10 @@ export default function MainLayout() {
       window.dispatchEvent(new Event("geofix:open-report"));
       return;
     }
-    navigate(PATHS.publicMap);
-  }, [navigate]);
+    setIsQuickReportOpen(true);
+  }, []);
+
+  const closeQuickReport = useCallback(() => setIsQuickReportOpen(false), []);
 
   return (
     <div className="public-app-shell">
@@ -34,6 +37,7 @@ export default function MainLayout() {
         <Outlet />
       </main>
       <SharedLandingFooter />
+      <QuickReportModal isOpen={isQuickReportOpen} onClose={closeQuickReport} defaultCoordinates={null} />
     </div>
   );
 }

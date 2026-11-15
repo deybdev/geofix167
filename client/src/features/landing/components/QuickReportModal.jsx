@@ -19,6 +19,20 @@ import { toast } from "../../../shared/components/ui/toast";
 const DEFAULT_MAP_CENTER = [14.75, 121.02];
 const ADDRESS_CACHE = new Map();
 let boundaryPromise;
+const URGENCY_COLORS = {
+  Low: {
+    select: "border-emerald-300 bg-emerald-50 text-emerald-800 focus:border-emerald-500",
+    option: "bg-emerald-50 text-emerald-800",
+  },
+  Medium: {
+    select: "border-amber-300 bg-amber-50 text-amber-800 focus:border-amber-500",
+    option: "bg-amber-50 text-amber-800",
+  },
+  High: {
+    select: "border-red-300 bg-red-50 text-red-800 focus:border-red-500",
+    option: "bg-red-50 text-red-800",
+  },
+};
 
 const REPORT_PIN_ICON = L.divIcon({
   className: "guest-report-pin-icon",
@@ -418,8 +432,8 @@ function OpenQuickReportModal({ onClose, onSubmitNewReport, defaultCoordinates =
 
           <div className="flex items-center justify-between gap-3">
             <label htmlFor="guest-report-urgency" className="text-xs font-bold text-slate-700">Urgency Level:</label>
-            <select id="guest-report-urgency" value={urgency} onChange={(event) => setUrgency(event.target.value)} className="min-w-32 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-[#2E8B57]">
-              {reportCatalog.formUrgencies.map(({ label }) => <option key={label} value={label}>{label}</option>)}
+            <select id="guest-report-urgency" value={urgency} onChange={(event) => setUrgency(event.target.value)} className={`min-w-32 rounded-lg border px-3 py-2 text-xs font-semibold outline-none ${URGENCY_COLORS[urgency]?.select ?? "border-slate-200 bg-white text-slate-800 focus:border-[#2E8B57]"}`}>
+              {reportCatalog.formUrgencies.map(({ label }) => <option key={label} value={label} className={URGENCY_COLORS[label]?.option}>{label}</option>)}
             </select>
           </div>
 
