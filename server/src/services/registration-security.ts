@@ -15,7 +15,11 @@ export function cookie(c: Context<AppEnv>, name: string, value: string, maxAge: 
   setCookie(c, name, value, { httpOnly: true, sameSite: "Lax", secure: new URL(c.req.url).protocol === "https:", path: "/", maxAge });
 }
 export function assertOrigin(c: Context<AppEnv>) {
-  if (c.req.header("Origin") !== c.env.FRONTEND_ORIGIN) throw new HTTPException(403, { message: "Invalid request origin." });
+  // Native mobile clients (Expo/React Native) don't send an Origin header.
+  // Browsers always include Origin on POST, so the check still protects the web client.
+  const origin = c.req.header("Origin");
+  if (!origin) return;
+  if (origin !== c.env.FRONTEND_ORIGIN) throw new HTTPException(403, { message: "Invalid request origin." });
 }
 export async function flow(c: Context<AppEnv>, kind: string, payload: unknown, seconds: number) {
   const token = randomToken();

@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 
 import MapViewer from "../../shared/components/MapViewer";
-import IncidentSheet from "../resident/components/IncidentSheet";
 import { loadSampleIncidents } from "../resident/sampleIncident";
 
 export default function GuestMap() {

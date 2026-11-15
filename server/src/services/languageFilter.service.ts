@@ -27,8 +27,8 @@ const FLAGGED_TERMS = [
   "shitty",
   "shit",
   "bitches",
-  "bitch",
   "asshole",
+  "bitch",
   "bastard",
 ] as const;
 
