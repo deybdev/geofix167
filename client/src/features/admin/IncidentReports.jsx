@@ -9,6 +9,7 @@ import {
 import { toast } from "../../shared/components/ui/toast";
 import MapViewer from "../../shared/components/MapViewer";
 import { useSearchParams } from "react-router-dom";
+import reportCatalog from "../../../../server/src/shared/reportCatalog.json";
 import {
   Badge, ModalSection, ModalShell, QRMatrix, RowList, SelectFilter, fmtClock, hash32, stamp,
 } from "../../shared/components/GovernanceUi";
@@ -118,14 +119,14 @@ const initialReports = () => [
 ];
 
 const statuses = ["All Statuses", "Reported", "In Progress", "BDRRMO Takeover", "Verified Fixed", "Duplicate"];
-const categories = ["All Categories", "Road Damage", "Electrical", "Sanitation", "Incident / Emergency"];
+const categories = ["All Categories", ...reportCatalog.categories];
 const locations = ["All Locations", "Rizal Street", "Quezon Avenue", "Magsaysay Boulevard", "Roxas Boulevard", "Bonifacio Street", "Del Pilar Road"];
 
-const URGENCY_OPTS = ["Critical Emergency", "Standard Emergency", "Non-Emergency Infrastructure"];
+const URGENCY_OPTS = Object.values(reportCatalog.adminUrgencies);
 const URGENCY_STYLES = {
-  "Critical Emergency": "gf-badge gf-badge--critical",
-  "Standard Emergency": "gf-badge gf-badge--emergency",
-  "Non-Emergency Infrastructure": "gf-badge gf-badge--nonemergency",
+  [reportCatalog.adminUrgencies.critical]: "gf-badge gf-badge--critical",
+  [reportCatalog.adminUrgencies.standard]: "gf-badge gf-badge--emergency",
+  [reportCatalog.adminUrgencies.maintenance]: "gf-badge gf-badge--nonemergency",
 };
 const STATUS_STYLES = {
   Reported: "gf-badge gf-badge--reported",
@@ -233,6 +234,67 @@ function languageScan(text) {
 const isEmergency = (report) => report.urgency !== "Non-Emergency Infrastructure";
 const shortUrgency = (u) => u.replace(" Emergency", "").replace(" Infrastructure", "");
 
+function formatApiReportDate(value) {
+  const date = value ? new Date(value) : null;
+  return date && Number.isFinite(date.getTime())
+    ? date.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
+    : "Date unavailable";
+}
+
+function mapApiReport(item, fetchedAt) {
+  const latitude = item.latitude == null ? null : Number(item.latitude);
+  const longitude = item.longitude == null ? null : Number(item.longitude);
+  const hasCoordinates = Number.isFinite(latitude) && Number.isFinite(longitude);
+  const classification = reportCatalog.classifications.find((entry) => entry.value === item.classification)
+    ?? reportCatalog.classifications.find((entry) => entry.isEmergency === Boolean(item.is_emergency))
+    ?? reportCatalog.classifications[0];
+  const category = reportCatalog.categories.includes(item.category) ? item.category : classification.defaultCategory;
+  const priority = String(item.priority_code ?? "").toUpperCase();
+  const urgencyKey = reportCatalog.adminUrgencyByPriority[priority] ?? "standard";
+  const urgency = classification.isEmergency
+    ? reportCatalog.adminUrgencies[urgencyKey]
+    : reportCatalog.adminUrgencies.maintenance;
+  const address = typeof item.location_description === "string" ? item.location_description.trim() : "";
+  const location = address || (hasCoordinates ? `${latitude.toFixed(5)}, ${longitude.toFixed(5)}` : "Location unavailable");
+  const rawStatus = String(item.status_label ?? item.status_code ?? "Reported");
+  const status = /submitted|pending/i.test(rawStatus) ? "Reported"
+    : /dispatched|accepted|en.route|on.scene|progress/i.test(rawStatus) ? "In Progress"
+      : /resolved|closed|complete/i.test(rawStatus) ? "Verified Fixed"
+        : rawStatus;
+  const reporterType = String(item.reporter_type ?? (item.guest_session_id ? "GUEST" : "RESIDENT")).toLowerCase();
+  const reporter = String(item.reporter_name ?? "").trim() || (reporterType === "guest" ? "Guest" : "Resident");
+  const accuracy = item.accuracy_meters == null ? null : Number(item.accuracy_meters);
+  const outsideBoundary = item.within_barangay_boundary === 0 || item.within_barangay_boundary === false;
+  const submittedAt = item.submitted_at ?? item.received_at;
+  const submittedTime = submittedAt ? Date.parse(submittedAt) : NaN;
+  const triageStartedAt = Number.isFinite(submittedTime) ? submittedTime : fetchedAt;
+
+  return {
+    id: String(item.reference_number ?? item.incident_id ?? "Unknown report"),
+    title: String(item.title ?? "").trim() || "Incident report",
+    category,
+    urgency,
+    accident: classification.value === "sudden",
+    location,
+    reporter,
+    reporterType: reporterType === "guest" ? "guest" : "resident",
+    date: formatApiReportDate(submittedAt),
+    team: String(item.assigned_team ?? "").trim() || classification.assignedTeam,
+    status,
+    ...(hasCoordinates ? { lat: latitude, lng: longitude } : {}),
+    evidence: [],
+    geotag: {
+      source: hasCoordinates ? "Pinned location" : "Location note",
+      accuracy: accuracy == null ? "Not provided" : `±${Math.round(accuracy)} m`,
+      landmark: location,
+      ...(accuracy != null && accuracy > 100 ? { note: "GPS accuracy is over 100 m; the reporter was prompted to adjust the pin." } : {}),
+    },
+    ...(outsideBoundary ? { outsideBarangayBoundary: true } : {}),
+    text: String(item.sanitized_description ?? item.description_sanitized ?? item.description_original ?? "No description provided."),
+    ...(classification.isEmergency && status === "Reported" ? { sla: { start: triageStartedAt } } : {}),
+  };
+}
+
 /* Privacy-safe accomplishment summary: strips exact addresses, coordinates,
    and any personal identifiers before publishing to the public dashboard. */
 function privacySummary(report) {
@@ -305,7 +367,7 @@ function IncidentDrawer({ report, onClose, onResolve, onPublish, onOpenAudit, on
   const [explanation, setExplanation] = useState("");
   const [showRaw, setShowRaw] = useState(false);
   const resolved = report.status === "Verified Fixed";
-  const language = useMemo(() => languageScan(report.text), [report.text]);
+  const language = useMemo(() => languageScan(report.text ?? ""), [report.text]);
   const canResolve = closingMode === "proof" ? Boolean(proof) : Boolean(reason && explanation.trim().length >= 10);
 
   function toggleRaw() {
@@ -382,12 +444,12 @@ function IncidentDrawer({ report, onClose, onResolve, onPublish, onOpenAudit, on
           <div className="gf-note mt-2">
             <MapPinned size={14} style={{ marginTop: 2, color: "var(--gf-green)" }} />
             <div>
-              <p><strong>{report.geotag.source}</strong> • accuracy {report.geotag.accuracy} • landmark: {report.geotag.landmark}</p>
-              {report.geotag.note && <p className="mt-0.5 text-[#b45309]">{report.geotag.note}</p>}
+              <p><strong>{report.geotag?.source ?? "Report location"}</strong> • accuracy {report.geotag?.accuracy ?? "Not provided"} • landmark: {report.geotag?.landmark ?? report.location}</p>
+              {report.geotag?.note && <p className="mt-0.5 text-[#b45309]">{report.geotag.note}</p>}
               <p className="mt-0.5 text-[#a8b6c6]">The system never generates default or fabricated coordinate fallbacks when GPS fails.</p>
             </div>
           </div>
-          <div className="mt-2 overflow-hidden rounded-lg border border-[#dfe7ea]">
+          {Number.isFinite(report.lat) && Number.isFinite(report.lng) ? <div className="mt-2 overflow-hidden rounded-lg border border-[#dfe7ea]">
             <div className="h-[300px]">
               <MapViewer compact incidents={[{ id: report.id, title: report.title, category: report.category, status: report.status, lat: report.lat, lng: report.lng }]} selectedIncident={{ id: report.id, lat: report.lat, lng: report.lng }} />
             </div>
@@ -395,11 +457,11 @@ function IncidentDrawer({ report, onClose, onResolve, onPublish, onOpenAudit, on
               <span>{report.location}, Barangay 167</span>
               <span>{report.lat.toFixed(4)} N, {report.lng.toFixed(4)} E</span>
             </div>
-          </div>
+          </div> : <div className="gf-note gf-note--soft mt-2"><MapPinned size={14} /><span>No coordinate pin was saved. Location note: {report.location}</span></div>}
         </ModalSection>
 
         <ModalSection title="Multimedia Evidence (Optional)">
-          {report.evidence.length ? (
+          {report.evidence?.length ? (
             <div className="grid grid-cols-2 gap-2">
               {report.evidence.includes("photo") && (
                 <div className="flex h-[120px] items-center justify-center gap-1 rounded-lg border border-[#dfe7ea] bg-[linear-gradient(150deg,#efe9dd_0%,#cdbfa8_55%,#8f8168_100%)] text-[#5c5343]"><Camera size={18} /><span className="text-[9px] font-bold">photo-evidence.jpg</span></div>
@@ -1346,6 +1408,44 @@ export default function IncidentReports() {
   const [strikes, setStrikes] = useState(seededStrikes);
   const [auditLog, setAuditLog] = useState(seededAudit);
   const [now, setNow] = useState(() => NEW_CALLS());
+  const locationOptions = useMemo(() => [
+    "All Locations",
+    ...new Set([...locations.slice(1), ...reports.map((report) => report.location).filter(Boolean)]),
+  ], [reports]);
+
+  useEffect(() => {
+    let active = true;
+    let warned = false;
+    const loadApiReports = async () => {
+      try {
+        const response = await fetch("/api/reports", {
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (!response.ok) throw new Error("Reports could not be loaded from the server.");
+        const result = await response.json();
+        if (!active || !Array.isArray(result.reports)) return;
+        const fetchedAt = Date.now();
+        const apiReports = result.reports.map((item) => mapApiReport(item, fetchedAt));
+        setReports((current) => {
+          const existingIds = new Set(current.map((report) => report.id));
+          const newReports = apiReports.filter((report) => !existingIds.has(report.id));
+          return newReports.length ? [...newReports, ...current] : current;
+        });
+      } catch (error) {
+        if (!warned) {
+          warned = true;
+          console.warn("Unable to load server incident reports:", error);
+        }
+      }
+    };
+    void loadApiReports();
+    const timer = window.setInterval(loadApiReports, 5000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   useEffect(() => {
     if (queueTab) setTab(queueTab);
@@ -1540,7 +1640,7 @@ export default function IncidentReports() {
         </label>
         <SelectFilter value={status} options={statuses} onChange={setStatus} ariaLabel="Filter status" />
         <SelectFilter value={category} options={categories} onChange={setCategory} ariaLabel="Filter category" />
-        <SelectFilter value={location} options={locations} onChange={setLocation} ariaLabel="Filter location" />
+        <SelectFilter value={location} options={locationOptions} onChange={setLocation} ariaLabel="Filter location" />
         <SelectFilter value={month} options={["April 2026", "March 2026", "February 2026"]} onChange={setMonth} ariaLabel="Filter month" />
         <button type="button" onClick={resetFilters} className="flex items-center gap-1 px-2 text-[9px] text-[#60738f] hover:text-(--gf-green)"><RotateCcw size={11} /> Reset</button>
       </section>
@@ -1580,7 +1680,7 @@ export default function IncidentReports() {
                         <td className="px-2 py-3 font-semibold text-[#263246]">{report.title}</td>
                         <td className="px-2 py-3 text-[#60738f]">{report.category}</td>
                         <td className="px-2 py-3"><Badge label={shortUrgency(report.urgency)} styles={URGENCY_STYLES[report.urgency]} /></td>
-                        <td className="px-2 py-3 text-[#60738f]">{report.location}</td>
+                        <td className="px-2 py-3 text-[#60738f]">{report.location}{report.outsideBarangayBoundary && <div><Badge label="Outside Barangay 167" styles="gf-badge gf-badge--warn" /></div>}</td>
                         <td className="px-2 py-3">
                           {report.reporter}
                           <div className="mt-0.5 flex gap-1">

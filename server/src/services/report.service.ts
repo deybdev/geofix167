@@ -8,6 +8,7 @@ import {
   type LanguageFlagRecord, type PriorityCode,
 } from "../repositories/report.repository";
 import { filterLanguage } from "./languageFilter.service";
+import reportCatalog from "../shared/reportCatalog.json";
 
 type Database = AppEnv["Bindings"]["geofix167_db"];
 export class ReportError extends Error {
@@ -29,13 +30,21 @@ async function sha256(value: string): Promise<string> {
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
 }
 function priorityCode(value: string): PriorityCode {
+  const formUrgency = reportCatalog.formUrgencies.find((urgency) =>
+    urgency.label.toUpperCase() === value.trim().toUpperCase()
+    || urgency.priorityLevel === value.trim().toUpperCase()
+    || urgency.priorityCode === value.trim().toUpperCase());
+  if (formUrgency) return formUrgency.priorityCode as PriorityCode;
   switch (value.trim().toUpperCase()) {
     case "CRITICAL": case "P1": return "P1";
-    case "HIGH": case "P2": return "P2";
-    case "MEDIUM": case "P3": return "P3";
-    case "LOW": case "P4": return "P4";
     default: throw new ReportError("Priority must be Low, Medium, High, Critical, or P1�P4.", 400);
   }
+}
+function cleanSingleLine(value: string | null | undefined): string {
+  return (value ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
+}
+function cleanMultiline(value: string | null | undefined): string {
+  return (value ?? "").replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "").trim();
 }
 export async function submitIncidentReport(db: Database, input: CreateReportInput, user?: AuthUser, guestToken?: string): Promise<SubmitReportResult> {
   if (!user && (input.reporter_type === "RESIDENT" || input.reporter_user_id)) {
@@ -62,12 +71,21 @@ export async function submitIncidentReport(db: Database, input: CreateReportInpu
   if (existing) return existing;
   const category = input.incident_category.trim();
   const priority = priorityCode(input.priority_level ?? (input.is_emergency === 1 ? "CRITICAL" : "MEDIUM"));
+  const classification = reportCatalog.classifications.find((item) => item.value === input.classification);
+  const assignedTeam = classification?.assignedTeam ?? (input.is_emergency === 1 ? "BDRRMO Response" : "Maintenance Team A");
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
   const guestId = userId === null ? (input.guest_session_id ?? crypto.randomUUID()) : null;
   const token = guestId && !input.guest_session_id ? Array.from(crypto.getRandomValues(new Uint8Array(32)),
     byte => byte.toString(16).padStart(2, "0")).join("") : undefined;
-  const description = input.description ?? "";
+  const description = input.reporter_type === "GUEST"
+    ? cleanMultiline(input.description)
+    : (input.description ?? "");
+  const address = cleanSingleLine(input.reverse_geocoded_address) || cleanSingleLine(input.landmark_description);
+  const coordinateFallback = input.latitude != null && input.longitude != null
+    ? `${input.latitude.toFixed(5)}, ${input.longitude.toFixed(5)}`
+    : "";
+  const locationDescription = address || coordinateFallback || null;
   const language = filterLanguage(description);
   const languageFlags: LanguageFlagRecord[] = await Promise.all(
     [...new Set(language.matchedTerms.map(term => term.toLowerCase()))].map(async term => ({
@@ -84,18 +102,20 @@ export async function submitIncidentReport(db: Database, input: CreateReportInpu
     await createIncidentReportBundle(db, {
       creationAudit,
       guestSession: guestId && token ? {
-        guest_session_id: guestId, display_name: "Guest",
+        guest_session_id: guestId, display_name: cleanSingleLine(input.guest_alias) || "Guest",
         access_token_hash: await sha256(token), created_at: now,
       } : null,
       report: {
         incident_id: id, reported_by_user_id: userId, guest_session_id: guestId,
         incident_status_id: 1, category, priority_code: priority,
         is_emergency: input.is_emergency === 1 ? 1 : 0,
-        title: `${category} Incident Report`, description_original: description,
+        title: cleanSingleLine(input.title) || `${category} Incident Report`, description_original: description,
         description_sanitized: language.sanitizedText, callback_mobile_number: input.callback_contact?.trim() || null,
         latitude: input.latitude ?? null, longitude: input.longitude ?? null,
-        location_description: [input.landmark_description?.trim(), input.reverse_geocoded_address?.trim()]
-          .filter((value, index, values) => value && values.indexOf(value) === index).join(" � ") || null,
+        accuracy_meters: input.accuracy_meters ?? null,
+        within_barangay_boundary: input.within_barangay_boundary ?? null,
+        assigned_team: assignedTeam,
+        location_description: locationDescription,
         submitted_at: now, updated_at: now,
       },
       statusEvent: {
