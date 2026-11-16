@@ -1,4 +1,5 @@
 import { useNavigate } from "react-router-dom";
+import { useEffect } from "react";
 import { useNotifications } from "../../shared/hooks/useNotifications";
 import { PATHS } from "../../router/paths";
 
@@ -6,6 +7,7 @@ export default function Alerts() {
   const { notifications, unreadCount, next_cursor, loading, error, writeError,
     writing, refresh, loadMore, markRead } = useNotifications();
   const navigate = useNavigate();
+  useEffect(() => { refresh(); }, [refresh]);
   async function open(notification) {
     if (!notification.is_read && !await markRead(notification.id)) return;
     // Notification entries never claim My Reports as their previous entry.

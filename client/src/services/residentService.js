@@ -211,7 +211,10 @@ export async function getAnnouncements() {
 
 async function notificationRequest(path = "", { method = "GET", signal } = {}) {
   const response = await fetch('/api/notifications' + path, { method, signal, credentials: "include", cache: "no-store" });
-  const data = await response.json().catch(() => null);
+  const data = await response.json().catch(error => {
+    if (error.name === "AbortError") throw error;
+    return null;
+  });
   if (!response.ok || !data) throw new Error(data?.error || "Unable to load or update notifications. Please try again.");
   return { data };
 }
