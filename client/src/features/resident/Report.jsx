@@ -28,6 +28,7 @@ import { buildResidentReportPayload, submitReport } from "../../services/residen
 import { PATHS } from "../../router/paths";
 import { useGeoLocation } from "../../shared/context/LocationProvider";
 import { useAuth } from "../../shared/hooks/useAuth";
+import { useNotifications } from "../../shared/hooks/useNotifications";
 import { createAttemptStore, PERSISTENCE_WARNING, uploadQueue } from "./uploadRecovery";
 
 const STEPS = ["Report type", "What happened?", "Where is it?", "Tell us more", "Add photos or video", "Review and send"];
@@ -111,6 +112,7 @@ export default function Report() {
   const uploadedIds = useRef(new Set());
   const uploadingRef = useRef(false);
   const { user } = useAuth();
+  const { refresh: refreshNotifications } = useNotifications();
 
   // Uploads do not continue in the background once this page is left.
   useEffect(() => {
@@ -254,6 +256,7 @@ export default function Report() {
       const { data } = await submitReport({ ...payload, idempotency_key: attemptRef.current.key });
       setSavedReport(data.report);
       setSubmitted(true);
+      refreshNotifications();
       await uploadFiles(data.report);
     } catch (error) {
       setSubmitError(error.message || "Unable to submit your report. Please try again.");

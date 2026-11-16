@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { FileText, Plus, ChevronRight } from "lucide-react";
 import { getReports } from "../../services/residentService";
 import { PATHS } from "../../router/paths";
+import { openReportDetails } from "../../router/reportNavigation";
 
 const STATUS_LABELS = {
   submitted: { label: "Submitted", color: "bg-slate-100 text-slate-700" },
@@ -36,8 +37,7 @@ const CATEGORY_LABELS = {
 export default function MyReports() {
   const location = useLocation();
   const navigate = useNavigate();
-  const initialStatus = location.state?.status ?? "";
-  const [activeFilter, setActiveFilter] = useState(initialStatus);
+  const activeFilter = location.state?.status ?? "";
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -81,7 +81,10 @@ export default function MyReports() {
               if (value === activeFilter) return;
               setLoading(true);
               setError(null);
-              setActiveFilter(value);
+              navigate({ pathname: location.pathname, search: location.search, hash: location.hash }, {
+                replace: true,
+                state: { ...location.state, status: value },
+              });
             }}
             className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition ${
               activeFilter === value
@@ -138,12 +141,12 @@ export default function MyReports() {
                 role="button"
                 tabIndex={0}
                 onClick={() =>
-                  navigate(`${PATHS.reportDetails}/${encodeURIComponent(report.public_id)}`)
+                  openReportDetails(navigate, location, report.public_id)
                 }
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    navigate(`${PATHS.reportDetails}/${encodeURIComponent(report.public_id)}`);
+                    openReportDetails(navigate, location, report.public_id);
                   }
                 }}
                 className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-100 bg-white p-4 shadow-sm transition hover:border-primary/30 hover:shadow-md"

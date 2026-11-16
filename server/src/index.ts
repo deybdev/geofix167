@@ -9,6 +9,7 @@ import reportRoutes from "./routes/report.route";
 import mediaRoutes from "./routes/media.route";
 import adminDispatchRoutes from "./routes/admin-dispatch.route";
 import registrationReviewRoutes from "./routes/registration-review.route";
+import notificationRoutes from "./routes/notification.route";
 
 const app = new Hono<AppEnv>();
 
@@ -40,6 +41,7 @@ app.route("/api/communication", communicationRoutes);
 // GET  /api/reports
 // GET  /api/reports/:id
 app.route("/api/reports", reportRoutes);
+app.route("/api/notifications", notificationRoutes);
 app.route("/api/media", mediaRoutes);
 app.route("/api/admin/dispatch", adminDispatchRoutes);
 app.route("/api/admin/registrations", registrationReviewRoutes);

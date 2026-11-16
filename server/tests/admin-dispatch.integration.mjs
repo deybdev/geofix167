@@ -21,7 +21,7 @@ INSERT INTO roles VALUES(1,'admin'),(2,'resident'),(3,'tanod');
 INSERT INTO account_statuses VALUES(1,'ACTIVE');
 INSERT INTO users VALUES('admin','Admin','User','09123123123','hash',1,1),('resident','Resident','User','09246246246','hash',2,1),
 ('usr_demo_responder_001','Renus','Manipon','09369369369','hash',3,1);`);
-for (const file of ['0005_guest_incidents.sql', '0006_review_alerts.sql', '0007_dispatch_support.sql', '0012_community_audit.sql', '0015_admin_dispatch.sql']) {
+for (const file of ['0005_guest_incidents.sql', '0006_review_alerts.sql', '0007_dispatch_support.sql', '0012_community_audit.sql', '0015_admin_dispatch.sql', '0018_guest_report_intake.sql', '0019_resident_report_notifications.sql']) {
   sql.exec(readFileSync(resolve(serverRoot, `src/migrations/${file}`), 'utf8'));
 }
 const sha256 = async (value) => Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))).toString('hex');
@@ -67,7 +67,7 @@ assert.ok(seededUnits.every((unit) => unit.availability_status === 'AVAILABLE'))
 const reportIds = [];
 for (let index = 0; index < 4; index += 1) {
   const response = await request('/reports', 'POST', {
-    reporter_type: 'GUEST', incident_category: 'Road Damage', priority_level: 'HIGH',
+    reporter_type: 'GUEST', guest_alias: 'Test Guest', title: 'Road report', classification: 'maintenance', incident_category: 'Road Damage', priority_level: 'HIGH',
     description: `Dispatch integration report ${index}`, latitude: 14.73, longitude: 121.01,
   });
   assert.equal(response.status, 201);

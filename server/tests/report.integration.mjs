@@ -15,7 +15,7 @@ CREATE TABLE users(user_id TEXT PRIMARY KEY, first_name TEXT, last_name TEXT, mo
 CREATE TABLE user_sessions_and_devices(user_id TEXT, token_hash TEXT, expires_at TEXT, revoked_at TEXT);
 INSERT INTO roles VALUES(1,'resident'),(2,'admin'); INSERT INTO account_statuses VALUES(1,'ACTIVE');
 INSERT INTO users VALUES('a','A','Resident','1',1,1,NULL),('b','B','Resident','2',1,1,NULL),('admin','Staff','Admin','3',2,1,NULL);`);
-for (const file of ['0005_guest_incidents.sql','0006_review_alerts.sql','0007_dispatch_support.sql','0012_community_audit.sql','0015_admin_dispatch.sql','0018_guest_report_intake.sql']) sql.exec(readFileSync(join(repoRoot,'server/src/migrations',file),'utf8'));
+for (const file of ['0005_guest_incidents.sql','0006_review_alerts.sql','0007_dispatch_support.sql','0012_community_audit.sql','0015_admin_dispatch.sql','0018_guest_report_intake.sql', '0019_resident_report_notifications.sql']) sql.exec(readFileSync(join(repoRoot,'server/src/migrations',file),'utf8'));
 const hash = async s => Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s))).toString('hex');
 for (const id of ['a','b','admin']) sql.prepare('INSERT INTO user_sessions_and_devices(user_id,token_hash,expires_at) VALUES(?,?,?)').run(id,await hash(id),'2099-01-01');
 const db = {prepare(query) { const stmt = sql.prepare(query); let args=[]; return { bind(...v){args=v;return this}, async first(){return stmt.get(...args) ?? null}, async all(){return {results:stmt.all(...args)}}, async run(){return {meta:{changes:Number(stmt.run(...args).changes)}}} }; }, async batch(statements){sql.exec('BEGIN');try {const results=[];for(const stmt of statements) results.push(await stmt.run());sql.exec('COMMIT');return results}catch(e){sql.exec('ROLLBACK');throw e}}};
@@ -146,7 +146,9 @@ const repo=await import(`data:text/javascript;base64,${Buffer.from(repoOutput.ou
 sql.prepare('UPDATE incident_reports SET incident_status_id=4 WHERE incident_id=?').run(edgeReport.incident_id);
 sql.exec("UPDATE tanod_assignments SET assignment_status_id=2, completed_at=NULL WHERE tanod_assignment_id='edge'");
 const eventCount=sql.prepare('SELECT count(*) n FROM incident_status_events').get().n;
+const notificationCount=sql.prepare('SELECT count(*) n FROM resident_notifications').get().n;
 assert.equal(await repo.updateIncidentReportStatus(db,edgeReport.incident_id,1,10,true,'admin'),false);
+assert.equal(sql.prepare('SELECT count(*) n FROM resident_notifications').get().n,notificationCount);
 assert.equal(sql.prepare('SELECT count(*) n FROM incident_status_events').get().n,eventCount);
 assert.equal(sql.prepare("SELECT assignment_status_id FROM tanod_assignments WHERE tanod_assignment_id='edge'").get().assignment_status_id,2);
 sql.exec("CREATE TEMP TRIGGER fail_audit BEFORE INSERT ON audit_logs WHEN NEW.action='REPORT_DETAILS_UPDATED' BEGIN SELECT RAISE(ABORT,'test audit failure'); END");

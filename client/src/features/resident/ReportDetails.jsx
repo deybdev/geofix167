@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { ChevronLeft, FileText, MapPin } from "lucide-react";
 import { Button } from "../../shared/components/ui/button";
 import { PATHS } from "../../router/paths";
+import { returnToMyReports, withoutPendingUploads } from "../../router/reportNavigation";
 import { getReportAttachments, getReportDetails, updateReportDetails } from "../../services/residentService";
 import { useAuth } from "../../shared/hooks/useAuth";
 import AttachmentRecovery from "./components/AttachmentRecovery";
@@ -59,8 +60,17 @@ function ReportDetailsView({ id }) {
 
   // Consume the hand-off once so history navigation does not resurrect it.
   useEffect(() => {
-    if (location.state?.pendingUploads) navigate(location.pathname, { replace: true, state: null });
-  }, [location.state, location.pathname, navigate]);
+    if (location.state?.pendingUploads) {
+      navigate({ pathname: location.pathname, search: location.search, hash: location.hash }, {
+        replace: true,
+        state: withoutPendingUploads(location.state),
+      });
+    }
+  }, [location.state, location.pathname, location.search, location.hash, navigate]);
+
+  function handleReturnToMyReports() {
+    returnToMyReports(navigate, location.state);
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -156,7 +166,7 @@ function ReportDetailsView({ id }) {
   return (
     <section className="mx-auto max-w-md px-4 py-5 text-sm text-slate-700">
       <div className="flex items-center gap-3">
-        <button type="button" onClick={() => navigate(PATHS.myReports)} aria-label="Back to my reports"
+        <button type="button" onClick={handleReturnToMyReports} aria-label="Back to my reports"
           className="flex size-9 shrink-0 items-center justify-center rounded-full border border-slate-200 text-slate-600 transition hover:border-primary hover:text-primary">
           <ChevronLeft size={18} />
         </button>
@@ -246,7 +256,7 @@ function ReportDetailsView({ id }) {
             </li>)}
           </ol>}
       </>}
-      <Button type="button" onClick={() => navigate(PATHS.myReports)} variant="outline"
+      <Button type="button" onClick={handleReturnToMyReports} variant="outline"
         className="mt-2 h-11 w-full rounded-xl text-sm font-semibold">Back to My Reports</Button>
     </section>
   );
