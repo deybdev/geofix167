@@ -2,8 +2,9 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { ChevronLeft, FileText, House, Map, Plus, UserRound, Bell } from "lucide-react";
 import { useAuth } from "../shared/hooks/useAuth";
 import { PATHS } from "../router/paths";
-import { useEffect, useRef, useState } from "react";
-import { getNotifications } from "../services/residentService";
+import { useRef, useState } from "react";
+import { NotificationProvider } from "../shared/context/NotificationProvider";
+import { useNotifications } from "../shared/hooks/useNotifications";
 import ConfirmationDialog from "../shared/components/ConfirmationDialog";
 import { toast } from "../shared/components/ui/toast";
 
@@ -120,13 +121,7 @@ const ResidentLayout = ({ children }) => {
 
   const isSubPage = Boolean(subTitle);
 
-  const [unreadCount, setUnreadCount] = useState(0);
-
-  useEffect(() => {
-    getNotifications()
-      .then(({ data }) => setUnreadCount(data.unread_count ?? 0))
-      .catch(() => {});
-  }, [location.pathname]);
+  const { unreadCount } = useNotifications();
 
   const navigationItems = [
     { label: "Home",       icon: House,     path: PATHS.resident },
@@ -262,4 +257,9 @@ const ResidentLayout = ({ children }) => {
   );
 };
 
-export default ResidentLayout;
+export default function ResidentNotificationLayout(props) {
+  const { user } = useAuth();
+  return <NotificationProvider key={user?.id ?? "signed-out"} userId={user?.role === "resident" ? user.id : null}>
+    <ResidentLayout {...props} />
+  </NotificationProvider>;
+}

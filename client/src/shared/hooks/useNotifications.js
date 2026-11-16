@@ -1,0 +1,7 @@
+import { createContext, useContext } from "react";
+export const NotificationContext = createContext(null);
+export function useNotifications() {
+  const value = useContext(NotificationContext);
+  if (!value) throw new Error("NotificationProvider is required");
+  return value;
+}

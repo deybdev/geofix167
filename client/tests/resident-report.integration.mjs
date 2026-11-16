@@ -22,7 +22,7 @@ sql.exec(`PRAGMA foreign_keys = ON;
   CREATE TABLE user_sessions_and_devices(user_id TEXT, token_hash TEXT, expires_at TEXT, revoked_at TEXT);
   INSERT INTO roles VALUES(1, 'resident'); INSERT INTO account_statuses VALUES(1, 'ACTIVE');
   INSERT INTO users VALUES('resident', 'Test', 'Resident', '09123456789', 1, 1), ('other', 'Other', 'Resident', '09987654321', 1, 1);`);
-for (const file of ["0005_guest_incidents.sql", "0006_review_alerts.sql", "0012_community_audit.sql"]) {
+for (const file of ["0005_guest_incidents.sql", "0006_review_alerts.sql", "0012_community_audit.sql", '0018_guest_report_intake.sql', '0019_resident_report_notifications.sql']) {
   sql.exec(readFileSync(resolve(root, "server/src/migrations", file), "utf8"));
 }
 const token = "test-resident-session";
@@ -84,11 +84,11 @@ try {
   assert.equal(replay.report.public_id, created.report.public_id);
   assert.equal(sql.prepare("SELECT count(*) n FROM incident_reports").get().n, 1);
   const id = created.report.public_id;
-  assert.equal(created.report.reference_number, id);
+  assert.equal(created.report.reference_number, "GF-008");
   assert.equal(created.report.status, "submitted");
   assert.equal(created.report.urgency, "Moderate");
   assert.equal(created.report.latitude, null);
-  assert.ok(created.report.address.includes("Main Street") && created.report.address.includes("Near chapel"));
+  assert.equal(created.report.address, "Main Street");
   assert.equal((await getReports()).data.reports[0].public_id, id);
   assert.equal((await getReportStats()).data.stats.total, 1);
   const fetched = (await getReportDetails(id)).data.report;

@@ -201,36 +201,6 @@ export const SAMPLE_ANNOUNCEMENTS = [
   },
 ];
 
-export const SAMPLE_NOTIFICATIONS = [
-  {
-    id: 1,
-    title: "Team Dispatched",
-    body: "A maintenance team has been dispatched to address your drainage report.",
-    type: "report_update",
-    ref_id: "rpt_a1b2c3d4",
-    is_read: 0,
-    created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 2,
-    title: "Report Submitted",
-    body: "Your report about clogged drainage has been received and is under review.",
-    type: "report_update",
-    ref_id: "rpt_a1b2c3d4",
-    is_read: 0,
-    created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 3,
-    title: "Report Resolved",
-    body: "Your pothole report on Balagtas St. has been resolved. Thank you for reporting!",
-    type: "report_update",
-    ref_id: "rpt_i9j0k1l2",
-    is_read: 1,
-    created_at: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-];
-
 // Simulated async helpers — swap these for real axios calls later.
 const delay = (ms = 300) => new Promise((res) => setTimeout(res, ms));
 
@@ -239,21 +209,18 @@ export async function getAnnouncements() {
   return { data: { announcements: SAMPLE_ANNOUNCEMENTS } };
 }
 
-export async function getNotifications() {
-  await delay();
-  const unread_count = SAMPLE_NOTIFICATIONS.filter((n) => !n.is_read).length;
-  return { data: { notifications: SAMPLE_NOTIFICATIONS, unread_count } };
+async function notificationRequest(path = "", { method = "GET", signal } = {}) {
+  const response = await fetch('/api/notifications' + path, { method, signal, credentials: "include", cache: "no-store" });
+  const data = await response.json().catch(() => null);
+  if (!response.ok || !data) throw new Error(data?.error || "Unable to load or update notifications. Please try again.");
+  return { data };
 }
-
-export async function markNotificationRead(id) {
-  await delay(100);
-  const n = SAMPLE_NOTIFICATIONS.find((n) => n.id === id);
-  if (n) n.is_read = 1;
-  return { data: { ok: true } };
+export function getNotifications({ cursor, signal } = {}) {
+  return notificationRequest(cursor ? '?cursor=' + encodeURIComponent(cursor) : "", { signal });
 }
-
-export async function markAllNotificationsRead() {
-  await delay(100);
-  SAMPLE_NOTIFICATIONS.forEach((n) => { n.is_read = 1; });
-  return { data: { ok: true } };
+export function markNotificationRead(id, { signal } = {}) {
+  return notificationRequest('/' + encodeURIComponent(id) + '/read', { method: "PATCH", signal });
+}
+export function markAllNotificationsRead({ signal } = {}) {
+  return notificationRequest('/read-all', { method: "PATCH", signal });
 }
