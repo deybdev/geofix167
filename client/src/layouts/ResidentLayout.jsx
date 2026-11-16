@@ -180,7 +180,9 @@ const ResidentLayout = ({ children }) => {
         <header className="flex items-center gap-3 border-b px-4 py-3">
           <button
             type="button"
-            onClick={() => navigate(-1)}
+            onClick={() => location.pathname === PATHS.myReports
+              ? navigate(PATHS.resident)
+              : navigate(-1)}
             aria-label="Go back"
             className="flex size-9 items-center justify-center rounded-full border border-slate-200 text-slate-600 transition hover:border-primary hover:text-primary"
           >
