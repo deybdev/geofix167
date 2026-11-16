@@ -113,8 +113,11 @@ References: [SQLite changes semantics](https://www.sqlite.org/c3ref/changes.html
 `NotificationProvider` owns list, cursor, unread count, requests and read errors.
 One provider wraps ResidentLayout and is keyed by account. It polls every 60 seconds
 while visible and refreshes on focus/visibility; requests do not overlap.
-Unmount/account switch aborts pending work and clears state. Refresh starts at the
-newest page; Load more appends and deduplicates. Successful reads refresh the badge;
+Unmount/account switch aborts pending work and clears state. Polling, focus, manual
+Refresh and post-read refresh merge the newest page by ID while retaining older
+loaded pages and their continuation cursor. Load more advances that cursor. Rows
+stay in descending timestamp/ID order. Successful reads update loaded rows and
+refresh the server-authoritative unread count (the previous count remains until GET succeeds);
 failed reads leave rows unread and display an error with retryable controls.
 Buttons provide mouse, Enter and Space activation. Notification navigation uses
 the actual incident ID and never passes My Reports provenance metadata.

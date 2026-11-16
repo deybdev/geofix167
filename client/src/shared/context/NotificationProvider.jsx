@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getNotifications, markNotificationRead, markAllNotificationsRead } from "../../services/residentService";
 import { NotificationContext } from "../hooks/useNotifications";
+import { applyNotificationRead, mergeNotificationPage } from "./notificationPages";
 
 export function NotificationProvider({ userId, children }) {
   const [data, setData] = useState({ notifications: [], unread_count: 0, next_cursor: null });
@@ -18,10 +19,7 @@ export function NotificationProvider({ userId, children }) {
     setError("");
     try {
       const { data: fresh } = await getNotifications({ cursor, signal: controller.signal });
-      if (!controller.signal.aborted) setData(previous => ({ ...fresh,
-        notifications: cursor ? [...previous.notifications, ...fresh.notifications.filter(n =>
-          !previous.notifications.some(old => old.id === n.id))] : fresh.notifications,
-      }));
+      if (!controller.signal.aborted) setData(previous => mergeNotificationPage(previous, fresh, Boolean(cursor)));
     } catch (failure) {
       if (!controller.signal.aborted) setError(failure.message);
     } finally {
@@ -58,10 +56,7 @@ export function NotificationProvider({ userId, children }) {
       if (id) await markNotificationRead(id, { signal: controller.signal });
       else await markAllNotificationsRead({ signal: controller.signal });
       if (controller.signal.aborted) return false;
-      setData(previous => ({ ...previous,
-        unread_count: id ? Math.max(0, previous.unread_count - Number(previous.notifications.some(n => n.id === id && !n.is_read))) : 0,
-        notifications: previous.notifications.map(n => !id || n.id === id ? { ...n, is_read: 1 } : n),
-      }));
+      setData(previous => applyNotificationRead(previous, id));
       return true;
     } catch (failure) {
       if (!controller.signal.aborted) setWriteError(failure.message);
