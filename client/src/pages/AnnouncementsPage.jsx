@@ -1,28 +1,14 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, CalendarDays, Clock3, MapPin, Megaphone, Search } from "lucide-react";
-import { PATHS } from "../router/paths";
 import AccessibleDropdown from "../shared/components/AccessibleDropdown";
+import AnnouncementDetailsModal from "./AnnouncementDetailsModal";
+import { announcementCategoryBadge, announcementCategoryOptions } from "../shared/constants/announcementCategoryStyles";
 import catalog from "../../../server/src/shared/announcementCatalog.json";
 
-const categoryTone = {
-  "Clean & Green": "green",
-  "BDRRMO Advisory": "red",
-  Event: "amber",
-  Health: "red",
-  General: "neutral",
-};
-const categorySurface = {
-  "Clean & Green": "border-emerald-200 bg-emerald-50 text-emerald-800",
-  "BDRRMO Advisory": "border-red-200 bg-red-50 text-red-800",
-  Event: "border-amber-200 bg-amber-50 text-amber-800",
-  Health: "border-sky-200 bg-sky-50 text-sky-800",
-  General: "border-slate-200 bg-slate-100 text-slate-700",
-};
 const dateLabel = (value) => value ? new Date(`${value.slice(0, 10)}T00:00:00`).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }) : "";
 const timeLabel = (value) => value ? new Date(`1970-01-01T${value}:00`).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
 
-export default function AnnouncementsPage() {
+export default function AnnouncementsPage({ initialSelectedId = "", onCloseAnnouncement } = {}) {
   const [items, setItems] = useState([]);
   const [category, setCategory] = useState("");
   const [query, setQuery] = useState("");
@@ -30,9 +16,11 @@ export default function AnnouncementsPage() {
   const [more, setMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [selectedId, setSelectedId] = useState(initialSelectedId);
+  useEffect(() => setSelectedId(initialSelectedId), [initialSelectedId]);
   const categoryOptions = useMemo(() => [
     { value: "", label: "All categories", tone: "green", tag: String(catalog.categories.length) },
-    ...catalog.categories.map((name) => ({ value: name, label: name, tone: categoryTone[name] || "neutral" })),
+    ...announcementCategoryOptions(catalog.categories),
   ], []);
 
   useEffect(() => {
@@ -55,6 +43,7 @@ export default function AnnouncementsPage() {
   }, [category, query, offset]);
 
   const resetResults = (update) => { setItems([]); setOffset(0); update(); };
+  const closeAnnouncement = useCallback(() => { setSelectedId(""); onCloseAnnouncement?.(); }, [onCloseAnnouncement]);
 
   return <div className="min-h-full bg-[#f4f8f5] pb-12">
     <section className="bg-[#103b2b] text-white">
@@ -81,8 +70,8 @@ export default function AnnouncementsPage() {
       {error && <div role="alert" className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}<button onClick={() => setOffset(0)} className="ml-2 font-semibold underline">Retry</button></div>}
 
       <div className="mt-5 grid gap-4 md:grid-cols-2">
-        {items.map((item) => <Link key={item.id} to={`${PATHS.announcements}/${item.id}`} className="group flex min-h-56 flex-col rounded-2xl border border-[#dce8df] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md">
-          <div className="flex items-start justify-between gap-3"><span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold ${categorySurface[item.category] || categorySurface.General}`}>{item.category}</span><span className="shrink-0 text-[10px] text-slate-400">Posted {dateLabel(item.published_at)}</span></div>
+        {items.map((item) => <button key={item.id} type="button" aria-haspopup="dialog" onClick={() => setSelectedId(item.id)} className="group flex min-h-56 flex-col rounded-2xl border border-[#dce8df] bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600">
+          <div className="flex w-full items-start justify-between gap-3"><span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold ${announcementCategoryBadge(item.category)}`}>{item.category}</span><span className="shrink-0 text-[10px] text-slate-400">Posted {dateLabel(item.published_at)}</span></div>
           <h2 className="mt-4 text-lg font-bold leading-snug text-slate-900 group-hover:text-emerald-800">{item.title}</h2>
           <p className="mt-2 line-clamp-3 flex-1 text-sm leading-6 text-slate-600">{item.details}</p>
           {(item.event_date || item.event_time || item.venue) && <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 border-t border-slate-100 pt-3 text-[11px] font-medium text-slate-500">
@@ -91,11 +80,12 @@ export default function AnnouncementsPage() {
             {item.venue && <span className="inline-flex items-center gap-1.5"><MapPin size={13} className="text-emerald-700" />{item.venue}</span>}
           </div>}
           <span className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-emerald-800">View announcement <ArrowRight size={13} className="transition-transform group-hover:translate-x-1" /></span>
-        </Link>)}
+        </button>)}
       </div>
       {!loading && !error && items.length === 0 && <div className="mt-5 rounded-2xl border border-dashed border-[#cbd9cf] bg-white px-5 py-14 text-center"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700"><Megaphone size={21} /></div><h2 className="mt-4 text-base font-bold text-slate-900">No announcements found</h2><p className="mt-1 text-sm text-slate-500">Try another category or search term.</p></div>}
       {loading && <p className="py-8 text-center text-sm text-slate-500">Loading announcements…</p>}
       {more && <button disabled={loading} onClick={() => setOffset((current) => current + 10)} className="mx-auto mt-6 flex items-center gap-2 rounded-lg border border-emerald-200 bg-white px-4 py-2.5 text-xs font-bold text-emerald-800 hover:bg-emerald-50 disabled:opacity-50">Load more announcements <ArrowRight size={13} /></button>}
     </section>
+    {selectedId && <AnnouncementDetailsModal id={selectedId} onClose={closeAnnouncement} />}
   </div>;
 }

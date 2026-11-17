@@ -1,10 +1,14 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Megaphone, Calendar, ChevronRight } from "lucide-react";
 import { PATHS } from "../../../router/paths";
+import AnnouncementDetailsModal from "../../../pages/AnnouncementDetailsModal";
+import { announcementCategoryBadge } from "../../../shared/constants/announcementCategoryStyles";
 
 export default function BarangayAnnouncementsCard() {
   const [items, setItems] = useState([]);
+  const [selectedId, setSelectedId] = useState("");
+  const closeAnnouncement = useCallback(() => setSelectedId(""), []);
   useEffect(() => { const controller = new AbortController(); fetch("/api/announcements?limit=5", { signal: controller.signal, cache: "no-store" }).then((r) => r.ok ? r.json() : { announcements: [] }).then((d) => setItems(d.announcements || [])).catch(() => setItems([])); return () => controller.abort(); }, []);
   return (
     <div className="landing-card flex flex-col p-5">
@@ -27,10 +31,10 @@ export default function BarangayAnnouncementsCard() {
       {/* Announcements Feed */}
       <div className="mt-4 flex flex-col gap-3 overflow-y-auto max-h-[220px] pr-1 scrollbar-thin">
         {items.map((ann) => (
-          <Link key={ann.id} to={`${PATHS.announcements}/${ann.id}`} className="landing-card rounded-lg p-3.5">
+          <button key={ann.id} type="button" aria-haspopup="dialog" onClick={() => setSelectedId(ann.id)} className="landing-card w-full rounded-lg p-3.5 text-left">
             <div className="flex items-center justify-between gap-2 mb-1.5">
               <span
-                className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${ann.badgeColor}`}
+                className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${announcementCategoryBadge(ann.category)}`}
               >
                 {ann.category}
               </span>
@@ -46,10 +50,11 @@ export default function BarangayAnnouncementsCard() {
             <p className="mt-1 text-[11px] leading-relaxed text-slate-600 line-clamp-3">
               {ann.details}
             </p>
-          </Link>
+          </button>
         ))}
         {items.length === 0 && <p className="rounded-lg border border-dashed border-slate-200 p-6 text-center text-xs text-slate-500">No announcements yet.</p>}
       </div>
+      {selectedId && <AnnouncementDetailsModal id={selectedId} onClose={closeAnnouncement} />}
 
       <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
         <span>Barangay Hall Hotline: 668-338-3141</span>
