@@ -56,7 +56,9 @@ export const createReportSchema = z
     if (!data.guest_alias?.trim()) {
       ctx.addIssue({ code: "custom", path: ["guest_alias"], message: "Reporter name is required." });
     }
-    if (data.classification === "maintenance" && !data.description?.trim()) {
+    const highUrgency = data.classification === "sudden"
+      || (data.classification === "maintenance" && reportCatalog.guestUrgency.maintenanceHighCategories.includes(data.incident_category));
+    if (!highUrgency && !data.description?.trim()) {
       ctx.addIssue({ code: "custom", path: ["description"], message: "Incident description is required." });
     }
     if (!data.classification) {

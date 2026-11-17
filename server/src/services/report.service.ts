@@ -84,10 +84,6 @@ export async function submitIncidentReport(
   if (existing) return existing;
   const category = input.incident_category.trim();
   const classification = reportCatalog.classifications.find((item) => item.value === input.classification);
-  if (guestSubmission && classification?.value === "sudden" && photos.length === 0) {
-    throw new ReportError("Attach at least one photo to submit a sudden incident.", 400);
-  }
-  if (photos.length && (!guestSubmission || !uploads)) throw new ReportError("Guest evidence photos are not available for this report.", 400);
   const guestUrgency = guestSubmission
     ? (classification?.value === "sudden"
       ? reportCatalog.guestUrgency.sudden
@@ -95,6 +91,10 @@ export async function submitIncidentReport(
         ? reportCatalog.guestUrgency.sudden
         : reportCatalog.guestUrgency.maintenanceDefault)
     : null;
+  if (guestSubmission && guestUrgency === reportCatalog.guestUrgency.sudden && photos.length === 0) {
+    throw new ReportError("Attach at least one photo to submit a High urgency report.", 400);
+  }
+  if (photos.length && (!guestSubmission || !uploads)) throw new ReportError("Guest evidence photos are not available for this report.", 400);
   const priority = guestSubmission
     ? guestPriorityCode(guestUrgency ?? reportCatalog.guestUrgency.maintenanceDefault)
     : priorityCode(input.priority_level ?? (input.is_emergency === 1 ? "CRITICAL" : "MEDIUM"));

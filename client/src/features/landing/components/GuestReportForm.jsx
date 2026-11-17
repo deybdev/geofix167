@@ -229,6 +229,7 @@ export default function GuestReportForm({
       ? reportCatalog.guestUrgency.sudden
       : reportCatalog.guestUrgency.maintenanceDefault;
   const urgency = urgencyCode === "HIGH" ? "High" : urgencyCode === "LOW" ? "Low" : "Medium";
+  const highUrgency = urgency === "High";
   const isOutsideBarangay = useMemo(
     () => Boolean(pin && boundary && !isInside(pin.lat, pin.lng, boundary)),
     [pin?.lat, pin?.lng, boundary],
@@ -479,12 +480,12 @@ export default function GuestReportForm({
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (!title.trim() || !reporterName.trim() || (reportType === "maintenance" && !description.trim())) {
-      toast.add({ title: "Required details missing", description: reportType === "maintenance" ? "Add an incident title, your name, and a description." : "Add an incident title and your name.", type: "error" });
+    if (!title.trim() || !reporterName.trim() || (!highUrgency && !description.trim())) {
+      toast.add({ title: "Required details missing", description: highUrgency ? "Add an incident title and your name." : "Add an incident title, your name, and a description.", type: "error" });
       return;
     }
-    if (reportType === "sudden" && photosRef.current.length === 0) {
-      toast.add({ title: "Photo evidence required", description: "Attach at least one photo for a sudden incident.", type: "error" });
+    if (highUrgency && photosRef.current.length === 0) {
+      toast.add({ title: "Photo evidence required", description: "Attach at least one photo for a High urgency report.", type: "error" });
       return;
     }
     if (!pin && !locationNote.trim()) {
@@ -666,16 +667,17 @@ export default function GuestReportForm({
           </div>
 
           <div>
-            <label htmlFor={`${idPrefix}-description`} className="mb-1.5 block text-xs font-bold text-slate-700">Incident Description{reportType === "sudden" ? " (optional)" : ""}</label>
-            {reportType === "sudden" && <p className="mb-1 text-[10px] text-slate-500">The photo is enough evidence in an emergency.</p>}
-            <textarea id={`${idPrefix}-description`} rows={3} value={description} onChange={(event) => setDescription(event.target.value)} maxLength={10000} placeholder="Provide exact details of the situation, visible risks, or landmarks..." required={reportType === "maintenance"} className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#2E8B57]" />
+            <label htmlFor={`${idPrefix}-description`} className={`mb-1.5 block text-xs font-bold ${highUrgency ? "text-red-700" : "text-slate-700"}`}>Incident Description{highUrgency ? " (optional)" : ""}</label>
+            {highUrgency && <p className="mb-1 text-[10px] text-red-700">High urgency: photo evidence is required. A description can help responders, but is optional.</p>}
+            {!highUrgency && <p className="mb-1 text-[10px] text-slate-500">Medium urgency: please describe the issue.</p>}
+            <textarea id={`${idPrefix}-description`} rows={3} value={description} onChange={(event) => setDescription(event.target.value)} maxLength={10000} placeholder="Provide exact details of the situation, visible risks, or landmarks..." required={!highUrgency} className={`w-full resize-none rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2 ${highUrgency ? "border-red-200 bg-red-50/50 text-slate-800 focus:border-red-400 focus:ring-red-100" : "border-slate-200 bg-white text-slate-800 focus:border-[#2E8B57] focus:ring-emerald-100"}`} />
           </div>
 
           <section className="rounded-lg border border-slate-200 bg-slate-50/70 p-3" aria-label="Photo evidence">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h4 className="flex items-center gap-1.5 text-xs font-bold text-slate-800"><Camera size={14} /> Photo evidence</h4>
-              <span className={`rounded-full px-2 py-1 text-[9px] font-bold ${reportType === "sudden" ? "bg-red-50 text-red-700" : "bg-slate-100 text-slate-600"}`}>
-                {reportType === "sudden" ? "Required for sudden incidents" : "Optional for maintenance"}
+              <span className={`rounded-full px-2 py-1 text-[9px] font-bold ${highUrgency ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-800"}`}>
+                {highUrgency ? "Required for High urgency" : "Optional for Medium urgency"}
               </span>
             </div>
             <p className="mt-1 text-[10px] text-slate-500">Take a photo as evidence. Your browser will ask for camera access. Up to 3 photos, each under 2 MiB.</p>
@@ -707,7 +709,7 @@ export default function GuestReportForm({
                 </div>
               </div>)}
             </div>}
-            {reportType === "sudden" && photos.length === 0 && <p className="mt-2 text-[10px] font-semibold text-red-700">Add at least one photo before submitting this sudden incident.</p>}
+            {highUrgency && photos.length === 0 && <p className="mt-2 text-[10px] font-semibold text-red-700">Add at least one photo before submitting this High urgency report.</p>}
           </section>
 
           <div className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2">
@@ -716,7 +718,7 @@ export default function GuestReportForm({
           </div>
 
           <div className="flex flex-col gap-2 pt-2">
-            <button type="submit" disabled={isSubmitting || cameraOpen || cameraBusy || (reportType === "sudden" && photos.length === 0) || (!pin && !locationNote.trim()) || (needsAccuracyConfirmation && !confirmPoorAccuracy)} className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#2E8B57] py-2.5 text-xs font-bold text-white shadow-md transition hover:bg-[#247447] active:scale-[0.99] disabled:opacity-50">
+            <button type="submit" disabled={isSubmitting || cameraOpen || cameraBusy || (highUrgency && photos.length === 0) || (!pin && !locationNote.trim()) || (needsAccuracyConfirmation && !confirmPoorAccuracy)} className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#2E8B57] py-2.5 text-xs font-bold text-white shadow-md transition hover:bg-[#247447] active:scale-[0.99] disabled:opacity-50">
               <Send size={15} />{isSubmitting ? "Submitting report..." : "Submit Incident Report"}
             </button>
             <Link to={PATHS.resident} onClick={onClose} className="text-center text-xs font-semibold text-slate-500 hover:text-[#2E8B57]">Registered resident? Sign in to attach camera photo &amp; video evidence</Link>
