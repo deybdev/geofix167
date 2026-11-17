@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { Link } from "react-router-dom";
 import { AlertTriangle, Camera, FileText, ImagePlus, LocateFixed, Locate, RotateCcw, Send, Trash2, UserRound, X } from "lucide-react";
 import L from "leaflet";
-import { Circle, GeoJSON, MapContainer, Marker, TileLayer, useMap } from "react-leaflet";
+import { Circle, GeoJSON, MapContainer, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import reportCatalog from "../../../../../server/src/shared/reportCatalog.json";
 import { isInside } from "../../../shared/utils/mapUtils";
@@ -36,13 +36,6 @@ const CATEGORY_COLORS = {
 };
 const isHighCategory = (type, item) => type === "sudden"
   || reportCatalog.guestUrgency.maintenanceHighCategories.includes(item);
-
-const REPORT_PIN_ICON = L.divIcon({
-  className: "guest-report-pin-icon",
-  html: '<span style="display:flex;width:28px;height:28px;align-items:center;justify-content:center;border:3px solid #fff;border-radius:50% 50% 50% 0;background:#2e8b57;box-shadow:0 2px 7px #334155;transform:rotate(-45deg)"><span style="width:8px;height:8px;border:2px solid #fff;border-radius:50%;background:#2e8b57"></span></span>',
-  iconSize: [32, 38],
-  iconAnchor: [16, 34],
-});
 
 async function compressEvidenceImage(file) {
   if (!file.type.startsWith("image/")) throw new Error("Choose an image file for photo evidence.");
@@ -99,6 +92,17 @@ function MapSizeManager() {
   return null;
 }
 
+function MapCenterPinHandler({ pin, onPin }) {
+  useMapEvents({
+    moveend(event) {
+      const center = event.target.getCenter();
+      if (pin && Math.abs(center.lat - pin.lat) < 0.00001 && Math.abs(center.lng - pin.lng) < 0.00001) return;
+      onPin({ lat: center.lat, lng: center.lng, accuracy: null });
+    },
+  });
+  return null;
+}
+
 function MapRecenter({ position, version }) {
   const map = useMap();
   const previousVersion = useRef(version);
@@ -132,11 +136,12 @@ function ZoomButtons() {
   );
 }
 
-function LocationPickerMap({ pin, boundary, recenterVersion, wheelZoomEnabled, onPin, onMapFocused }) {
+function LocationPickerMap({ pin, boundary, recenterVersion, wheelZoomEnabled, onPin }) {
   const center = pin ? [pin.lat, pin.lng] : DEFAULT_MAP_CENTER;
   const zoom = pin ? 16 : 14;
 
   return (
+    <div className="relative">
     <MapContainer center={center} zoom={zoom} zoomControl={false} scrollWheelZoom={wheelZoomEnabled} className="h-[260px] w-full">
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'
@@ -146,23 +151,14 @@ function LocationPickerMap({ pin, boundary, recenterVersion, wheelZoomEnabled, o
       {pin?.accuracy > 0 && <Circle center={[pin.lat, pin.lng]} radius={pin.accuracy} pathOptions={{ color: "#2e8b57", weight: 1.5, fillColor: "#2e8b57", fillOpacity: 0.13 }} />}
       <FitBarangayBoundary boundary={boundary} pin={pin} />
       <MapSizeManager />
+      <MapCenterPinHandler pin={pin} onPin={onPin} />
       <MapRecenter position={pin} version={recenterVersion} />
       <ZoomButtons />
-      {pin && (
-        <Marker
-          position={[pin.lat, pin.lng]}
-          icon={REPORT_PIN_ICON}
-          draggable
-          eventHandlers={{
-            dragstart: onMapFocused,
-            dragend(event) {
-              const position = event.target.getLatLng();
-              onPin({ lat: position.lat, lng: position.lng, accuracy: null });
-            },
-          }}
-        />
-      )}
     </MapContainer>
+    <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-[500] flex items-center justify-center">
+      <span className="-translate-y-[18px] drop-shadow-md"><span className="block h-7 w-7 rounded-full border-[3px] border-white bg-[#2e8b57] shadow-[0_2px_6px_rgba(15,23,42,.45)]"><span className="mx-auto mt-[6px] block h-2 w-2 rounded-full bg-white" /></span><span className="mx-auto -mt-1 block h-2 w-2 rotate-45 border-b-2 border-r-2 border-white bg-[#2e8b57]" /></span>
+    </div>
+    </div>
   );
 }
 
@@ -558,7 +554,6 @@ export default function GuestReportForm({
   };
 
   const locationSummary = address || (pin ? (isOutsideBarangay ? "Pinned outside Barangay 167" : "Pinned location, Barangay 167") : "Tap the map to place a pin");
-  const mapHasFocus = () => setWheelZoomEnabled(true);
 
   return (
     <div className={embedded ? "min-w-0" : "fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in duration-200"}>
@@ -630,7 +625,6 @@ export default function GuestReportForm({
                   recenterVersion={recenterVersion}
                   wheelZoomEnabled={wheelZoomEnabled}
                   onPin={(position) => setPinnedLocation(position, true)}
-                  onMapFocused={mapHasFocus}
                 />
               </div>
               <div className="space-y-1.5 border-t border-slate-200 bg-white px-3 py-2">
@@ -639,8 +633,8 @@ export default function GuestReportForm({
                 {needsAccuracyConfirmation && <p className="text-[10px] font-medium text-[#9f241b]">Accuracy is low. Adjust the pin or confirm its current location below.</p>}
                 {isOutsideBarangay && <p className="text-[10px] font-semibold text-[#9f241b]">This pin appears outside Barangay 167. You can still submit.</p>}
                 {locationError && <p className="text-[10px] text-[#9f241b]">{locationError}</p>}
-                {!pin && locationStatus === "error" && <p className="text-[10px] text-slate-500">The map is centered on Barangay 167. Drop a pin to continue.</p>}
-                <p className="text-[10px] text-slate-500">If the location is inaccurate, drag the pin to the correct spot. Dragging the map will only pan it.</p>
+                {!pin && locationStatus === "error" && <p className="text-[10px] text-slate-500">Pan the map beneath the center pin to set a location.</p>}
+                <p className="text-[10px] text-slate-500">The pin stays fixed in the center. Pan the map beneath it to adjust the location.</p>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-0.5">
                   <button type="button" onClick={requestDeviceLocation} className="inline-flex min-h-8 items-center gap-1 text-[10px] font-bold text-[#247447] hover:underline"><Locate size={12} /> Use my current location</button>
                   {locationError && <button type="button" onClick={requestDeviceLocation} className="min-h-8 text-[10px] font-bold text-[#247447] hover:underline">Retry</button>}
