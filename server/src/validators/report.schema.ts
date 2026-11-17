@@ -56,17 +56,19 @@ export const createReportSchema = z
     if (!data.guest_alias?.trim()) {
       ctx.addIssue({ code: "custom", path: ["guest_alias"], message: "Reporter name is required." });
     }
-    if (!data.description?.trim()) {
+    const highUrgency = data.classification === "sudden"
+      || (data.classification === "maintenance" && reportCatalog.guestUrgency.maintenanceHighCategories.includes(data.incident_category));
+    if (!highUrgency && !data.description?.trim()) {
       ctx.addIssue({ code: "custom", path: ["description"], message: "Incident description is required." });
     }
     if (!data.classification) {
       ctx.addIssue({ code: "custom", path: ["classification"], message: "Incident classification is required." });
     }
-    if (!data.incident_category || !reportCatalog.categories.includes(data.incident_category)) {
+    const allCategories = Object.values(reportCatalog.categories).flat();
+    if (!data.incident_category || !allCategories.includes(data.incident_category)) {
       ctx.addIssue({ code: "custom", path: ["incident_category"], message: "Choose a valid incident category." });
-    }
-    if (!data.priority_level || !["LOW", "MEDIUM", "HIGH"].includes(data.priority_level.toUpperCase())) {
-      ctx.addIssue({ code: "custom", path: ["priority_level"], message: "Urgency must be Low, Medium, or High." });
+    } else if (data.classification && !reportCatalog.categories[data.classification].includes(data.incident_category)) {
+      ctx.addIssue({ code: "custom", path: ["incident_category"], message: "Choose a category that matches the incident classification." });
     }
     if (!hasLatitude && !hasLongitude && !data.reverse_geocoded_address?.trim() && !data.landmark_description?.trim()) {
       ctx.addIssue({ code: "custom", path: ["latitude"], message: "Pin the incident location or provide a location note." });

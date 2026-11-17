@@ -1,5 +1,8 @@
 {
-  "categories": ["Road Damage", "Electrical", "Sanitation", "Incident / Emergency"],
+  "categories": {
+    "sudden": ["Incident / Emergency", "Fire Incident", "Medical Emergency", "Crime / Public Disturbance", "Road Accident"],
+    "maintenance": ["Road Damage", "Drainage / Flooding", "Sanitation", "Structural", "Electrical", "Waterways", "Streetlight", "Road Damage / Pothole", "Garbage Collection", "Water / Power Hazard"]
+  },
   "classifications": [
     { "value": "sudden", "label": "Sudden Incident", "isEmergency": true, "defaultCategory": "Incident / Emergency", "assignedTeam": "BDRRMO Response" },
     { "value": "maintenance", "label": "Maintenance Issue", "isEmergency": false, "defaultCategory": "Road Damage", "assignedTeam": "Maintenance Team A" }
@@ -9,6 +12,12 @@
     { "label": "Medium", "priorityLevel": "MEDIUM", "priorityCode": "P3" },
     { "label": "High", "priorityLevel": "HIGH", "priorityCode": "P2" }
   ],
+  "guestUrgency": {
+    "sudden": "HIGH",
+    "maintenanceDefault": "MEDIUM",
+    "maintenanceHighCategories": ["Road Damage / Pothole", "Water / Power Hazard", "Streetlight", "Electrical"],
+    "priorityCodes": { "HIGH": "P2", "MEDIUM": "P3", "LOW": "P4" }
+  },
   "adminUrgencies": {
     "critical": "Critical Emergency",
     "standard": "Standard Emergency",

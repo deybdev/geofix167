@@ -14,7 +14,26 @@ import {
 } from "../services/report.service";
 
 export async function createReportController(c: Context<AppEnv>) {
-  const body = await c.req.json().catch(() => null);
+  const contentType = c.req.header("Content-Type")?.toLowerCase() ?? "";
+  let body: unknown = null;
+  let photos: File[] = [];
+  if (contentType.startsWith("multipart/form-data;")) {
+    const form = await c.req.formData().catch(() => null);
+    const reportText = form?.get("report");
+    const photoValues = form?.getAll("photos") ?? [];
+    const allowedFields = new Set(["report", "photos"]);
+    const hasUnexpectedField = form && [...form.keys()].some((key) => !allowedFields.has(key));
+    if (!form || typeof reportText !== "string" || form.getAll("report").length !== 1 || hasUnexpectedField
+      || photoValues.some((value) => !(value instanceof File))
+      || [...form.values()].filter((value) => value instanceof File).length !== photoValues.length) {
+      return c.json({ error: "Send a report JSON field and up to three photo files." }, 400);
+    }
+    try { body = JSON.parse(reportText); }
+    catch { return c.json({ error: "The report details are not valid JSON." }, 400); }
+    photos = photoValues as File[];
+  } else {
+    body = await c.req.json().catch(() => null);
+  }
   const validation = createReportSchema.safeParse(body);
 
   if (!validation.success) {
@@ -35,6 +54,8 @@ export async function createReportController(c: Context<AppEnv>) {
       validation.data,
       c.get("user"),
       c.req.header("X-Guest-Token"),
+      photos,
+      c.env.geofix167_uploads,
     );
 
     return c.json(
@@ -49,7 +70,7 @@ export async function createReportController(c: Context<AppEnv>) {
     );
   } catch (error) {
     if (error instanceof ReportError) {
-      return c.json({ error: error.message }, error.status as 400 | 404 | 500);
+      return c.json({ error: error.message }, error.status as 400 | 401 | 403 | 404 | 409 | 413 | 415 | 500 | 503);
     }
 
     console.error("Failed to submit incident report:", error);
@@ -83,9 +104,30 @@ export async function listReportsController(c: Context<AppEnv>) {
       c.get("user"),
     );
 
+    const photosByReport = new Map<string, { id: string; content_type: string; created_at: string }[]>();
+    for (let offset = 0; offset < reports.length; offset += 50) {
+      const batch = reports.slice(offset, offset + 50);
+      if (!batch.length) continue;
+      const placeholders = batch.map(() => "?").join(",");
+      const photos = await c.env.geofix167_db.prepare(`SELECT incident_id, incident_media_id AS id, content_type, created_at
+        FROM incident_media WHERE media_type = 'PHOTO' AND incident_id IN (${placeholders})
+        ORDER BY created_at, incident_media_id`).bind(...batch.map((report) => report.incident_id))
+        .all<{ incident_id: string; id: string; content_type: string; created_at: string }>();
+      for (const photo of photos.results ?? []) {
+        const list = photosByReport.get(photo.incident_id) ?? [];
+        list.push({ id: photo.id, content_type: photo.content_type, created_at: photo.created_at });
+        photosByReport.set(photo.incident_id, list);
+      }
+    }
+    const reportsWithPhotos = reports.map((report) => ({
+      ...report,
+      photos: photosByReport.get(report.incident_id) ?? [],
+      photo_count: photosByReport.get(report.incident_id)?.length ?? 0,
+    }));
+
     return c.json({
-      reports,
-      count: reports.length,
+      reports: reportsWithPhotos,
+      count: reportsWithPhotos.length,
     });
   } catch (error) {
     if (error instanceof ReportError) return c.json({ error: error.message }, error.status as 401 | 403 | 404);

@@ -23,19 +23,31 @@ route.get("/reports", async (c) => {
       r.description_original, r.latitude, r.longitude, r.location_description AS location,
       r.submitted_at, r.is_emergency, r.priority_code,
       s.code AS status_code, s.display_name AS status,
-      COALESCE(trim(u.first_name || ' ' || u.last_name), gs.display_name, 'Guest') AS reporter,
-      (SELECT json_object('media_id', m.incident_media_id, 'media_type', m.media_type,
-         'content_type', m.content_type, 'storage_key', m.storage_key)
-       FROM incident_media m WHERE m.incident_id = r.incident_id AND m.media_type = 'PHOTO'
-       ORDER BY m.created_at DESC LIMIT 1) AS photo
+      COALESCE(NULLIF(trim(u.first_name || ' ' || u.last_name), ''), gs.display_name, 'Guest') AS reporter
     FROM incident_reports r
     JOIN incident_statuses s ON s.incident_status_id = r.incident_status_id
     LEFT JOIN users u ON u.user_id = r.reported_by_user_id
     LEFT JOIN guest_sessions gs ON gs.guest_session_id = r.guest_session_id
     WHERE s.code IN ('SUBMITTED', 'UNDER_REVIEW', 'VERIFIED')
     ORDER BY r.submitted_at DESC
-  `).all();
-  return c.json({ reports: result.results ?? [] });
+  `).all<Record<string, unknown> & { id: string }>();
+  const reports = result.results ?? [];
+  const photoRows = reports.length
+    ? await c.env.geofix167_db.prepare(`SELECT incident_id, incident_media_id AS media_id, content_type, created_at
+        FROM incident_media WHERE media_type = 'PHOTO' ORDER BY created_at, incident_media_id`)
+      .all<{ incident_id: string; media_id: string; content_type: string; created_at: string }>()
+    : { results: [] };
+  const photosByReport = new Map<string, { media_id: string; content_type: string; created_at: string }[]>();
+  for (const photo of photoRows.results ?? []) {
+    const list = photosByReport.get(photo.incident_id) ?? [];
+    list.push({ media_id: photo.media_id, content_type: photo.content_type, created_at: photo.created_at });
+    photosByReport.set(photo.incident_id, list);
+  }
+  return c.json({ reports: reports.map((report) => ({
+    ...report,
+    photos: photosByReport.get(report.id) ?? [],
+    photo_count: photosByReport.get(report.id)?.length ?? 0,
+  })) });
 });
 
 route.get("/units", async (c) => {
@@ -63,6 +75,7 @@ route.get("/reports/:reportId/photos/:mediaId", async (c) => {
   const object = await c.env.geofix167_uploads.get(photo.storage_key);
   if (!object) return c.json({ error: "Report photo is unavailable." }, 404);
   c.header("Cache-Control", "private, no-store");
+  c.header("X-Content-Type-Options", "nosniff");
   c.header("Content-Type", photo.content_type);
   return c.body(object.body);
 });

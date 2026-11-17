@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Ambulance, Ban, Bell, Camera, CheckCircle2, Clock,
+  Ambulance, Ban, Bell, Camera, CheckCircle2, Clock, ChevronLeft, ChevronRight,
   Download, Eye, EyeOff, FileText, FileUp, Flame, Flag, GitMerge,
   History, Languages, Link2, Lock, MapPinned, MoreVertical,
   QrCode, Radio, RotateCcw, ScanLine, Search, Share2, ShieldCheck, Siren,
@@ -119,7 +119,8 @@ const initialReports = () => [
 ];
 
 const statuses = ["All Statuses", "Reported", "In Progress", "BDRRMO Takeover", "Verified Fixed", "Duplicate"];
-const categories = ["All Categories", ...reportCatalog.categories];
+const reportCategories = [...new Set(Object.values(reportCatalog.categories).flat())];
+const categories = ["All Categories", ...reportCategories];
 const locations = ["All Locations", "Rizal Street", "Quezon Avenue", "Magsaysay Boulevard", "Roxas Boulevard", "Bonifacio Street", "Del Pilar Road"];
 
 const URGENCY_OPTS = Object.values(reportCatalog.adminUrgencies);
@@ -128,6 +129,19 @@ const URGENCY_STYLES = {
   [reportCatalog.adminUrgencies.standard]: "gf-badge gf-badge--emergency",
   [reportCatalog.adminUrgencies.maintenance]: "gf-badge gf-badge--nonemergency",
 };
+const DISPLAY_URGENCY_STYLES = {
+  High: "gf-badge gf-badge--critical",
+  Medium: "gf-badge gf-badge--warn",
+  Low: "gf-badge gf-badge--nonemergency",
+};
+const DISPLAY_URGENCY_RANK = { High: 0, Medium: 1, Low: 2 };
+
+function displayUrgency(report) {
+  if (report.displayUrgency) return report.displayUrgency;
+  if (report.urgency === reportCatalog.adminUrgencies.critical) return "High";
+  if (report.urgency === reportCatalog.adminUrgencies.standard) return "Medium";
+  return "Low";
+}
 const STATUS_STYLES = {
   Reported: "gf-badge gf-badge--reported",
   "In Progress": "gf-badge gf-badge--progress",
@@ -248,12 +262,13 @@ function mapApiReport(item, fetchedAt) {
   const classification = reportCatalog.classifications.find((entry) => entry.value === item.classification)
     ?? reportCatalog.classifications.find((entry) => entry.isEmergency === Boolean(item.is_emergency))
     ?? reportCatalog.classifications[0];
-  const category = reportCatalog.categories.includes(item.category) ? item.category : classification.defaultCategory;
+  const category = reportCatalog.categories[classification.value].includes(item.category) ? item.category : classification.defaultCategory;
   const priority = String(item.priority_code ?? "").toUpperCase();
   const urgencyKey = reportCatalog.adminUrgencyByPriority[priority] ?? "standard";
   const urgency = classification.isEmergency
     ? reportCatalog.adminUrgencies[urgencyKey]
     : reportCatalog.adminUrgencies.maintenance;
+  const displayPriority = { P1: "High", P2: "High", P3: "Medium", P4: "Low" }[priority] ?? "Low";
   const address = typeof item.location_description === "string" ? item.location_description.trim() : "";
   const location = address || (hasCoordinates ? `${latitude.toFixed(5)}, ${longitude.toFixed(5)}` : "Location unavailable");
   const rawStatus = String(item.status_label ?? item.status_code ?? "Reported");
@@ -271,18 +286,22 @@ function mapApiReport(item, fetchedAt) {
 
   return {
     id: String(item.reference_number ?? item.incident_id ?? "Unknown report"),
+    incidentId: String(item.incident_id ?? ""),
     title: String(item.title ?? "").trim() || "Incident report",
     category,
     urgency,
+    displayUrgency: displayPriority,
     accident: classification.value === "sudden",
     location,
     reporter,
     reporterType: reporterType === "guest" ? "guest" : "resident",
     date: formatApiReportDate(submittedAt),
+    submittedAt,
     team: String(item.assigned_team ?? "").trim() || classification.assignedTeam,
     status,
     ...(hasCoordinates ? { lat: latitude, lng: longitude } : {}),
     evidence: [],
+    photos: Array.isArray(item.photos) ? item.photos : [],
     geotag: {
       source: hasCoordinates ? "Pinned location" : "Location note",
       accuracy: accuracy == null ? "Not provided" : `±${Math.round(accuracy)} m`,
@@ -290,9 +309,24 @@ function mapApiReport(item, fetchedAt) {
       ...(accuracy != null && accuracy > 100 ? { note: "GPS accuracy is over 100 m; the reporter was prompted to adjust the pin." } : {}),
     },
     ...(outsideBoundary ? { outsideBarangayBoundary: true } : {}),
-    text: String(item.sanitized_description ?? item.description_sanitized ?? item.description_original ?? "No description provided."),
+    text: String(item.sanitized_description ?? item.description_sanitized ?? item.description_original ?? "").trim() || "No description. See photo evidence.",
     ...(classification.isEmergency && status === "Reported" ? { sla: { start: triageStartedAt } } : {}),
   };
+}
+
+function downloadReportsCsv(reports) {
+  const columns = ["ID", "Incident Details", "Category", "Urgency", "Location", "Reporter", "Date Reported", "Assigned Team", "Status", "Photo Count"];
+  const rows = reports.map((report) => [
+    report.id, report.title, report.category, displayUrgency(report), report.location, report.reporter,
+    report.date, report.team, report.status, report.photos?.length ?? 0,
+  ]);
+  const csv = [columns, ...rows].map((row) => row.map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`).join(",")).join("\r\n");
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "geofix-incident-reports.csv";
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 /* Privacy-safe accomplishment summary: strips exact addresses, coordinates,
@@ -1395,7 +1429,9 @@ export default function IncidentReports() {
   const [status, setStatus] = useState("All Statuses");
   const [category, setCategory] = useState("All Categories");
   const [location, setLocation] = useState("All Locations");
+  const [urgencyFilter, setUrgencyFilter] = useState("All Urgency");
   const [month, setMonth] = useState("April 2026");
+  const [photoViewer, setPhotoViewer] = useState(null);
   const [selectedReport, setSelectedReport] = useState(null);
   const [dispatchReport, setDispatchReport] = useState(null);
   const [savedReport, setSavedReport] = useState(null);
@@ -1428,9 +1464,14 @@ export default function IncidentReports() {
         const fetchedAt = Date.now();
         const apiReports = result.reports.map((item) => mapApiReport(item, fetchedAt));
         setReports((current) => {
+          const apiById = new Map(apiReports.map((report) => [report.id, report]));
           const existingIds = new Set(current.map((report) => report.id));
+          const refreshed = current.map((report) => {
+            const latest = apiById.get(report.id);
+            return latest ? { ...report, incidentId: latest.incidentId, photos: latest.photos, displayUrgency: latest.displayUrgency } : report;
+          });
           const newReports = apiReports.filter((report) => !existingIds.has(report.id));
-          return newReports.length ? [...newReports, ...current] : current;
+          return [...newReports, ...refreshed];
         });
       } catch (error) {
         if (!warned) {
@@ -1594,14 +1635,30 @@ export default function IncidentReports() {
       && queueMatches(report)
       && (status === "All Statuses" || report.status === status)
       && (category === "All Categories" || report.category === category)
-      && (location === "All Locations" || report.location === location);
-  }), [category, location, query, reports, selectedQueue, status, tab]);
+      && (location === "All Locations" || report.location === location)
+      && (urgencyFilter === "All Urgency" || displayUrgency(report) === urgencyFilter);
+  }).sort((a, b) => DISPLAY_URGENCY_RANK[displayUrgency(a)] - DISPLAY_URGENCY_RANK[displayUrgency(b)]
+    || (Date.parse(b.submittedAt ?? b.date) || 0) - (Date.parse(a.submittedAt ?? a.date) || 0)),
+  [category, location, query, reports, selectedQueue, status, tab, urgencyFilter]);
 
   const restrictedReporters = Object.entries(strikes).filter(([, s]) => s.count >= 2).map(([name]) => name);
 
   function resetFilters() {
-    setQuery(""); setStatus("All Statuses"); setCategory("All Categories"); setLocation("All Locations"); setMonth("April 2026");
+    setQuery(""); setStatus("All Statuses"); setCategory("All Categories"); setLocation("All Locations"); setUrgencyFilter("All Urgency"); setMonth("April 2026");
   }
+
+  const viewerReport = photoViewer ? reports.find((report) => report.id === photoViewer.reportId) : null;
+  const viewerPhotos = viewerReport?.photos ?? [];
+  useEffect(() => {
+    if (!photoViewer) return undefined;
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") setPhotoViewer(null);
+      if (event.key === "ArrowRight" && viewerPhotos.length > 1) setPhotoViewer((current) => ({ ...current, index: (current.index + 1) % viewerPhotos.length }));
+      if (event.key === "ArrowLeft" && viewerPhotos.length > 1) setPhotoViewer((current) => ({ ...current, index: (current.index - 1 + viewerPhotos.length) % viewerPhotos.length }));
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [photoViewer, viewerPhotos.length]);
 
   return (
     <div className="space-y-3">
@@ -1639,6 +1696,7 @@ export default function IncidentReports() {
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search reports..." className="w-full text-[9px] outline-none placeholder:text-[#a0b0c0]" />
         </label>
         <SelectFilter value={status} options={statuses} onChange={setStatus} ariaLabel="Filter status" />
+        <SelectFilter value={urgencyFilter} options={["All Urgency", "High", "Medium", "Low"]} onChange={setUrgencyFilter} ariaLabel="Filter urgency" />
         <SelectFilter value={category} options={categories} onChange={setCategory} ariaLabel="Filter category" />
         <SelectFilter value={location} options={locationOptions} onChange={setLocation} ariaLabel="Filter location" />
         <SelectFilter value={month} options={["April 2026", "March 2026", "February 2026"]} onChange={setMonth} ariaLabel="Filter month" />
@@ -1654,13 +1712,13 @@ export default function IncidentReports() {
           </div>
           <div className="flex flex-wrap gap-1.5">
             <button type="button" onClick={() => setAudit({ open: true, reportId: "All reports" })} className="gf-btn gf-btn--chip"><History size={11} />Audit Trail</button>
-            <button type="button" onClick={() => toast.add({ title: "Export ready", description: "CSV export is available for the filtered reports.", type: "success" })} className="gf-btn gf-btn--chip"><Download size={11} /> Export CSV</button>
+            <button type="button" onClick={() => downloadReportsCsv(filteredReports)} className="gf-btn gf-btn--chip"><Download size={11} /> Export CSV</button>
           </div>
         </div>
         <div className="overflow-x-auto">
           {(() => {
             const pendingTab = tab === "Pending Triage";
-            const headings = ["ID", "Incident Details", "Category", "Urgency", "Location", "Reporter", "Date Reported", "Assigned Team", "Status", ...(pendingTab ? ["Triage Timer"] : []), "Action"];
+            const headings = ["ID", "Incident Details", "Category", "Urgency", "Photos", "Location", "Reporter", "Date Reported", "Assigned Team", "Status", ...(pendingTab ? ["Triage Timer"] : []), "Action"];
             return (
               <table className="gf-table">
                 <thead>
@@ -1679,7 +1737,13 @@ export default function IncidentReports() {
                         </td>
                         <td className="px-2 py-3 font-semibold text-[#263246]">{report.title}</td>
                         <td className="px-2 py-3 text-[#60738f]">{report.category}</td>
-                        <td className="px-2 py-3"><Badge label={shortUrgency(report.urgency)} styles={URGENCY_STYLES[report.urgency]} /></td>
+                        <td className="px-2 py-3"><Badge label={displayUrgency(report)} styles={DISPLAY_URGENCY_STYLES[displayUrgency(report)]} /></td>
+                        <td className="px-2 py-3">
+                          {report.photos?.length && report.incidentId ? <button type="button" onClick={() => setPhotoViewer({ reportId: report.id, index: 0 })} className="group relative block h-10 w-12 overflow-hidden rounded-md border border-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" aria-label={`View ${report.photos.length} report photos`}>
+                            <img src={`/api/reports/${encodeURIComponent(report.incidentId)}/photos/${encodeURIComponent(report.photos[0].id)}`} alt="Report evidence thumbnail" loading="lazy" className="h-full w-full object-cover" />
+                            {report.photos.length > 1 && <span className="absolute inset-0 flex items-center justify-center bg-slate-900/55 text-[10px] font-bold text-white">+{report.photos.length - 1}</span>}
+                          </button> : <span className="text-[10px] text-slate-400">No photo</span>}
+                        </td>
                         <td className="px-2 py-3 text-[#60738f]">{report.location}{report.outsideBarangayBoundary && <div><Badge label="Outside Barangay 167" styles="gf-badge gf-badge--warn" /></div>}</td>
                         <td className="px-2 py-3">
                           {report.reporter}
@@ -1722,6 +1786,15 @@ export default function IncidentReports() {
       {flagReport && <StrikeModal key={flagReport.id} report={flagReport} strikes={strikes} onClose={() => setFlagReport(null)} onStrike={handleStrike} />}
       {dupReport && <LinkDuplicateModal key={dupReport.id} report={dupReport} reports={reports} onClose={() => setDupReport(null)} onLink={handleLinkDuplicate} />}
       {audit.open && <AuditTrailModal log={auditLog} filter={audit.reportId} onFilter={(reportId) => setAudit((a) => ({ ...a, reportId }))} onClose={() => setAudit({ open: false, reportId: "All reports" })} />}
+      {photoViewer && viewerReport && viewerPhotos[photoViewer.index] && <div role="dialog" aria-modal="true" aria-label="Report photo viewer" className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/80 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setPhotoViewer(null); }}>
+        <div className="relative flex max-h-[90dvh] w-full max-w-4xl flex-col items-center rounded-xl border border-white/15 bg-slate-950 p-3">
+          <div className="flex w-full items-center justify-between pb-2 text-xs text-white"><span>{viewerReport.title} · Photo {photoViewer.index + 1} of {viewerPhotos.length}</span><button type="button" onClick={() => setPhotoViewer(null)} aria-label="Close photo viewer" className="rounded-md p-2 text-white/80 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"><X size={16} /></button></div>
+          <div className="relative flex min-h-0 w-full flex-1 items-center justify-center">
+            <img src={`/api/reports/${encodeURIComponent(viewerReport.incidentId)}/photos/${encodeURIComponent(viewerPhotos[photoViewer.index].id)}`} alt={`Evidence photo ${photoViewer.index + 1}`} className="max-h-[78dvh] max-w-full rounded-md object-contain" />
+            {viewerPhotos.length > 1 && <><button type="button" aria-label="Previous photo" onClick={() => setPhotoViewer((current) => ({ ...current, index: (current.index - 1 + viewerPhotos.length) % viewerPhotos.length }))} className="absolute left-2 rounded-full bg-black/55 p-2 text-white hover:bg-black/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"><ChevronLeft size={20} /></button><button type="button" aria-label="Next photo" onClick={() => setPhotoViewer((current) => ({ ...current, index: (current.index + 1) % viewerPhotos.length }))} className="absolute right-2 rounded-full bg-black/55 p-2 text-white hover:bg-black/75 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"><ChevronRight size={20} /></button></>}
+          </div>
+        </div>
+      </div>}
     </div>
   );
 }

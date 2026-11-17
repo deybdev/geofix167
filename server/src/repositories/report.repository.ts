@@ -1,4 +1,5 @@
 import type { AppEnv } from "../types/env";
+import type { GuestPhotoInsert } from "../services/attachment.service";
 import type { ListReportsQuery } from "../validators/report.schema";
 
 type Database = AppEnv["Bindings"]["geofix167_db"];
@@ -19,6 +20,8 @@ export type InsertIncidentReportParams = {
   longitude: number | null;
   accuracy_meters: number | null;
   within_barangay_boundary: 0 | 1 | null;
+  pin_manually_adjusted: 0 | 1;
+  address_geocoded_at: string | null;
   location_description: string | null;
   assigned_team: string;
   submitted_at: string;
@@ -80,8 +83,16 @@ const PUBLIC_REPORT_COLUMNS = `
   r.category, r.priority_code, r.is_emergency, r.title,
   r.description_original, r.description_sanitized,
   r.callback_mobile_number, r.latitude, r.longitude,
-  r.accuracy_meters, r.within_barangay_boundary, r.assigned_team,
-  r.location_description, r.submitted_at, r.updated_at, r.closed_at,
+  r.accuracy_meters, r.within_barangay_boundary, r.pin_manually_adjusted,
+  r.address_geocoded_at, r.assigned_team,
+  CASE
+    WHEN r.location_description = printf('%.5f, %.5f', r.latitude, r.longitude)
+      THEN CASE WHEN r.within_barangay_boundary = 0 THEN 'Pinned outside Barangay 167'
+        WHEN r.within_barangay_boundary = 1 THEN 'Pinned location, Barangay 167'
+        ELSE 'Pinned on map' END
+    ELSE r.location_description
+  END AS location_description,
+  r.submitted_at, r.updated_at, r.closed_at,
   r.closed_by_user_id, r.parent_incident_id,
   r.reported_by_user_id AS reporter_user_id,
   CASE WHEN r.guest_session_id IS NOT NULL THEN 'GUEST' ELSE 'RESIDENT' END AS reporter_type,
@@ -99,7 +110,13 @@ const PUBLIC_REPORT_COLUMNS = `
     ELSE NULL
   END AS priority_level,
   r.description_sanitized AS sanitized_description,
-  r.location_description AS landmark_description,
+  CASE
+    WHEN r.location_description = printf('%.5f, %.5f', r.latitude, r.longitude)
+      THEN CASE WHEN r.within_barangay_boundary = 0 THEN 'Pinned outside Barangay 167'
+        WHEN r.within_barangay_boundary = 1 THEN 'Pinned location, Barangay 167'
+        ELSE 'Pinned on map' END
+    ELSE r.location_description
+  END AS landmark_description,
   r.submitted_at AS received_at,
   s.code AS status_code, s.display_name AS status_label, s.is_terminal`;
 
@@ -108,6 +125,7 @@ export async function createIncidentReportBundle(db: Database, params: {
   statusEvent: IncidentStatusEventRecord;
   languageFlags: LanguageFlagRecord[];
   guestSession: InsertGuestSessionParams | null;
+  guestPhotos?: GuestPhotoInsert[];
   creationAudit?: { id: string; key: string };
 }): Promise<void> {
   const statements: D1PreparedStatement[] = [];
@@ -122,14 +140,23 @@ export async function createIncidentReportBundle(db: Database, params: {
     incident_id, reported_by_user_id, guest_session_id, incident_status_id,
     category, priority_code, is_emergency, title, description_original,
     description_sanitized, callback_mobile_number, latitude, longitude,
-    accuracy_meters, within_barangay_boundary, location_description, assigned_team,
-    submitted_at, updated_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+    accuracy_meters, within_barangay_boundary, pin_manually_adjusted, address_geocoded_at,
+    location_description, assigned_team, submitted_at, updated_at
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
     r.incident_id, r.reported_by_user_id, r.guest_session_id, r.incident_status_id,
     r.category, r.priority_code, r.is_emergency, r.title, r.description_original,
     r.description_sanitized, r.callback_mobile_number, r.latitude, r.longitude,
-    r.accuracy_meters, r.within_barangay_boundary, r.location_description,
-    r.assigned_team, r.submitted_at, r.updated_at));
+    r.accuracy_meters, r.within_barangay_boundary, r.pin_manually_adjusted,
+    r.address_geocoded_at, r.location_description, r.assigned_team, r.submitted_at, r.updated_at));
+  for (const photo of params.guestPhotos ?? []) {
+    statements.push(db.prepare(`INSERT INTO incident_media (
+      incident_media_id, incident_id, uploaded_by_guest_session_id, media_type, storage_key,
+      content_type, byte_size, original_filename, upload_key, content_sha256, media_url, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(photo.incident_media_id, photo.incident_id, photo.uploaded_by_guest_session_id,
+        photo.media_type, photo.storage_key, photo.content_type, photo.byte_size,
+        photo.original_filename, photo.upload_key, photo.content_sha256, photo.media_url, photo.created_at));
+  }
   statements.push(db.prepare("INSERT INTO incident_report_references (incident_id) VALUES (?)")
     .bind(r.incident_id));
   const e = params.statusEvent;
