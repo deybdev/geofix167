@@ -34,8 +34,14 @@ const URGENCY_COLORS = {
   },
 };
 const CLASSIFICATION_COLORS = {
-  sudden: "border-red-300 bg-red-50 text-red-800 focus:border-red-500",
-  maintenance: "border-amber-300 bg-amber-50 text-amber-800 focus:border-amber-500",
+  sudden: {
+    select: "border-red-300 bg-red-50 text-red-800 focus:border-red-500",
+    option: "bg-red-50 text-red-800",
+  },
+  maintenance: {
+    select: "border-amber-300 bg-amber-50 text-amber-800 focus:border-amber-500",
+    option: "bg-amber-50 text-amber-800",
+  },
 };
 const CATEGORY_COLORS = {
   "Road Damage": "border-amber-300 bg-amber-50 text-amber-800 focus:border-amber-500",
@@ -372,9 +378,9 @@ function OpenQuickReportModal({ onClose, onSubmitNewReport, defaultCoordinates =
         <form onSubmit={handleSubmit} className="mt-5 space-y-4">
           <div>
             <label htmlFor="guest-report-classification" className="mb-1.5 block text-xs font-bold text-slate-700">Incident Classification</label>
-            <select id="guest-report-classification" value={reportType} onChange={(event) => handleTypeChange(event.target.value)} className={`w-full rounded-lg border px-3 py-2 text-xs font-semibold outline-none ${CLASSIFICATION_COLORS[reportType] ?? "border-slate-200 bg-white text-slate-800 focus:border-[#2E8B57]"}`}>
+            <select id="guest-report-classification" value={reportType} onChange={(event) => handleTypeChange(event.target.value)} className={`w-full rounded-lg border px-3 py-2 text-xs font-semibold outline-none ${CLASSIFICATION_COLORS[reportType]?.select ?? "border-slate-200 bg-white text-slate-800 focus:border-[#2E8B57]"}`}>
               {reportCatalog.classifications.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
+                <option key={option.value} value={option.value} className={CLASSIFICATION_COLORS[option.value]?.option}>{option.label}</option>
               ))}
             </select>
           </div>

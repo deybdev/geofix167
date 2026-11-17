@@ -94,7 +94,7 @@ export default function LandingHeader({ onReportClick }) {
           <div className="hidden items-center gap-3 md:flex">
             <Link
               to={PATHS.login}
-              className="inline-flex h-9.5 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 text-xs font-bold tracking-wide text-slate-700 transition hover:border-[#2E8B57] hover:bg-emerald-50/50 hover:text-[#2E8B57]"
+              className="inline-flex h-9.5 items-center justify-center rounded-lg border border-emerald-700 bg-white px-4 text-xs font-bold tracking-wide text-emerald-800 shadow-sm transition hover:bg-emerald-50 hover:shadow active:scale-[0.98]"
             >
               LOGIN
             </Link>
@@ -102,7 +102,7 @@ export default function LandingHeader({ onReportClick }) {
             <button
               type="button"
               onClick={reportAction}
-              className="group relative inline-flex h-9.5 items-center gap-1.5 overflow-hidden rounded-lg bg-gradient-to-r from-[#ea580c] to-[#dc2626] px-4.5 text-xs font-bold tracking-wide text-white shadow-md shadow-orange-500/25 transition-all hover:from-[#c2410c] hover:to-[#b91c1c] hover:shadow-orange-600/30 active:scale-[0.98]"
+              className="group inline-flex h-9.5 items-center gap-1.5 rounded-lg bg-[#c62828] px-4.5 text-xs font-bold tracking-wide text-white shadow-md shadow-red-900/20 transition-colors hover:bg-[#a91f1f] active:scale-[0.98]"
             >
               <AlertTriangle size={15} className="transition-transform group-hover:scale-110" />
               REPORT INCIDENT NOW
@@ -117,7 +117,7 @@ export default function LandingHeader({ onReportClick }) {
               type="button"
               onClick={reportAction}
               aria-label="Report emergency incident immediately"
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-gradient-to-r from-[#ea580c] to-[#dc2626] px-3 sm:px-3.5 text-xs font-bold text-white shadow-md shadow-orange-600/30 active:scale-95 transition-all"
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#c62828] px-3 text-xs font-bold text-white shadow-md shadow-red-900/20 transition-colors hover:bg-[#a91f1f] active:scale-95 sm:px-3.5"
             >
               <AlertTriangle size={14} className="shrink-0 animate-pulse" />
               <span>REPORT</span>
