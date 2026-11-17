@@ -3,9 +3,6 @@ import {
   Flame,
   Wrench,
   ShieldCheck,
-  Smartphone,
-  Eye,
-  CheckCircle,
 } from "lucide-react";
 
 export default function ServicesSection() {
@@ -13,42 +10,42 @@ export default function ServicesSection() {
     {
       icon: MapPin,
       badge: "Geotagging",
-      badgeColor: "bg-emerald-100 text-emerald-800",
+      badgeColor: "bg-[#e5efe6] text-[#174b37]",
       title: "Geotagged Incident Reporting",
       desc: "Pin issues directly on the digital map of Barangay 167 with GPS coordinates and photographic evidence.",
     },
     {
       icon: Flame,
       badge: "Emergency",
-      badgeColor: "bg-red-100 text-red-800",
+      badgeColor: "bg-[#f9e8e5] text-[#9f241b]",
       title: "Sudden Emergency Dispatch",
       desc: "Instant routing and prioritization for fires, sudden medical emergencies, road accidents, and public security incidents.",
     },
     {
       icon: Wrench,
       badge: "Public Works",
-      badgeColor: "bg-amber-100 text-amber-800",
+      badgeColor: "bg-[#e5efe6] text-[#174b37]",
       title: "Infrastructure Maintenance",
       desc: "Systematic logging and dispatch for clogged drainage, unlit streetlights, roadway potholes, and electrical cable hazards.",
     },
     {
       icon: ShieldCheck,
       badge: "Transparency",
-      badgeColor: "bg-blue-100 text-blue-800",
+      badgeColor: "bg-[#e5efe6] text-[#174b37]",
       title: "Verified Accomplishment Proof",
       desc: "Barangay officers and maintenance crews upload post-resolution evidence with QR verification and time-stamped proof.",
     },
   ];
 
   return (
-    <section id="services" className="py-16 sm:py-20 bg-slate-50 border-t border-slate-200/80">
-      <div className="w-full px-4 sm:px-8 lg:px-10 xl:px-12">
+    <section id="services" className="landing-section landing-section--tint border-t">
+      <div className="site-container">
         
         <div className="text-center max-w-2xl mx-auto mb-12">
-          <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800 uppercase tracking-wide">
+          <span className="rounded-md bg-[#e5efe6] px-3 py-1 text-xs font-semibold text-[#174b37] uppercase tracking-wide">
             Barangay 167 Core Capabilities
           </span>
-          <h2 className="mt-3 text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900">
+          <h2 className="landing-display mt-3 text-3xl sm:text-4xl">
             Engineered for Response, Safety, & Transparency
           </h2>
           <p className="mt-2 text-sm text-slate-500">
@@ -62,18 +59,18 @@ export default function ServicesSection() {
             return (
               <div
                 key={i}
-                className="group relative rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-[#2E8B57] hover:shadow-lg"
+                className="landing-card group relative p-6"
               >
                 <div className="flex items-center justify-between mb-4">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-50 text-[#2E8B57] group-hover:bg-[#2E8B57] group-hover:text-white transition-colors">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#e5efe6] text-[#174b37] transition-colors group-hover:bg-[#174b37] group-hover:text-white">
                     <Icon size={24} />
                   </div>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${svc.badgeColor}`}>
+                  <span className={`rounded-md px-2 py-1 text-[10px] font-semibold ${svc.badgeColor}`}>
                     {svc.badge}
                   </span>
                 </div>
 
-                <h3 className="text-base font-bold text-slate-900 group-hover:text-[#2E8B57] transition-colors">
+                <h3 className="text-base font-semibold text-[#1b2821] group-hover:text-[#174b37] transition-colors">
                   {svc.title}
                 </h3>
                 <p className="mt-2 text-xs leading-relaxed text-slate-500">

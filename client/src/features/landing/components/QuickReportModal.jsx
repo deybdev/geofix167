@@ -21,12 +21,12 @@ const ADDRESS_CACHE = new Map();
 let boundaryPromise;
 const URGENCY_COLORS = {
   Low: {
-    select: "border-emerald-300 bg-emerald-50 text-emerald-800 focus:border-emerald-500",
-    option: "bg-emerald-50 text-emerald-800",
+    select: "border-[#cbd8ce] bg-[#f1f5f0] text-[#4d6655] focus:border-[#78917d]",
+    option: "bg-[#f1f5f0] text-[#4d6655]",
   },
   Medium: {
-    select: "border-amber-300 bg-amber-50 text-amber-800 focus:border-amber-500",
-    option: "bg-amber-50 text-amber-800",
+    select: "border-[#9fb6a4] bg-[#e5efe6] text-[#174b37] focus:border-[#47745a]",
+    option: "bg-[#e5efe6] text-[#174b37]",
   },
   High: {
     select: "border-red-300 bg-red-50 text-red-800 focus:border-red-500",
@@ -34,13 +34,19 @@ const URGENCY_COLORS = {
   },
 };
 const CLASSIFICATION_COLORS = {
-  sudden: "border-red-300 bg-red-50 text-red-800 focus:border-red-500",
-  maintenance: "border-amber-300 bg-amber-50 text-amber-800 focus:border-amber-500",
+  sudden: {
+    select: "border-red-300 bg-red-50 text-red-800 focus:border-red-500",
+    option: "bg-red-50 text-red-800",
+  },
+  maintenance: {
+    select: "border-[#9fb6a4] bg-[#e5efe6] text-[#174b37] focus:border-[#47745a]",
+    option: "bg-[#e5efe6] text-[#174b37]",
+  },
 };
 const CATEGORY_COLORS = {
-  "Road Damage": "border-amber-300 bg-amber-50 text-amber-800 focus:border-amber-500",
-  Electrical: "border-orange-300 bg-orange-50 text-orange-800 focus:border-orange-500",
-  Sanitation: "border-sky-300 bg-sky-50 text-sky-800 focus:border-sky-500",
+  "Road Damage": "border-[#cbd8ce] bg-[#f1f5f0] text-[#40584a] focus:border-[#78917d]",
+  Electrical: "border-[#cbd8ce] bg-[#edf3ec] text-[#315440] focus:border-[#78917d]",
+  Sanitation: "border-[#cbd8ce] bg-[#edf3ec] text-[#315440] focus:border-[#78917d]",
   "Incident / Emergency": "border-red-300 bg-red-50 text-red-800 focus:border-red-500",
 };
 
@@ -356,13 +362,13 @@ function OpenQuickReportModal({ onClose, onSubmitNewReport, defaultCoordinates =
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative z-10 max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+      <div className="landing-report-modal relative z-10 max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto p-6">
         <button type="button" onClick={onClose} aria-label="Close report form" className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700">
           <X size={18} />
         </button>
 
         <div className="mb-1 flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-100 text-orange-600"><AlertTriangle size={18} /></div>
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-red-50 text-[#b42318]"><AlertTriangle size={18} /></div>
           <div className="pr-8">
             <h3 className="text-lg font-extrabold text-slate-900">Submit Geotagged Report</h3>
             <p className="text-xs text-slate-500">Barangay 167, Caloocan City · Public Incident Intake</p>
@@ -372,9 +378,9 @@ function OpenQuickReportModal({ onClose, onSubmitNewReport, defaultCoordinates =
         <form onSubmit={handleSubmit} className="mt-5 space-y-4">
           <div>
             <label htmlFor="guest-report-classification" className="mb-1.5 block text-xs font-bold text-slate-700">Incident Classification</label>
-            <select id="guest-report-classification" value={reportType} onChange={(event) => handleTypeChange(event.target.value)} className={`w-full rounded-lg border px-3 py-2 text-xs font-semibold outline-none ${CLASSIFICATION_COLORS[reportType] ?? "border-slate-200 bg-white text-slate-800 focus:border-[#2E8B57]"}`}>
+            <select id="guest-report-classification" value={reportType} onChange={(event) => handleTypeChange(event.target.value)} className={`w-full rounded-lg border px-3 py-2 text-xs font-semibold outline-none ${CLASSIFICATION_COLORS[reportType]?.select ?? "border-slate-200 bg-white text-slate-800 focus:border-[#2E8B57]"}`}>
               {reportCatalog.classifications.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
+                <option key={option.value} value={option.value} className={CLASSIFICATION_COLORS[option.value]?.option}>{option.label}</option>
               ))}
             </select>
           </div>
@@ -399,7 +405,7 @@ function OpenQuickReportModal({ onClose, onSubmitNewReport, defaultCoordinates =
           <div>
             <div className="mb-1.5 flex items-center justify-between gap-2">
               <label className="block text-xs font-bold text-slate-700">Location / Street in Barangay 167, Caloocan City</label>
-              <span className={`inline-flex items-center gap-1 text-[10px] font-semibold ${locationStatus === "error" ? "text-amber-700" : "text-emerald-700"}`} aria-live="polite">
+              <span className={`inline-flex items-center gap-1 text-[10px] font-semibold ${locationStatus === "error" ? "text-[#b42318]" : "text-[#2f7550]"}`} aria-live="polite">
                 <LocateFixed size={12} />
                 {locationStatus === "loading" ? "Getting your location..." : locationStatus === "pinned" ? "Location pinned" : "Location unavailable"}
               </span>
@@ -414,10 +420,10 @@ function OpenQuickReportModal({ onClose, onSubmitNewReport, defaultCoordinates =
               <div className="space-y-1.5 border-t border-slate-200 bg-white px-3 py-2">
                 <p className="text-xs font-semibold text-slate-800">{addressStatus === "loading" ? "Looking up nearby street..." : locationSummary || coordinateLabel}</p>
                 {pin?.accuracy != null && <p className="text-[10px] text-slate-500">GPS accuracy: ±{Math.round(pin.accuracy)} m</p>}
-                {pin?.accuracy > 100 && <p className="text-[10px] font-medium text-amber-700">Accuracy is low. Drag the pin to adjust the location.</p>}
-                {isOutsideBarangay && <p className="text-[10px] font-semibold text-amber-700">This pin appears outside Barangay 167. You can still submit.</p>}
-                {!pin && locationStatus === "error" && <p className="text-[10px] text-amber-700">{locationError}</p>}
-                {pin && locationError && <p className="text-[10px] text-amber-700">{locationError}</p>}
+                {pin?.accuracy > 100 && <p className="text-[10px] font-medium text-[#9f241b]">Accuracy is low. Drag the pin to adjust the location.</p>}
+                {isOutsideBarangay && <p className="text-[10px] font-semibold text-[#9f241b]">This pin appears outside Barangay 167. You can still submit.</p>}
+                {!pin && locationStatus === "error" && <p className="text-[10px] text-[#9f241b]">{locationError}</p>}
+                {pin && locationError && <p className="text-[10px] text-[#9f241b]">{locationError}</p>}
                 {manualPinMode && <p className="text-[10px] text-slate-500">Tap the map or drag the pin to set the exact location.</p>}
                 {addressStatus === "unavailable" && pin && <p className="text-[10px] text-slate-500">Location pinned (coordinates). Street lookup can’t be reached right now.</p>}
                 <div className="flex flex-wrap items-center gap-2 pt-0.5">

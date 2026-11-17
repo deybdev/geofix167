@@ -4,7 +4,7 @@ import { PATHS } from "../../../router/paths";
 
 export default function LandingFooter() {
   return (
-    <footer className="border-t border-emerald-900/10 bg-white text-slate-600">
+    <footer className="landing-footer border-t text-slate-600">
       <div className="site-container flex flex-col gap-4 py-6 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
           <Phone size={14} className="text-[#2e8b57]" />

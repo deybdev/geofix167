@@ -1,5 +1,5 @@
 import { useNavigate } from "react-router-dom";
-import { MapPin, Shield, Briefcase, ChevronRight } from "lucide-react";
+import { MapPin, Shield, Briefcase } from "lucide-react";
 import { PATHS } from "../../../router/paths";
 
 export default function GetInvolvedSection({
@@ -9,15 +9,15 @@ export default function GetInvolvedSection({
   const navigate = useNavigate();
 
   return (
-    <section className="py-10 bg-slate-50/70 border-y border-slate-200/80">
-      <div className="w-full px-4 sm:px-8 lg:px-10 xl:px-12">
+    <section className="landing-section landing-section--paper border-y">
+      <div className="site-container">
         
         {/* Section Heading matching screenshot */}
         <div className="text-center mb-7">
-          <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">
+          <h2 className="landing-display text-2xl sm:text-3xl">
             Get Involved
           </h2>
-          <p className="mt-1 text-sm text-slate-500 font-medium">
+          <p className="mt-2 text-sm text-slate-600">
             Take part in making Barangay 167 safer, cleaner, and faster to respond
           </p>
         </div>
@@ -29,16 +29,16 @@ export default function GetInvolvedSection({
           <button
             type="button"
             onClick={onQuickReportClick}
-            className="group relative flex items-center justify-center gap-3.5 rounded-xl bg-gradient-to-r from-[#ea580c] to-[#d97706] p-4.5 text-white shadow-lg shadow-orange-600/20 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-orange-600/30 active:scale-[0.99]"
+            className="landing-action-card group"
           >
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white/20 backdrop-blur">
-              <MapPin size={22} className="text-white" />
+            <div className="landing-action-icon landing-action-icon--urgent">
+              <MapPin size={21} />
             </div>
             <div className="text-left">
-              <p className="text-sm font-extrabold tracking-wide uppercase leading-tight">
+              <p className="leading-tight">
                 Submit a Geotagged Report
               </p>
-              <p className="text-xs font-semibold text-orange-100 mt-0.5">
+              <p className="mt-1 text-xs">
                 (Citizen / Guest)
               </p>
             </div>
@@ -48,16 +48,16 @@ export default function GetInvolvedSection({
           <button
             type="button"
             onClick={() => navigate(PATHS.adminLogin)}
-            className="group relative flex items-center justify-center gap-3.5 rounded-xl bg-gradient-to-r from-[#1d4ed8] to-[#0284c7] p-4.5 text-white shadow-lg shadow-blue-700/20 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-blue-700/30 active:scale-[0.99]"
+            className="landing-action-card group"
           >
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white/20 backdrop-blur">
-              <Shield size={22} className="text-white" />
+            <div className="landing-action-icon">
+              <Shield size={21} />
             </div>
             <div className="text-left">
-              <p className="text-sm font-extrabold tracking-wide uppercase leading-tight">
+              <p className="leading-tight">
                 BDRRMO & Officials Dashboard
               </p>
-              <p className="text-xs font-semibold text-sky-100 mt-0.5">
+              <p className="mt-1 text-xs">
                 (Authorized Personnel Login)
               </p>
             </div>
@@ -67,16 +67,16 @@ export default function GetInvolvedSection({
           <button
             type="button"
             onClick={onAccomplishmentClick}
-            className="group relative flex items-center justify-center gap-3.5 rounded-xl border-2 border-slate-300 bg-white p-4.5 text-slate-800 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-[#2E8B57] hover:bg-emerald-50/30 hover:shadow-md active:scale-[0.99]"
+            className="landing-action-card group"
           >
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700 group-hover:bg-[#2E8B57] group-hover:text-white transition-colors">
+            <div className="landing-action-icon">
               <Briefcase size={22} />
             </div>
             <div className="text-left">
-              <p className="text-sm font-extrabold tracking-wide uppercase leading-tight">
+              <p className="leading-tight">
                 View Public Accomplishment Log
               </p>
-              <p className="text-xs font-semibold text-slate-500 group-hover:text-[#2E8B57] mt-0.5">
+              <p className="mt-1 text-xs">
                 (Transparency Portal)
               </p>
             </div>
