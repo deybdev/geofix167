@@ -22,14 +22,20 @@ import {
 } from "../repositories/session.repository";
 import { loginSchema } from "../validators/auth.schema";
 
-const MOBILE_ALLOWED_ROLES: readonly UserRole[] = ["resident", "tanod"];
+const MOBILE_ALLOWED_ROLES: readonly UserRole[] = [
+  "resident",
+  "tanod",
+  "bdrrmo",
+  "police",
+  "fire",
+];
 
 export async function loginController(c: Context<AppEnv>) {
   return handleLoginRequest(c, "web");
 }
 
-// The mobile app is exclusive to residents and responders. Any other role
-// (admin, bdrrmo, police, fire) gets the same response as bad credentials.
+// The mobile app is exclusive to residents and responders. Admin accounts
+// continue to use the web client.
 export async function mobileLoginController(c: Context<AppEnv>) {
   return handleLoginRequest(c, "mobile", MOBILE_ALLOWED_ROLES);
 }

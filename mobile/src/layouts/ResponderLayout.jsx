@@ -6,6 +6,7 @@ import {
   House,
   LogOut,
   Map,
+  MessageCircle,
   UserRound,
 } from 'lucide-react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -22,11 +23,31 @@ const NAV_ITEMS = [
   { route: 'Profile', label: 'Profile', Icon: UserRound },
 ];
 
+const NAV_ITEMS_BY_ROLE = {
+  bdrrmo: [
+    { route: 'Home', label: 'Home', Icon: House },
+    { route: 'Dispatch', label: 'Dispatch', Icon: ClipboardList },
+    { route: 'Map', label: 'Map', Icon: Map },
+    { route: 'Messages', label: 'Messages', Icon: MessageCircle },
+    { route: 'Profile', label: 'Profile', Icon: UserRound },
+  ],
+  police: [...NAV_ITEMS.slice(0, 3), { route: 'Messages', label: 'Messages', Icon: MessageCircle }, ...NAV_ITEMS.slice(3)],
+  fire: [...NAV_ITEMS.slice(0, 3), { route: 'Messages', label: 'Messages', Icon: MessageCircle }, ...NAV_ITEMS.slice(3)],
+};
+
+const ROLE_LABELS = {
+  bdrrmo: 'BDRRMO',
+  police: 'Police',
+  fire: 'BFP',
+};
+
 export default function ResponderLayout({ children }) {
   const { user, signOut } = useAuth();
   const navigation = useNavigation();
   const { name: currentRoute } = useRoute();
   const [loggingOut, setLoggingOut] = useState(false);
+  const role = String(user?.role || '').toLowerCase();
+  const navItems = NAV_ITEMS_BY_ROLE[role] || NAV_ITEMS;
 
   const confirmSignOut = () => {
     Alert.alert('Sign out', 'Are you sure you want to sign out?', [
@@ -56,7 +77,7 @@ export default function ResponderLayout({ children }) {
             GeoFix 167
           </Text>
           <Text style={tw`mt-1 text-lg font-bold text-white`}>
-            Responder
+            {ROLE_LABELS[role] || 'Responder'}
           </Text>
           <Text style={tw`mt-0.5 text-xs text-green-100`}>
             {user?.full_name || 'Responder'}
@@ -77,7 +98,7 @@ export default function ResponderLayout({ children }) {
       </View>
       <View style={tw`flex-1`}>{children}</View>
       <View style={tw`flex-row border-t border-slate-200 bg-white px-1 pt-2`}>
-        {NAV_ITEMS.map(({ route, label, Icon }) => {
+        {navItems.map(({ route, label, Icon }) => {
           const isActive = currentRoute === route;
 
           return (

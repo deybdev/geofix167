@@ -37,6 +37,17 @@ const MAX_ZOOM = 22;
 const FOCUS_DELTA = 0.006;
 const FALLBACK_CENTER = { latitude: 14.75, longitude: 121.02 };
 const BASEMAPS = ['street', 'satellite'];
+const NAVIGATION_MAP_STYLE = [
+  { elementType: 'geometry', stylers: [{ color: '#07566A' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#B7E3E4' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#07566A' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#5B6E91' }] },
+  { featureType: 'road.arterial', elementType: 'geometry', stylers: [{ color: '#24D8EC' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#24D8EC' }] },
+  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#0B8CA0' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#064A5C' }] },
+  { featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] },
+];
 
 // Single source of truth for category icon + fallback color.
 const CATEGORY_META = {
@@ -454,6 +465,13 @@ export default function MapViewer({
   mapHeight,
   hideMapLabel = false,
   incidentLoading = false,
+  navigationMode = false,
+  navigationHeading = 0,
+  recenterSignal = 0,
+  navigationUserLocation = null,
+  traveledRoute = [],
+  highwayShields = [],
+  compassResetSignal = 0,
 }) {
   const insets = useSafeAreaInsets();
   const mapRef = useRef(null);
@@ -462,6 +480,7 @@ export default function MapViewer({
   const [panel, setPanel] = useState(null); // null | 'legend' | 'layers'
   const [mapReady, setMapReady] = useState(false);
   const [activeIncident, setActiveIncident] = useState(selectedIncident);
+  const [isFollowingNavigation, setIsFollowingNavigation] = useState(true);
 
   const isViewer = variant === 'viewer';
   const togglePanel = (name) =>
@@ -552,9 +571,27 @@ export default function MapViewer({
   useEffect(() => {
     if (!mapReady || !fitKey) return;
 
+    setIsFollowingNavigation(true);
     fitToCoordinates(fitPoints.filter(hasValidCoords).map(toLatLng));
+    if (navigationMode) {
+      const timer = setTimeout(() => {
+        mapRef.current?.animateCamera(
+          { pitch: 55, heading: navigationHeading, zoom: 16.5 },
+          { duration: 700 },
+        );
+      }, 450);
+      return () => clearTimeout(timer);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, fitKey, fitToCoordinates]);
+  }, [mapReady, fitKey, fitToCoordinates, navigationMode, navigationHeading, recenterSignal]);
+
+  useEffect(() => {
+    if (!mapReady || !navigationMode || !compassResetSignal) return;
+    mapRef.current?.animateCamera(
+      { pitch: 55, heading: 0 },
+      { duration: 450 },
+    );
+  }, [mapReady, navigationMode, compassResetSignal]);
 
   useEffect(() => {
     if (mapReady && activeIncident) focusOn(activeIncident);
@@ -591,6 +628,10 @@ export default function MapViewer({
     if (highlightBoundary && !isInsideBoundary(latitude, longitude)) return;
 
     onLocationSelect?.({ lat: latitude, lng: longitude });
+  };
+
+  const handleNavigationPan = () => {
+    if (navigationMode) setIsFollowingNavigation(false);
   };
 
   const zoomBy = async (delta) => {
@@ -646,12 +687,16 @@ export default function MapViewer({
           longitudeDelta: 0.012,
         }}
         mapType={basemap === 'satellite' ? 'satellite' : 'standard'}
+        customMapStyle={navigationMode ? NAVIGATION_MAP_STYLE : undefined}
+        pitchEnabled={navigationMode}
+        rotateEnabled={navigationMode}
+        showsBuildings={navigationMode}
         showsCompass
         showsScale
-        showsBuildings={false}
         showsTraffic={false}
         onMapReady={() => setMapReady(true)}
         onPress={handleMapPress}
+        onPanDrag={handleNavigationPan}
         minZoomLevel={MIN_ZOOM}
         maxZoomLevel={MAX_ZOOM}
       >
@@ -691,6 +736,16 @@ export default function MapViewer({
           />
         ))}
 
+        {navigationMode && traveledRoute.length > 1 ? (
+          <Polyline
+            coordinates={traveledRoute.filter(hasValidCoords).map(toLatLng)}
+            strokeColor="#6E859E"
+            strokeWidth={5}
+            lineCap="round"
+            lineJoin="round"
+          />
+        ) : null}
+
         {routes.map((route) => {
           const coordinates = (route.points || [])
             .filter(hasValidCoords)
@@ -702,12 +757,43 @@ export default function MapViewer({
             <Polyline
               key={route.id}
               coordinates={coordinates}
-              strokeColor={route.color || '#10B981'}
-              strokeWidth={4}
+              strokeColor={navigationMode ? '#1AD1FF' : route.color || '#10B981'}
+              strokeWidth={navigationMode ? 7 : 4}
+              lineCap="round"
+              lineJoin="round"
               lineDashPattern={route.dashed === false ? undefined : [8, 7]}
             />
           );
         })}
+
+        {navigationMode && hasValidCoords(navigationUserLocation) ? (
+          <Marker
+            coordinate={toLatLng(navigationUserLocation)}
+            anchor={{ x: 0.5, y: 0.5 }}
+            tracksViewChanges={false}
+            zIndex={300}
+          >
+            <View style={isFollowingNavigation ? tw`h-12 w-12 items-center justify-center rounded-full bg-blue-500/25` : tw`h-12 w-12 items-center justify-center rounded-full bg-slate-400/25`}>
+              <View style={tw`h-7 w-7 items-center justify-center rounded-full border-2 border-blue-700 bg-blue-500`}>
+                <View style={tw`h-2.5 w-2.5 rounded-full bg-white`} />
+              </View>
+            </View>
+          </Marker>
+        ) : null}
+
+        {navigationMode ? highwayShields.filter(hasValidCoords).map((shield, index) => (
+          <Marker
+            key={`${shield.label}-${index}`}
+            coordinate={toLatLng(shield)}
+            anchor={{ x: 0.5, y: 0.5 }}
+            tracksViewChanges={false}
+            zIndex={250}
+          >
+            <View style={tw`rounded-md border-2 border-green-200 bg-green-700 px-2 py-1`}>
+              <Text style={tw`text-xs font-extrabold text-white`}>{shield.label}</Text>
+            </View>
+          </Marker>
+        )) : null}
 
         {trackers.filter(hasValidCoords).map((tracker) => (
           <ResponderMarker key={tracker.id} tracker={tracker} />
@@ -730,7 +816,7 @@ export default function MapViewer({
       )}
 
       {/* Top-left: back, label, legend */}
-      {isViewer && (
+      {isViewer && !navigationMode && (
         <View
           style={[tw`absolute left-3 right-16`, { top: insets.top + 12 }]}
           pointerEvents="box-none"
@@ -768,7 +854,7 @@ export default function MapViewer({
       )}
 
       {/* Top-right: layers, expand, locate, zoom */}
-      {isViewer && (
+      {isViewer && !navigationMode && (
         <View
           style={[
             tw`absolute right-3 items-end gap-2`,

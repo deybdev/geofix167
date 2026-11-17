@@ -12,6 +12,8 @@ import registrationReviewRoutes from "./routes/registration-review.route";
 import adminMaintenanceRoutes from "./routes/admin-maintenance.route";
 import notificationRoutes from "./routes/notification.route";
 import announcementRoutes, { publicAnnouncementRoutes } from "./routes/announcement.route";
+import responderMessagesRoutes from "./routes/responder-messages.route";
+import responderDispatchesRoutes from "./routes/responder-dispatches.route";
 
 const app = new Hono<AppEnv>();
 
@@ -37,6 +39,8 @@ app.use(
 // POST /api/auth/logout
 app.route("/api/auth", authRoutes);
 app.route("/api/communication", communicationRoutes);
+app.route("/api/responder/messages", responderMessagesRoutes);
+app.route("/api/responder/dispatches", responderDispatchesRoutes);
 
 // Incident report routes:
 // POST /api/reports

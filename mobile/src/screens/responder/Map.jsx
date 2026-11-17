@@ -1,26 +1,38 @@
-import { Map } from 'lucide-react-native';
-import { Text, View } from 'react-native';
+import { useMemo } from 'react';
+import { View } from 'react-native';
 import tw from 'twrnc';
 
-export default function ResponderMap() {
-  return (
-    <View style={tw`flex-1 px-5 pt-6`}>
-      <Text style={tw`text-3xl font-extrabold text-slate-900`}>Map</Text>
-      <Text style={tw`mt-1 text-sm text-slate-500`}>
-        View locations related to your response tasks.
-      </Text>
+import MapViewer from '../../components/map/MapViewer';
+import { useAuth } from '../../context/AuthContext';
+import { buildSampleIncidents } from '../../utils/map/sampleIncidents';
 
-      <View style={tw`mt-6 min-h-64 items-center justify-center rounded-2xl border border-slate-200 bg-white p-6`}>
-        <View style={tw`h-12 w-12 items-center justify-center rounded-xl bg-green-50`}>
-          <Map size={24} color="#1F7A4D" />
-        </View>
-        <Text style={tw`mt-4 text-base font-bold text-slate-900`}>
-          Responder map
-        </Text>
-        <Text style={tw`mt-2 text-center text-sm leading-5 text-slate-500`}>
-          Your location and assigned incident locations will appear here when available.
-        </Text>
-      </View>
+const BOUNDARY = require('../../../assets/map/barangay-167.json');
+
+const ROLE_CATEGORIES = {
+  police: ['crime', 'incident', 'fire'],
+  fire: ['fire'],
+};
+
+export default function ResponderMap() {
+  const { user } = useAuth();
+  const role = String(user?.role || '').toLowerCase();
+  const incidents = useMemo(() => {
+    const categories = ROLE_CATEGORIES[role] || [];
+
+    return buildSampleIncidents(BOUNDARY).filter((incident) =>
+      categories.includes(incident.category),
+    );
+  }, [role]);
+
+  return (
+    <View style={tw`flex-1`}>
+      <MapViewer
+        variant="viewer"
+        incidents={incidents}
+        showBackButton={false}
+        highlightBoundary
+        compact={false}
+      />
     </View>
   );
 }
