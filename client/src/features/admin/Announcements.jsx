@@ -1,250 +1,54 @@
-import { useState } from "react";
-import { Archive, CalendarDays, Edit3, Megaphone, Plus, Search, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Archive, CalendarDays, Edit3, Megaphone, Plus, Search, Trash2, X } from "lucide-react";
 import ConfirmationDialog from "../../shared/components/ConfirmationDialog";
+import { toast } from "../../shared/components/ui/toast";
+import catalog from "../../../../server/src/shared/announcementCatalog.json";
 
-const initialAnnouncements = [
-  {
-    id: 1,
-    title: "Barangay clean-up drive this Saturday",
-    body: "Residents are invited to join the community clean-up drive along Rizal Street this Saturday, April 27, from 7:00 AM to 10:00 AM.",
-    eventDate: "2026-04-27",
-    venue: "Rizal Street",
-    status: "Published",
-    updated: "April 22, 2026",
-  },
-  {
-    id: 2,
-    title: "Water interruption advisory",
-    body: "Water service may be interrupted in selected areas while scheduled maintenance is being completed.",
-    eventDate: "2026-04-29",
-    venue: "Barangay 167",
-    status: "Draft",
-    updated: "April 21, 2026",
-  },
-];
-
-const emptyForm = { title: "", body: "", eventDate: "", venue: "" };
-
-function formatDate(value) {
-  if (!value) return "Date to be announced";
-  return new Intl.DateTimeFormat("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  }).format(new Date(`${value}T00:00:00`));
+const emptyForm = { title: "", details: "", category: "General", event_date: "", venue: "" };
+async function api(path = "", { method = "GET", body } = {}) {
+  const response = await fetch(`/api/admin/announcements${path}`, { method, credentials: "include", cache: "no-store", headers: body ? { "Content-Type": "application/json" } : undefined, body: body ? JSON.stringify(body) : undefined });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || "Announcement request failed.");
+  return data;
 }
+const formatDate = (value) => value ? new Date(`${value.slice(0, 10)}T00:00:00`).toLocaleDateString() : "No event date";
 
 export default function Announcements() {
-  const [announcements, setAnnouncements] = useState(initialAnnouncements);
-  const [form, setForm] = useState(emptyForm);
-  const [editingId, setEditingId] = useState(null);
-  const [filter, setFilter] = useState("All");
-  const [query, setQuery] = useState("");
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [error, setError] = useState("");
-  const [pendingAction, setPendingAction] = useState(null);
+  const [announcements, setAnnouncements] = useState([]); const [filter, setFilter] = useState("All"); const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(true); const [error, setError] = useState(""); const [saving, setSaving] = useState(false);
+  const [isFormOpen, setIsFormOpen] = useState(false); const [form, setForm] = useState(emptyForm); const [editingId, setEditingId] = useState(null); const [formError, setFormError] = useState(""); const [pending, setPending] = useState(null);
+  const load = useCallback(async () => { setLoading(true); setError(""); try { const data = await api(`?status=${filter === "All" ? "" : filter.toLowerCase()}&q=${encodeURIComponent(query)}`); setAnnouncements(data.announcements || []); } catch (e) { setError(e.message); } finally { setLoading(false); } }, [filter, query]);
+  useEffect(() => { void load(); }, [load]);
+  const openCreate = () => { setEditingId(null); setForm(emptyForm); setFormError(""); setIsFormOpen(true); };
+  const edit = (item) => { setEditingId(item.id); setForm({ title: item.title, details: item.details, category: item.category, event_date: item.event_date?.slice(0, 10) || "", venue: item.venue || "" }); setFormError(""); setIsFormOpen(true); };
+  const closeForm = () => { if (JSON.stringify(form) !== JSON.stringify(editingId ? { title: announcements.find((a) => a.id === editingId)?.title, details: announcements.find((a) => a.id === editingId)?.details, category: announcements.find((a) => a.id === editingId)?.category, event_date: announcements.find((a) => a.id === editingId)?.event_date?.slice(0, 10) || "", venue: announcements.find((a) => a.id === editingId)?.venue || "" } : emptyForm) && !window.confirm("Discard your unsaved changes?")) return; setIsFormOpen(false); };
+  const execute = async () => {
+    if (!pending || saving) return; const action = pending; setSaving(true);
+    try {
+      if (action.type === "save") {
+        let id = editingId;
+        if (id) await api(`/${encodeURIComponent(id)}`, { method: "PATCH", body: form });
+        else { const result = await api("", { method: "POST", body: form }); id = result.announcement.id; }
+        if (action.publish) await api(`/${encodeURIComponent(id)}/publish`, { method: "POST" });
+        toast.add({ type: "success", title: action.publish ? "Announcement published" : "Draft saved" }); setIsFormOpen(false);
+      } else if (action.type === "toggle") {
+        await api(`/${encodeURIComponent(action.item.id)}/${action.item.status === "published" ? "unpublish" : "publish"}`, { method: "POST" });
+        toast.add({ type: "success", title: action.item.status === "published" ? "Announcement unpublished" : "Announcement published" });
+      } else if (action.type === "delete") {
+        await api(`/${encodeURIComponent(action.item.id)}`, { method: "DELETE" }); toast.add({ type: "success", title: "Announcement deleted" });
+      }
+      setPending(null); await load();
+    } catch (e) { toast.add({ type: "error", title: "Could not save announcement", description: e.message }); } finally { setSaving(false); }
+  };
+  const visible = useMemo(() => announcements, [announcements]);
 
-  const visibleAnnouncements = announcements.filter((announcement) => {
-    const matchesFilter = filter === "All" || announcement.status === filter;
-    const searchText = `${announcement.title} ${announcement.body} ${announcement.venue}`.toLowerCase();
-    return matchesFilter && searchText.includes(query.toLowerCase());
-  });
-
-  function openCreateForm() {
-    setEditingId(null);
-    setForm(emptyForm);
-    setError("");
-    setIsFormOpen(true);
-  }
-
-  function openEditForm(announcement) {
-    setPendingAction({ type: "edit", announcement });
-  }
-
-  function startEditing(announcement) {
-    setEditingId(announcement.id);
-    setForm({
-      title: announcement.title,
-      body: announcement.body,
-      eventDate: announcement.eventDate,
-      venue: announcement.venue,
-    });
-    setError("");
-    setIsFormOpen(true);
-  }
-
-  function requestPublishToggle(announcement) {
-    setPendingAction({ type: "publish", announcement });
-  }
-
-  function confirmPendingAction() {
-    if (!pendingAction) return;
-
-    if (pendingAction.type === "edit") {
-      startEditing(pendingAction.announcement);
-    } else {
-      const { id } = pendingAction.announcement;
-      setAnnouncements((current) =>
-        current.map((announcement) =>
-          announcement.id === id
-            ? {
-                ...announcement,
-                status: announcement.status === "Published" ? "Draft" : "Published",
-                updated: "Just now",
-              }
-            : announcement,
-        ),
-      );
-    }
-
-    setPendingAction(null);
-  }
-
-  function closeForm() {
-    setIsFormOpen(false);
-    setError("");
-  }
-
-  function handleSubmit(event) {
-    event.preventDefault();
-    if (!form.title.trim() || !form.body.trim() || !form.eventDate || !form.venue.trim()) {
-      setError("Complete the title, details, event date, and venue before saving.");
-      return;
-    }
-
-    if (editingId) {
-      setAnnouncements((current) =>
-        current.map((announcement) =>
-          announcement.id === editingId
-            ? { ...announcement, ...form, updated: "Just now" }
-            : announcement,
-        ),
-      );
-    } else {
-      setAnnouncements((current) => [
-        {
-          id: Date.now(),
-          ...form,
-          status: "Draft",
-          updated: "Just now",
-        },
-        ...current,
-      ]);
-    }
-    closeForm();
-  }
-
-  return (
-    <div className="space-y-4">
-      <section className="flex flex-col justify-between gap-3 rounded-lg border border-[#e2e8eb] bg-white p-4 sm:flex-row sm:items-center">
-        <div>
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-(--gf-green-tint-2) text-(--gf-green)">
-              <Megaphone size={16} />
-            </div>
-            <h2 className="text-[15px] font-bold text-(--gf-green)">Barangay announcements</h2>
-          </div>
-          <p className="mt-2 max-w-xl text-[10px] leading-relaxed text-slate-500">
-            Publish community updates, advisories, and events for residents. Published announcements appear in the barangay community feed.
-          </p>
-        </div>
-        <button type="button" onClick={openCreateForm} className="flex shrink-0 items-center justify-center gap-2 rounded-md bg-(--gf-green) px-3 py-2 text-[10px] font-semibold text-white hover:opacity-90">
-          <Plus size={14} /> Create announcement
-        </button>
-      </section>
-
-      <section className="rounded-lg border border-[#e2e8eb] bg-white p-3">
-        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-          <div className="flex gap-1">
-            {["All", "Published", "Draft"].map((item) => (
-              <button key={item} type="button" onClick={() => setFilter(item)} className={`rounded px-3 py-1.5 text-[10px] font-semibold ${filter === item ? "bg-(--gf-green) text-white" : "text-slate-500 hover:bg-(--gf-green-soft)"}`}>
-                {item}
-              </button>
-            ))}
-          </div>
-          <label className="flex h-8 items-center gap-2 rounded-md border border-[#dfe5e8] px-2 text-[10px] text-slate-400 sm:w-[220px]">
-            <Search size={14} />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} aria-label="Search announcements" placeholder="Search announcements..." className="w-full outline-none placeholder:text-slate-400" />
-          </label>
-        </div>
-
-        <div className="mt-3 space-y-2">
-          {visibleAnnouncements.length === 0 ? (
-            <div className="rounded-md border border-dashed border-[#dfe5e8] px-4 py-10 text-center text-[10px] text-slate-400">No announcements match your search.</div>
-          ) : visibleAnnouncements.map((announcement) => (
-            <article key={announcement.id} className="rounded-md border border-[#e5eaed] p-3">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3 className="text-[12px] font-bold text-[#263246]">{announcement.title}</h3>
-                    <span className={`rounded px-2 py-1 text-[8px] font-semibold ${announcement.status === "Published" ? "bg-(--gf-green-tint-2) text-(--gf-green)" : "bg-[#fff1c6] text-[#d68d00]"}`}>{announcement.status}</span>
-                  </div>
-                  <p className="mt-1 text-[10px] leading-relaxed text-slate-500">{announcement.body}</p>
-                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[9px] text-slate-400">
-                    <span className="flex items-center gap-1"><CalendarDays size={12} /> {formatDate(announcement.eventDate)}</span>
-                    <span>{announcement.venue}</span>
-                    <span>Updated {announcement.updated}</span>
-                  </div>
-                </div>
-                <div className="flex shrink-0 gap-1">
-                  <button type="button" onClick={() => openEditForm(announcement)} className="flex items-center gap-1 rounded border border-[#dfe5e8] px-2 py-1.5 text-[9px] font-semibold text-slate-500 hover:text-(--gf-green)" title="Edit announcement"><Edit3 size={12} /> Edit</button>
-                  <button type="button" onClick={() => requestPublishToggle(announcement)} className="flex items-center gap-1 rounded border border-[#dfe5e8] px-2 py-1.5 text-[9px] font-semibold text-slate-500 hover:text-(--gf-green)" title={announcement.status === "Published" ? "Unpublish announcement" : "Publish announcement"}><Archive size={12} /> {announcement.status === "Published" ? "Unpublish" : "Publish"}</button>
-                </div>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      {isFormOpen && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/30 p-4">
-          <div className="w-full max-w-lg rounded-lg bg-white p-5 shadow-xl">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <h2 className="text-[15px] font-bold text-(--gf-green)">{editingId ? "Edit announcement" : "Create announcement"}</h2>
-                <p className="mt-1 text-[10px] text-slate-400">Required details are marked by the form fields below.</p>
-              </div>
-              <button type="button" onClick={closeForm} aria-label="Close announcement form" className="text-slate-400 hover:text-slate-600"><X size={17} /></button>
-            </div>
-            <form onSubmit={handleSubmit} className="space-y-3">
-              <label className="block text-[10px] font-semibold text-slate-600">Title<input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} className="mt-1 h-9 w-full rounded-md border border-[#dfe5e8] px-3 text-[11px] font-normal outline-none focus:border-(--gf-green)" placeholder="Announcement title" /></label>
-              <label className="block text-[10px] font-semibold text-slate-600">Details<textarea value={form.body} onChange={(event) => setForm({ ...form, body: event.target.value })} className="mt-1 min-h-20 w-full resize-y rounded-md border border-[#dfe5e8] px-3 py-2 text-[11px] font-normal outline-none focus:border-(--gf-green)" placeholder="Share the announcement details..." /></label>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="block text-[10px] font-semibold text-slate-600">Event date<input type="date" value={form.eventDate} onChange={(event) => setForm({ ...form, eventDate: event.target.value })} className="mt-1 h-9 w-full rounded-md border border-[#dfe5e8] px-3 text-[11px] font-normal outline-none focus:border-(--gf-green)" /></label>
-                <label className="block text-[10px] font-semibold text-slate-600">Venue<input value={form.venue} onChange={(event) => setForm({ ...form, venue: event.target.value })} className="mt-1 h-9 w-full rounded-md border border-[#dfe5e8] px-3 text-[11px] font-normal outline-none focus:border-(--gf-green)" placeholder="Venue or coverage area" /></label>
-              </div>
-              {error && <p className="rounded-md bg-red-50 px-3 py-2 text-[10px] text-red-600">{error}</p>}
-              <div className="flex justify-end gap-2 pt-2">
-                <button type="button" onClick={closeForm} className="rounded-md border border-[#dfe5e8] px-3 py-2 text-[10px] font-semibold text-slate-500">Cancel</button>
-                <button type="submit" className="rounded-md bg-(--gf-green) px-3 py-2 text-[10px] font-semibold text-white">{editingId ? "Save changes" : "Save as draft"}</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-      <ConfirmationDialog
-        open={Boolean(pendingAction)}
-        onOpenChange={(open) => {
-          if (!open) setPendingAction(null);
-        }}
-        onConfirm={confirmPendingAction}
-        title={
-          pendingAction?.type === "edit"
-            ? "Edit this announcement?"
-            : pendingAction?.announcement?.status === "Published"
-              ? "Unpublish this announcement?"
-              : "Publish this announcement?"
-        }
-        description={
-          pendingAction?.type === "edit"
-            ? "You can update the announcement details before saving your changes."
-            : pendingAction?.announcement?.status === "Published"
-              ? "Residents will no longer see this announcement in the community feed."
-              : "This announcement will become visible to residents in the community feed."
-        }
-        confirmLabel={pendingAction?.type === "edit" ? "Continue editing" : pendingAction?.announcement?.status === "Published" ? "Unpublish" : "Publish"}
-        confirmVariant={pendingAction?.type === "edit" ? undefined : pendingAction?.announcement?.status === "Published" ? "destructive" : undefined}
-      />
-    </div>
-  );
+  return <div className="space-y-4">
+    <section className="flex flex-col justify-between gap-3 rounded-lg border border-[#e2e8eb] bg-white p-4 sm:flex-row sm:items-center"><div><div className="flex items-center gap-2"><div className="flex h-8 w-8 items-center justify-center rounded-full bg-(--gf-green-tint-2) text-(--gf-green)"><Megaphone size={16} /></div><h2 className="text-[15px] font-bold text-(--gf-green)">Barangay announcements</h2></div><p className="mt-2 max-w-xl text-[10px] text-slate-500">Publish community updates, advisories, and events for residents.</p></div><button type="button" onClick={openCreate} className="flex items-center justify-center gap-2 rounded-md bg-(--gf-green) px-3 py-2 text-[10px] font-semibold text-white"><Plus size={14} /> Create announcement</button></section>
+    <section className="rounded-lg border border-[#e2e8eb] bg-white p-3"><div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><div className="flex gap-1">{["All", "Published", "Draft"].map((item) => <button key={item} type="button" onClick={() => setFilter(item)} className={`rounded px-3 py-1.5 text-[10px] font-semibold ${filter === item ? "bg-(--gf-green) text-white" : "text-slate-500 hover:bg-(--gf-green-soft)"}`}>{item}</button>)}</div><label className="flex h-8 items-center gap-2 rounded-md border px-2 text-[10px] text-slate-400 sm:w-[220px]"><Search size={14} /><input value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search announcements" placeholder="Search announcements..." className="w-full outline-none" /></label></div>
+      {error && <div role="alert" className="mt-3 rounded bg-red-50 p-3 text-xs text-red-700">{error} <button onClick={load} className="underline">Retry</button></div>}
+      <div className="mt-3 space-y-2">{loading ? <p className="p-8 text-center text-xs text-slate-500">Loading announcements…</p> : visible.length ? visible.map((item) => <article key={item.id} className="rounded-md border border-[#e5eaed] p-3"><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><h3 className="text-xs font-bold text-[#263246]">{item.title}</h3><span className={`rounded px-2 py-1 text-[8px] font-semibold ${item.status === "published" ? "bg-(--gf-green-tint-2) text-(--gf-green)" : "bg-[#fff1c6] text-[#d68d00]"}`}>{item.status}</span><span className="rounded bg-slate-100 px-2 py-1 text-[8px] text-slate-600">{item.category}</span></div><p className="mt-1 whitespace-pre-wrap text-[10px] text-slate-600">{item.details}</p><div className="mt-2 flex flex-wrap gap-3 text-[9px] text-slate-400"><span><CalendarDays size={11} className="inline" /> {formatDate(item.event_date)}</span>{item.venue && <span>{item.venue}</span>}<span>Updated {new Date(item.updated_at).toLocaleDateString()}</span></div></div><div className="flex gap-1"><button onClick={() => edit(item)} className="flex items-center gap-1 rounded border px-2 py-1.5 text-[9px]"><Edit3 size={12} />Edit</button><button onClick={() => setPending({ type: "toggle", item })} className="flex items-center gap-1 rounded border px-2 py-1.5 text-[9px]"><Archive size={12} />{item.status === "published" ? "Unpublish" : "Publish"}</button><button onClick={() => setPending({ type: "delete", item })} aria-label="Delete announcement" className="rounded border px-2 py-1.5 text-red-700"><Trash2 size={12} /></button></div></div></article>) : <p className="rounded border border-dashed p-10 text-center text-xs text-slate-500">No announcements yet.</p>}</div>
+    </section>
+    {isFormOpen && <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/30 p-4"><div className="w-full max-w-lg rounded-lg bg-white p-5 shadow-xl"><div className="mb-4 flex items-center justify-between"><div><h2 className="text-[15px] font-bold text-(--gf-green)">{editingId ? "Edit announcement" : "Create announcement"}</h2><p className="mt-1 text-[10px] text-slate-400">Required details are marked below.</p></div><button type="button" onClick={closeForm} aria-label="Close announcement form" className="text-slate-400"><X size={17} /></button></div><form onSubmit={(e) => { e.preventDefault(); setFormError(""); setPending({ type: "save", publish: false }); }} className="space-y-3"><label className="block text-[10px] font-semibold">Title<input required maxLength={160} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="mt-1 h-9 w-full rounded border px-3 text-xs" /></label><label className="block text-[10px] font-semibold">Category<select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} className="mt-1 h-9 w-full rounded border px-3 text-xs">{catalog.categories.map((c) => <option key={c}>{c}</option>)}</select></label><label className="block text-[10px] font-semibold">Details<textarea required maxLength={10000} value={form.details} onChange={(e) => setForm({ ...form, details: e.target.value })} className="mt-1 min-h-20 w-full rounded border px-3 py-2 text-xs" /></label><div className="grid gap-3 sm:grid-cols-2"><label className="block text-[10px] font-semibold">Event date<input type="date" value={form.event_date} onChange={(e) => setForm({ ...form, event_date: e.target.value })} className="mt-1 h-9 w-full rounded border px-3 text-xs" /></label><label className="block text-[10px] font-semibold">Venue<input maxLength={200} value={form.venue} onChange={(e) => setForm({ ...form, venue: e.target.value })} className="mt-1 h-9 w-full rounded border px-3 text-xs" /></label></div>{formError && <p className="text-xs text-red-700">{formError}</p>}<div className="flex justify-end gap-2 pt-2"><button type="button" disabled={saving} onClick={closeForm} className="rounded border px-3 py-2 text-[10px]">Cancel</button><button type="button" disabled={saving} onClick={() => setPending({ type: "save", publish: true })} className="rounded border px-3 py-2 text-[10px]">Publish</button><button type="submit" disabled={saving} className="rounded bg-(--gf-green) px-3 py-2 text-[10px] text-white">Save as draft</button></div></form></div></div>}
+    <ConfirmationDialog open={Boolean(pending)} onOpenChange={(open) => { if (!open) setPending(null); }} onConfirm={execute} title={pending?.type === "save" ? pending.publish ? "Publish announcement?" : "Save this announcement as a draft?" : pending?.type === "delete" ? "Delete announcement?" : pending?.item?.status === "published" ? "Unpublish announcement?" : "Publish announcement?"} description={pending?.type === "save" ? pending.publish ? `“${form.title}” will appear on the Barangay Announcements feed.` : "It will not be visible to residents." : pending?.type === "delete" ? `“${pending.item?.title}” will be archived.` : pending?.item?.status === "published" ? "This will remove it from the public feed." : `“${pending?.item?.title}” will appear on the public feed.`} confirmLabel={pending?.type === "delete" ? "Delete" : pending?.type === "save" ? pending.publish ? "Publish" : "Save draft" : pending?.item?.status === "published" ? "Unpublish" : "Publish"} confirmVariant={pending?.type === "delete" || pending?.item?.status === "published" ? "destructive" : undefined} />
+  </div>;
 }

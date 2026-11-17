@@ -1,0 +1,17 @@
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { PATHS } from "../router/paths";
+import catalog from "../../../server/src/shared/announcementCatalog.json";
+
+export default function AnnouncementsPage() {
+  const [items, setItems] = useState([]); const [category, setCategory] = useState(""); const [query, setQuery] = useState(""); const [offset, setOffset] = useState(0); const [more, setMore] = useState(false); const [loading, setLoading] = useState(true); const [error, setError] = useState("");
+  useEffect(() => { const controller = new AbortController(); setLoading(true); setError(""); const params = new URLSearchParams({ limit: "10", offset: String(offset) }); if (category) params.set("category", category); if (query.trim()) params.set("q", query.trim());
+    fetch(`/api/announcements?${params}`, { signal: controller.signal, cache: "no-store" }).then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d.error || "Unable to load announcements."); setItems((current) => offset ? [...current, ...(d.announcements || [])] : d.announcements || []); setMore((d.announcements || []).length === 10); }).catch((e) => { if (e.name !== "AbortError") setError(e.message); }).finally(() => setLoading(false)); return () => controller.abort();
+  }, [category, query, offset]);
+  return <div className="mx-auto w-full max-w-5xl px-5 py-10"><p className="text-xs font-bold uppercase tracking-widest text-emerald-700">Barangay 167 · Caloocan City</p><h1 className="mt-2 text-3xl font-extrabold text-slate-900">Barangay Announcements</h1><p className="mt-2 text-sm text-slate-600">Updates, advisories, and community events.</p>
+    <div className="mt-6 flex flex-wrap gap-2"><button onClick={() => { setItems([]); setOffset(0); setCategory(""); }} className="rounded-full border px-3 py-1.5 text-xs">All</button>{catalog.categories.map((item) => <button key={item} onClick={() => { setItems([]); setOffset(0); setCategory(item); }} className="rounded-full border px-3 py-1.5 text-xs">{item}</button>)}<input value={query} onChange={(e) => { setItems([]); setOffset(0); setQuery(e.target.value); }} placeholder="Search announcements" className="ml-auto min-w-48 rounded-lg border px-3 py-2 text-sm" /></div>
+    {error && <div role="alert" className="mt-5 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error} <button onClick={() => setOffset(0)} className="ml-2 underline">Retry</button></div>}
+    <div className="mt-5 grid gap-3">{items.map((item) => <Link key={item.id} to={`${PATHS.announcements}/${item.id}`} className="rounded-xl border border-slate-200 bg-white p-5 hover:border-emerald-400"><span className="text-xs font-semibold text-emerald-700">{item.category} · {new Date(item.published_at).toLocaleDateString()}</span><h2 className="mt-2 text-lg font-bold">{item.title}</h2><p className="mt-1 line-clamp-3 text-sm text-slate-600">{item.details}</p>{(item.event_date || item.venue) && <p className="mt-3 text-xs text-slate-500">{item.event_date || ""}{item.venue ? ` · ${item.venue}` : ""}</p>}</Link>)}{!loading && !error && items.length === 0 && <p className="rounded-xl border border-dashed p-10 text-center text-sm text-slate-500">No announcements yet.</p>}</div>
+    {loading && <p className="py-6 text-center text-sm text-slate-500">Loading announcements…</p>}{more && <button disabled={loading} onClick={() => setOffset((n) => n + 10)} className="mx-auto mt-5 block rounded-lg border px-4 py-2 text-sm">Load more</button>}
+  </div>;
+}

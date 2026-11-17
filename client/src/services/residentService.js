@@ -170,43 +170,11 @@ export async function updateReportDetails(id, { description_sanitized, location_
   }));
 }
 
-// Announcements and notifications are separate demo features, not report data.
-export const SAMPLE_ANNOUNCEMENTS = [
-  {
-    public_id: "ann_001",
-    title: "Barangay De-Clogging & Cleanliness Drive",
-    content:
-      "De-clogging and desilting operations scheduled across Molave, Sampaguita, and Prosera Streets this Saturday starting 7:00 AM. Residents are requested to coordinate waste segregation with Barangay Agents.",
-    category: "Clean & Green",
-    published_at: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(),
-    author_name: "Admin",
-  },
-  {
-    public_id: "ann_002",
-    title: "Heavy Rainfall Alert & Emergency Hotline Standby",
-    content:
-      "PAGASA monsoon rains forecast for Northern Caloocan. BDRRMO response teams are stationed on 24/7 emergency alert. Report waterlogged areas immediately via GeoFix 167 or call Hotline 668-338-3141.",
-    category: "BDRRMO Advisory",
-    published_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    author_name: "Admin",
-  },
-  {
-    public_id: "ann_003",
-    title: "Free Anti-Rabies Vaccination & Medical Mission",
-    content:
-      "Caloocan City Health Department in partnership with Barangay 167 will conduct free pet anti-rabies vaccination and adult blood pressure checkups at the Barangay Covered Court this Tuesday from 8:00 AM to 3:00 PM.",
-    category: "Health & Safety",
-    published_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-    author_name: "Admin",
-  },
-];
-
-// Simulated async helpers — swap these for real axios calls later.
-const delay = (ms = 300) => new Promise((res) => setTimeout(res, ms));
-
 export async function getAnnouncements() {
-  await delay();
-  return { data: { announcements: SAMPLE_ANNOUNCEMENTS } };
+  const response = await fetch("/api/announcements?limit=10", { cache: "no-store" });
+  const data = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(data?.error || "Unable to load announcements.");
+  return { data };
 }
 
 async function notificationRequest(path = "", { method = "GET", signal } = {}) {

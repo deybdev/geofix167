@@ -7,6 +7,7 @@ import {
 import { toast } from "../../shared/components/ui/toast";
 import { PATHS } from "../../router/paths";
 import MapViewer from "../../shared/components/MapViewer";
+import reportCatalog from "../../../../server/src/shared/reportCatalog.json";
 import { LineChart, DonutChart, BarChart, HBarChart, GroupedBarChart, StackedHBar } from "./analytics/Charts";
 import {
   KPI_DATA, TREND_MONTHLY, TREND_WEEKLY, TREND_DAILY,
@@ -27,7 +28,7 @@ const PERIODS = [
 const TREND_MAP = { today: TREND_DAILY, week: TREND_WEEKLY, month: TREND_MONTHLY, year: TREND_MONTHLY };
 const TREND_LABEL = { today: "Daily", week: "Weekly", month: "Monthly", year: "Monthly" };
 
-const CATEGORY_OPTS = ["All Categories", "Road Damage", "Electrical", "Sanitation", "Incident / Emergency", "Flooding", "Hazardous Tree", "Water Pipe"];
+const CATEGORY_OPTS = ["All Categories", ...Object.values(reportCatalog.categories).flat()];
 const STATUS_OPTS = ["All Statuses", "Pending", "Dispatched", "In Progress", "Resolved", "Rejected"];
 const TYPE_OPTS = ["All Types", "Emergency", "Maintenance"];
 

@@ -8,6 +8,7 @@ import reportCatalog from "../../../../../server/src/shared/reportCatalog.json";
 import { isInside } from "../../../shared/utils/mapUtils";
 import { PATHS } from "../../../router/paths";
 import { toast } from "../../../shared/components/ui/toast";
+import AccessibleDropdown from "../../../shared/components/AccessibleDropdown";
 
 const DEFAULT_MAP_CENTER = [14.75, 121.02];
 const ADDRESS_CACHE = new Map();
@@ -16,23 +17,6 @@ let boundaryPromise;
 const CLASSIFICATION_COLORS = {
   sudden: { select: "border-red-300 bg-red-50 text-red-800 focus:border-red-500", option: "bg-red-50 text-red-800" },
   maintenance: { select: "border-[#9fb6a4] bg-[#e5efe6] text-[#174b37] focus:border-[#47745a]", option: "bg-[#e5efe6] text-[#174b37]" },
-};
-const CATEGORY_COLORS = {
-  "Incident / Emergency": "border-red-300 bg-red-50 text-red-800 focus:border-red-500",
-  "Fire Incident": "border-red-300 bg-red-50 text-red-800 focus:border-red-500",
-  "Medical Emergency": "border-red-300 bg-red-50 text-red-800 focus:border-red-500",
-  "Road Accident": "border-red-300 bg-red-50 text-red-800 focus:border-red-500",
-  "Crime / Public Disturbance": "border-red-300 bg-red-50 text-red-800 focus:border-red-500",
-  "Road Damage": "border-[#cbd8ce] bg-[#f1f5f0] text-[#40584a] focus:border-[#78917d]",
-  "Drainage / Flooding": "border-[#9fb6a4] bg-[#e5efe6] text-[#174b37] focus:border-[#47745a]",
-  Sanitation: "border-[#cbd8ce] bg-[#edf3ec] text-[#315440] focus:border-[#78917d]",
-  Structural: "border-[#cbd8ce] bg-[#edf3ec] text-[#315440] focus:border-[#78917d]",
-  Electrical: "border-[#cbd8ce] bg-[#edf3ec] text-[#315440] focus:border-[#78917d]",
-  Waterways: "border-[#9fb6a4] bg-[#e5efe6] text-[#174b37] focus:border-[#47745a]",
-  Streetlight: "border-[#cbd8ce] bg-[#edf3ec] text-[#315440] focus:border-[#78917d]",
-  "Road Damage / Pothole": "border-[#cbd8ce] bg-[#f1f5f0] text-[#40584a] focus:border-[#78917d]",
-  "Garbage Collection": "border-[#cbd8ce] bg-[#edf3ec] text-[#315440] focus:border-[#78917d]",
-  "Water / Power Hazard": "border-red-300 bg-red-50 text-red-800 focus:border-red-500",
 };
 const isHighCategory = (type, item) => type === "sudden"
   || reportCatalog.guestUrgency.maintenanceHighCategories.includes(item);
@@ -174,9 +158,6 @@ export default function GuestReportForm({
   const [reportType, setReportType] = useState("sudden");
   const initialClassification = reportCatalog.classifications.find((item) => item.value === "sudden");
   const [category, setCategory] = useState(initialClassification.defaultCategory);
-  const [categoryOpen, setCategoryOpen] = useState(false);
-  const [activeCategoryIndex, setActiveCategoryIndex] = useState(0);
-  const categoryControlRef = useRef(null);
   const [title, setTitle] = useState("");
   const [reporterName, setReporterName] = useState("");
   const [locationNote, setLocationNote] = useState("");
@@ -220,29 +201,6 @@ export default function GuestReportForm({
     [pin?.lat, pin?.lng, boundary],
   );
   const needsAccuracyConfirmation = pin?.accuracy > 100 && !manuallyAdjusted;
-
-  useEffect(() => {
-    if (!categoryOpen) return undefined;
-    const closeOutside = (event) => {
-      if (!categoryControlRef.current?.contains(event.target)) setCategoryOpen(false);
-    };
-    document.addEventListener("pointerdown", closeOutside);
-    return () => document.removeEventListener("pointerdown", closeOutside);
-  }, [categoryOpen]);
-
-  const handleCategoryKeyDown = (event) => {
-    if (["ArrowDown", "ArrowUp", "Enter", " "].includes(event.key)) event.preventDefault();
-    if (event.key === "Escape") { setCategoryOpen(false); return; }
-    if (event.key === "ArrowDown") {
-      if (!categoryOpen) setCategoryOpen(true);
-      setActiveCategoryIndex((index) => Math.min(categories.length - 1, index + 1));
-    } else if (event.key === "ArrowUp") {
-      if (!categoryOpen) setCategoryOpen(true);
-      setActiveCategoryIndex((index) => Math.max(0, index - 1));
-    } else if ((event.key === "Enter" || event.key === " ") && categoryOpen) {
-      setCategory(categories[activeCategoryIndex]); setCategoryOpen(false);
-    }
-  };
 
   const commitPhotos = useCallback((nextPhotos) => {
     photosRef.current = nextPhotos;
@@ -578,19 +536,12 @@ export default function GuestReportForm({
 
           <div>
             <label htmlFor={`${idPrefix}-category`} className="mb-1.5 block text-xs font-bold text-slate-700">Category</label>
-            <div ref={categoryControlRef} className="relative">
-              <button id={`${idPrefix}-category`} type="button" role="combobox" aria-label="Category" aria-haspopup="listbox" aria-expanded={categoryOpen} aria-controls={`${idPrefix}-category-options`} onKeyDown={handleCategoryKeyDown} onClick={() => { setCategoryOpen((open) => !open); setActiveCategoryIndex(Math.max(0, categories.indexOf(category))); }} className={`flex min-h-10 w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${categoryIsHigh ? "border-red-300 bg-red-50 text-red-800" : "border-slate-200 bg-white text-slate-800"}`}>
-                <span className="flex min-w-0 items-center gap-2 truncate">{categoryIsHigh && <span className="h-2 w-2 shrink-0 rounded-full bg-red-600" aria-hidden="true" />}{category}<span className={`rounded-full px-1.5 py-0.5 text-[9px] ${categoryIsHigh ? "bg-red-100 text-red-700" : "bg-amber-50 text-amber-800"}`}>{categoryIsHigh ? "High" : "Medium"}</span></span><span aria-hidden="true">⌄</span>
-              </button>
-              {categoryOpen && <div id={`${idPrefix}-category-options`} role="listbox" aria-label="Incident category" className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
-                {categories.map((item, index) => {
-                  const high = isHighCategory(reportType, item);
-                  return <button key={item} type="button" role="option" aria-selected={category === item} onMouseEnter={() => setActiveCategoryIndex(index)} onClick={() => { setCategory(item); setCategoryOpen(false); }} className={`flex min-h-9 w-full items-center justify-between rounded-md px-2 text-left text-xs hover:bg-slate-50 ${index === activeCategoryIndex ? "bg-slate-50" : ""} ${high ? "text-red-700" : "text-slate-700"}`}>
-                    <span className="flex items-center gap-2">{high && <span className="h-2 w-2 rounded-full bg-red-600" aria-hidden="true" />}{item}</span>{high && <span className="rounded-full bg-red-50 px-1.5 py-0.5 text-[9px] font-bold text-red-700">High</span>}
-                  </button>;
-                })}
-              </div>}
-            </div>
+            <AccessibleDropdown
+              value={category}
+              onChange={setCategory}
+              label="Incident category"
+              options={categories.map((item) => ({ value: item, label: item, tag: isHighCategory(reportType, item) ? "High" : "Medium", tone: isHighCategory(reportType, item) ? "red" : "neutral" }))}
+            />
           </div>
 
           <div>

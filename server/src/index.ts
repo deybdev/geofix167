@@ -11,6 +11,7 @@ import adminDispatchRoutes from "./routes/admin-dispatch.route";
 import registrationReviewRoutes from "./routes/registration-review.route";
 import adminMaintenanceRoutes from "./routes/admin-maintenance.route";
 import notificationRoutes from "./routes/notification.route";
+import announcementRoutes, { publicAnnouncementRoutes } from "./routes/announcement.route";
 
 const app = new Hono<AppEnv>();
 
@@ -47,5 +48,7 @@ app.route("/api/media", mediaRoutes);
 app.route("/api/admin/dispatch", adminDispatchRoutes);
 app.route("/api/admin/maintenance", adminMaintenanceRoutes);
 app.route("/api/admin/registrations", registrationReviewRoutes);
+app.route("/api/admin/announcements", announcementRoutes);
+app.route("/api/announcements", publicAnnouncementRoutes);
 
 export default app;
