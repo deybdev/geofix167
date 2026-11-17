@@ -1,4 +1,5 @@
 import type { AppEnv } from "../types/env";
+import type { GuestPhotoInsert } from "../services/attachment.service";
 import type { ListReportsQuery } from "../validators/report.schema";
 
 type Database = AppEnv["Bindings"]["geofix167_db"];
@@ -124,6 +125,7 @@ export async function createIncidentReportBundle(db: Database, params: {
   statusEvent: IncidentStatusEventRecord;
   languageFlags: LanguageFlagRecord[];
   guestSession: InsertGuestSessionParams | null;
+  guestPhotos?: GuestPhotoInsert[];
   creationAudit?: { id: string; key: string };
 }): Promise<void> {
   const statements: D1PreparedStatement[] = [];
@@ -146,6 +148,15 @@ export async function createIncidentReportBundle(db: Database, params: {
     r.description_sanitized, r.callback_mobile_number, r.latitude, r.longitude,
     r.accuracy_meters, r.within_barangay_boundary, r.pin_manually_adjusted,
     r.address_geocoded_at, r.location_description, r.assigned_team, r.submitted_at, r.updated_at));
+  for (const photo of params.guestPhotos ?? []) {
+    statements.push(db.prepare(`INSERT INTO incident_media (
+      incident_media_id, incident_id, uploaded_by_guest_session_id, media_type, storage_key,
+      content_type, byte_size, original_filename, upload_key, content_sha256, media_url, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(photo.incident_media_id, photo.incident_id, photo.uploaded_by_guest_session_id,
+        photo.media_type, photo.storage_key, photo.content_type, photo.byte_size,
+        photo.original_filename, photo.upload_key, photo.content_sha256, photo.media_url, photo.created_at));
+  }
   statements.push(db.prepare("INSERT INTO incident_report_references (incident_id) VALUES (?)")
     .bind(r.incident_id));
   const e = params.statusEvent;

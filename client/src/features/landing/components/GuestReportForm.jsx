@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, FileText, LocateFixed, Locate, Send, UserRound, X } from "lucide-react";
+import { AlertTriangle, Camera, FileText, ImagePlus, LocateFixed, Locate, RotateCcw, Send, Trash2, UserRound, X } from "lucide-react";
 import L from "leaflet";
 import { Circle, GeoJSON, MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
@@ -13,11 +13,6 @@ const DEFAULT_MAP_CENTER = [14.75, 121.02];
 const ADDRESS_CACHE = new Map();
 let boundaryPromise;
 
-const URGENCY_COLORS = {
-  Low: { select: "border-[#cbd8ce] bg-[#f1f5f0] text-[#4d6655] focus:border-[#78917d]", option: "bg-[#f1f5f0] text-[#4d6655]" },
-  Medium: { select: "border-[#9fb6a4] bg-[#e5efe6] text-[#174b37] focus:border-[#47745a]", option: "bg-[#e5efe6] text-[#174b37]" },
-  High: { select: "border-red-300 bg-red-50 text-red-800 focus:border-red-500", option: "bg-red-50 text-red-800" },
-};
 const CLASSIFICATION_COLORS = {
   sudden: { select: "border-red-300 bg-red-50 text-red-800 focus:border-red-500", option: "bg-red-50 text-red-800" },
   maintenance: { select: "border-[#9fb6a4] bg-[#e5efe6] text-[#174b37] focus:border-[#47745a]", option: "bg-[#e5efe6] text-[#174b37]" },
@@ -46,6 +41,33 @@ const REPORT_PIN_ICON = L.divIcon({
   iconSize: [24, 24],
   iconAnchor: [12, 12],
 });
+
+async function compressEvidenceImage(file) {
+  if (!file.type.startsWith("image/")) throw new Error("Choose an image file for photo evidence.");
+  const bitmap = await createImageBitmap(file);
+  try {
+    const scale = Math.min(1, 1280 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("This photo could not be prepared. Please try another image.");
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const encode = (quality) => new Promise((resolve, reject) => canvas.toBlob(
+      (blob) => blob ? resolve(blob) : reject(new Error("This photo could not be compressed. Please try another image.")),
+      "image/jpeg", quality,
+    ));
+    let blob = await encode(0.7);
+    if (blob.size > 2 * 1024 * 1024) blob = await encode(0.55);
+    if (blob.size > 2 * 1024 * 1024) throw new Error("This image is too detailed to compress under 2 MiB. Choose a smaller photo.");
+    const baseName = file.name.replace(/\.[^.]+$/, "") || "incident-evidence";
+    return new File([blob], `${baseName}.jpg`, { type: "image/jpeg", lastModified: Date.now() });
+  } finally {
+    bitmap.close?.();
+  }
+}
 
 function getCoordinates(value) {
   if (!value || value.lat == null || value.lng == null) return null;
@@ -170,7 +192,15 @@ export default function GuestReportForm({
   const [locationNote, setLocationNote] = useState("");
   const [showLocationNote, setShowLocationNote] = useState(false);
   const [description, setDescription] = useState("");
-  const [urgency, setUrgency] = useState("High");
+  const [photos, setPhotos] = useState([]);
+  const photosRef = useRef([]);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraError, setCameraError] = useState("");
+  const [cameraBusy, setCameraBusy] = useState(false);
+  const cameraStreamRef = useRef(null);
+  const videoRef = useRef(null);
+  const photoInputRef = useRef(null);
+  const replacePhotoIndexRef = useRef(null);
   const [pin, setPin] = useState(initialPin);
   const pinRef = useRef(initialPin);
   const manualPinRef = useRef(Boolean(initialPin));
@@ -187,11 +217,131 @@ export default function GuestReportForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const classification = reportCatalog.classifications.find((item) => item.value === reportType);
   const categories = reportCatalog.categories[reportType] ?? [];
+  const urgencyCode = reportType === "sudden"
+    ? reportCatalog.guestUrgency.sudden
+    : reportCatalog.guestUrgency.maintenanceHighCategories.includes(category)
+      ? reportCatalog.guestUrgency.sudden
+      : reportCatalog.guestUrgency.maintenanceDefault;
+  const urgency = urgencyCode === "HIGH" ? "High" : urgencyCode === "LOW" ? "Low" : "Medium";
   const isOutsideBarangay = useMemo(
     () => Boolean(pin && boundary && !isInside(pin.lat, pin.lng, boundary)),
     [pin?.lat, pin?.lng, boundary],
   );
   const needsAccuracyConfirmation = pin?.accuracy > 100 && !manuallyAdjusted;
+
+  const commitPhotos = useCallback((nextPhotos) => {
+    photosRef.current = nextPhotos;
+    setPhotos(nextPhotos);
+  }, []);
+
+  const stopCamera = useCallback(() => {
+    cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+    cameraStreamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+    setCameraOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (cameraOpen && cameraStreamRef.current && videoRef.current) {
+      videoRef.current.srcObject = cameraStreamRef.current;
+      void videoRef.current.play().catch(() => {});
+    }
+  }, [cameraOpen]);
+
+  useEffect(() => () => {
+    cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+    photosRef.current.forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
+  }, []);
+
+  const acceptEvidencePhoto = useCallback(async (file, replacementIndex = null) => {
+    const compressed = await compressEvidenceImage(file);
+    const current = photosRef.current;
+    if (replacementIndex == null && current.length >= 3) throw new Error("You can attach up to three photos.");
+    const next = [...current];
+    const entry = { id: crypto.randomUUID(), file: compressed, previewUrl: URL.createObjectURL(compressed) };
+    if (replacementIndex != null && current[replacementIndex]) {
+      URL.revokeObjectURL(current[replacementIndex].previewUrl);
+      next[replacementIndex] = entry;
+    } else {
+      next.push(entry);
+    }
+    commitPhotos(next);
+  }, [commitPhotos]);
+
+  const startCamera = useCallback(async (replacementIndex = null) => {
+    replacePhotoIndexRef.current = replacementIndex;
+    setCameraError("");
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError("Camera access is unavailable. Choose an image from your device instead.");
+      return;
+    }
+    setCameraBusy(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+      cameraStreamRef.current = stream;
+      setCameraOpen(true);
+    } catch (error) {
+      cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+      cameraStreamRef.current = null;
+      setCameraError(error?.name === "NotFoundError" || error?.name === "DevicesNotFoundError"
+        ? "No camera was found. Choose an image from your device instead."
+        : "Camera access was denied or unavailable. Choose an image from your device instead.");
+    } finally {
+      setCameraBusy(false);
+    }
+  }, []);
+
+  const capturePhoto = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video?.videoWidth || !video?.videoHeight) {
+      setCameraError("The camera is still starting. Please try again in a moment.");
+      return;
+    }
+    const canvas = document.createElement("canvas");
+    const scale = Math.min(1, 1280 / Math.max(video.videoWidth, video.videoHeight));
+    canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+    canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+    canvas.getContext("2d")?.drawImage(video, 0, 0, canvas.width, canvas.height);
+    setCameraBusy(true);
+    try {
+      const blob = await new Promise((resolve, reject) => canvas.toBlob(
+        (value) => value ? resolve(value) : reject(new Error("The photo could not be captured. Please try again.")),
+        "image/jpeg", 0.7,
+      ));
+      await acceptEvidencePhoto(new File([blob], `incident-evidence-${Date.now()}.jpg`, { type: "image/jpeg" }), replacePhotoIndexRef.current);
+      replacePhotoIndexRef.current = null;
+      stopCamera();
+      setCameraError("");
+    } catch (error) {
+      setCameraError(error instanceof Error ? error.message : "The photo could not be saved.");
+      stopCamera();
+    } finally {
+      setCameraBusy(false);
+    }
+  }, [acceptEvidencePhoto, stopCamera]);
+
+  const handlePhotoFiles = useCallback(async (event) => {
+    const chosenFiles = [...(event.target.files ?? [])];
+    event.target.value = "";
+    const replacementIndex = replacePhotoIndexRef.current;
+    replacePhotoIndexRef.current = null;
+    try {
+      const candidates = replacementIndex == null ? chosenFiles.slice(0, Math.max(0, 3 - photosRef.current.length)) : chosenFiles.slice(0, 1);
+      for (let index = 0; index < candidates.length; index += 1) {
+        await acceptEvidencePhoto(candidates[index], replacementIndex == null ? null : replacementIndex);
+      }
+      if (chosenFiles.length > candidates.length) setCameraError("Only three photos can be attached to one report.");
+    } catch (error) {
+      setCameraError(error instanceof Error ? error.message : "This photo could not be prepared.");
+    }
+  }, [acceptEvidencePhoto]);
+
+  const removePhoto = (id) => {
+    const current = photosRef.current;
+    const removed = current.find((photo) => photo.id === id);
+    if (removed) URL.revokeObjectURL(removed.previewUrl);
+    commitPhotos(current.filter((photo) => photo.id !== id));
+  };
 
   const setPinnedLocation = useCallback((position, isManual = true, recenter = false) => {
     const normalized = getCoordinates(position);
@@ -304,6 +454,10 @@ export default function GuestReportForm({
       toast.add({ title: "Required details missing", description: "Add an incident title, your name, and a description.", type: "error" });
       return;
     }
+    if (reportType === "sudden" && photosRef.current.length === 0) {
+      toast.add({ title: "Photo evidence required", description: "Attach at least one photo for a sudden incident.", type: "error" });
+      return;
+    }
     if (!pin && !locationNote.trim()) {
       toast.add({ title: "Location required", description: "Tap the map to place a pin or provide a short location note.", type: "error" });
       return;
@@ -323,7 +477,6 @@ export default function GuestReportForm({
       classification: reportType,
       is_emergency: classification?.isEmergency ? 1 : 0,
       incident_category: category,
-      priority_level: urgency.toUpperCase(),
       description: description.trim(),
       reverse_geocoded_address: address || locationNote.trim() || null,
       pin_manually_adjusted: manuallyAdjusted ? 1 : 0,
@@ -337,11 +490,13 @@ export default function GuestReportForm({
 
     setIsSubmitting(true);
     try {
+      const requestBody = new FormData();
+      requestBody.append("report", JSON.stringify(payload));
+      photosRef.current.forEach((photo) => requestBody.append("photos", photo.file, photo.file.name));
       const response = await fetch("/api/reports", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(payload),
+        body: requestBody,
       });
       const data = await response.json().catch(() => null);
       if (!response.ok) throw new Error(data?.error || "Failed to submit the report. Please try again.");
@@ -371,7 +526,7 @@ export default function GuestReportForm({
         reportedAt: savedReport.received_at || savedReport.submitted_at,
         ...(Number.isFinite(latitude) && Number.isFinite(longitude) ? { lat: latitude, lng: longitude } : {}),
         description: savedReport.sanitized_description ?? description.trim(),
-        hasProof: false,
+        hasProof: photosRef.current.length > 0,
       });
       onSuccess?.(savedReport);
       toast.add({ title: "Report submitted successfully", description: "Your report is saved and will be reviewed by barangay staff.", type: "success" });
@@ -476,15 +631,52 @@ export default function GuestReportForm({
             <textarea id={`${idPrefix}-description`} rows={3} value={description} onChange={(event) => setDescription(event.target.value)} maxLength={10000} placeholder="Provide exact details of the situation, visible risks, or landmarks..." required className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#2E8B57]" />
           </div>
 
-          <div className="flex items-center justify-between gap-3">
-            <label htmlFor={`${idPrefix}-urgency`} className="text-xs font-bold text-slate-700">Urgency Level:</label>
-            <select id={`${idPrefix}-urgency`} value={urgency} onChange={(event) => setUrgency(event.target.value)} className={`min-w-32 rounded-lg border px-3 py-2 text-xs font-semibold outline-none ${URGENCY_COLORS[urgency]?.select ?? "border-slate-200 bg-white text-slate-800 focus:border-[#2E8B57]"}`}>
-              {reportCatalog.formUrgencies.map(({ label }) => <option key={label} value={label} className={URGENCY_COLORS[label]?.option}>{label}</option>)}
-            </select>
+          <section className="rounded-lg border border-slate-200 bg-slate-50/70 p-3" aria-label="Photo evidence">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="flex items-center gap-1.5 text-xs font-bold text-slate-800"><Camera size={14} /> Photo evidence</h4>
+              <span className={`rounded-full px-2 py-1 text-[9px] font-bold ${reportType === "sudden" ? "bg-red-50 text-red-700" : "bg-slate-100 text-slate-600"}`}>
+                {reportType === "sudden" ? "Required for sudden incidents" : "Optional for maintenance"}
+              </span>
+            </div>
+            <p className="mt-1 text-[10px] text-slate-500">Take a photo as evidence. Your browser will ask for camera access. Up to 3 photos, each under 2 MiB.</p>
+            <input ref={photoInputRef} type="file" accept="image/*" capture="environment" multiple onChange={handlePhotoFiles} className="sr-only" aria-label="Choose photo evidence" />
+            {cameraOpen ? (
+              <div className="mt-3 space-y-2">
+                <video ref={videoRef} autoPlay playsInline muted className="max-h-64 w-full rounded-lg bg-slate-900 object-contain" aria-label="Camera preview" />
+                <div className="flex gap-2">
+                  <button type="button" disabled={cameraBusy} onClick={capturePhoto} className="inline-flex min-h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#2E8B57] px-3 text-xs font-bold text-white hover:bg-[#247447] disabled:opacity-60"><Camera size={14} />{cameraBusy ? "Preparing..." : "Capture photo"}</button>
+                  <button type="button" onClick={() => { stopCamera(); replacePhotoIndexRef.current = null; }} className="min-h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:bg-slate-100">Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" disabled={cameraBusy || photos.length >= 3} onClick={() => startCamera()} className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-[#b7ccbd] bg-white px-3 text-xs font-semibold text-[#216b43] hover:bg-[#eff6f0] disabled:opacity-50"><Camera size={14} />{cameraBusy ? "Opening camera..." : "Take photo"}</button>
+                <button type="button" disabled={cameraBusy || (photos.length >= 3 && replacePhotoIndexRef.current == null)} onClick={() => photoInputRef.current?.click()} className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"><ImagePlus size={14} />Choose photo</button>
+              </div>
+            )}
+            {cameraError && <p role="status" className="mt-2 text-[10px] font-medium text-[#9f241b]">{cameraError}</p>}
+            {photos.length > 0 && <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+              {photos.map((photo, index) => <div key={photo.id} className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+                <img src={photo.previewUrl} alt={`Photo evidence ${index + 1}`} className="h-24 w-full object-cover" />
+                <div className="flex items-center justify-between gap-1 px-2 py-1.5">
+                  <span className="text-[9px] font-semibold text-slate-600">Photo {index + 1}</span>
+                  <div className="flex gap-1">
+                    <button type="button" disabled={cameraBusy} onClick={() => startCamera(index)} className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[9px] font-semibold text-[#216b43] hover:bg-emerald-50 disabled:opacity-50"><RotateCcw size={10} />Retake</button>
+                    <button type="button" onClick={() => removePhoto(photo.id)} className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[9px] font-semibold text-red-700 hover:bg-red-50"><Trash2 size={10} />Remove</button>
+                  </div>
+                </div>
+              </div>)}
+            </div>}
+            {reportType === "sudden" && photos.length === 0 && <p className="mt-2 text-[10px] font-semibold text-red-700">Add at least one photo before submitting this sudden incident.</p>}
+          </section>
+
+          <div className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2">
+            <span className="text-xs font-bold text-slate-700">Urgency determined from report details</span>
+            <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${urgency === "High" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-800"}`}>{urgency}</span>
           </div>
 
           <div className="flex flex-col gap-2 pt-2">
-            <button type="submit" disabled={isSubmitting || (!pin && !locationNote.trim()) || (needsAccuracyConfirmation && !confirmPoorAccuracy)} className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#2E8B57] py-2.5 text-xs font-bold text-white shadow-md transition hover:bg-[#247447] active:scale-[0.99] disabled:opacity-50">
+            <button type="submit" disabled={isSubmitting || cameraOpen || cameraBusy || (reportType === "sudden" && photos.length === 0) || (!pin && !locationNote.trim()) || (needsAccuracyConfirmation && !confirmPoorAccuracy)} className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#2E8B57] py-2.5 text-xs font-bold text-white shadow-md transition hover:bg-[#247447] active:scale-[0.99] disabled:opacity-50">
               <Send size={15} />{isSubmitting ? "Submitting report..." : "Submit Incident Report"}
             </button>
             <Link to={PATHS.resident} onClick={onClose} className="text-center text-xs font-semibold text-slate-500 hover:text-[#2E8B57]">Registered resident? Sign in to attach camera photo &amp; video evidence</Link>

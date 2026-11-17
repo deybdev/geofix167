@@ -3,8 +3,8 @@ import { requireAuth } from "../middleware/auth";
 import { Hono } from "hono";
 import type { AppEnv } from "../types/env";
 import { bodyLimit } from "hono/body-limit";
-import { listAttachments, uploadAttachment } from "../controllers/attachment.controller";
-import { MAX_UPLOAD_BYTES } from "../services/attachment.service";
+import { getReportPhoto, listAttachments, uploadAttachment } from "../controllers/attachment.controller";
+import { MAX_GUEST_REPORT_UPLOAD_BYTES, MAX_UPLOAD_BYTES } from "../services/attachment.service";
 import { reverseGeocodeCoordinates } from "../services/reverseGeocode.service";
 import {
   createReportController,
@@ -44,8 +44,12 @@ reportRoutes.get("/reverse-geocode", async (c) => {
     return c.json({ error: "Street lookup is temporarily unavailable." }, 502);
   }
 });
-reportRoutes.post("/", createReportController);
+reportRoutes.post("/", bodyLimit({
+  maxSize: MAX_GUEST_REPORT_UPLOAD_BYTES,
+  onError: c => c.json({ error: "Guest report photos exceed the 6 MiB total limit." }, 413),
+}), createReportController);
 reportRoutes.get("/:id/attachments", requireAuth, listAttachments);
+reportRoutes.get("/:id/photos/:mediaId", requireAuth, getReportPhoto);
 reportRoutes.post("/:id/attachments", requireAuth, bodyLimit({
   maxSize: MAX_UPLOAD_BYTES,
   onError: c => c.json({ error: "Upload exceeds the 25 MiB video limit." }, 413),

@@ -10,13 +10,11 @@ import {
 import { filterLanguage } from "./languageFilter.service";
 import reportCatalog from "../shared/reportCatalog.json";
 import { reverseGeocodeCoordinates } from "./reverseGeocode.service";
+import { prepareGuestPhotos, removePreparedGuestPhotos, type GuestPhotoInsert } from "./attachment.service";
+import { ReportError } from "./report.error";
+export { ReportError } from "./report.error";
 
 type Database = AppEnv["Bindings"]["geofix167_db"];
-export class ReportError extends Error {
-  constructor(message: string, public status: number) {
-    super(message); this.name = "ReportError";
-  }
-}
 export type SubmitReportResult = {
   report: IncidentReportRecord & { guest_access_token?: string };
   status_events: IncidentStatusEventRecord[];
@@ -41,13 +39,26 @@ function priorityCode(value: string): PriorityCode {
     default: throw new ReportError("Priority must be Low, Medium, High, Critical, or P1�P4.", 400);
   }
 }
+function guestPriorityCode(value: string): PriorityCode {
+  const priorityCodes = reportCatalog.guestUrgency.priorityCodes as Partial<Record<string, PriorityCode>>;
+  const code = priorityCodes[value];
+  if (!code) throw new ReportError("Guest urgency mapping is invalid.", 500);
+  return code;
+}
 function cleanSingleLine(value: string | null | undefined): string {
   return (value ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
 }
 function cleanMultiline(value: string | null | undefined): string {
   return (value ?? "").replace(/\r\n?/g, "\n").replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "").trim();
 }
-export async function submitIncidentReport(db: Database, input: CreateReportInput, user?: AuthUser, guestToken?: string): Promise<SubmitReportResult> {
+export async function submitIncidentReport(
+  db: Database,
+  input: CreateReportInput,
+  user?: AuthUser,
+  guestToken?: string,
+  photos: File[] = [],
+  uploads?: AppEnv["Bindings"]["geofix167_uploads"],
+): Promise<SubmitReportResult> {
   if (!user && (input.reporter_type === "RESIDENT" || input.reporter_user_id)) {
     throw new ReportError("Sign in to submit a resident report.", 401);
   }
@@ -72,12 +83,30 @@ export async function submitIncidentReport(db: Database, input: CreateReportInpu
   const existing = await replay();
   if (existing) return existing;
   const category = input.incident_category.trim();
-  const priority = priorityCode(input.priority_level ?? (input.is_emergency === 1 ? "CRITICAL" : "MEDIUM"));
   const classification = reportCatalog.classifications.find((item) => item.value === input.classification);
+  if (guestSubmission && classification?.value === "sudden" && photos.length === 0) {
+    throw new ReportError("Attach at least one photo to submit a sudden incident.", 400);
+  }
+  if (photos.length && (!guestSubmission || !uploads)) throw new ReportError("Guest evidence photos are not available for this report.", 400);
+  const guestUrgency = guestSubmission
+    ? (classification?.value === "sudden"
+      ? reportCatalog.guestUrgency.sudden
+      : reportCatalog.guestUrgency.maintenanceHighCategories.includes(category)
+        ? reportCatalog.guestUrgency.sudden
+        : reportCatalog.guestUrgency.maintenanceDefault)
+    : null;
+  const priority = guestSubmission
+    ? guestPriorityCode(guestUrgency ?? reportCatalog.guestUrgency.maintenanceDefault)
+    : priorityCode(input.priority_level ?? (input.is_emergency === 1 ? "CRITICAL" : "MEDIUM"));
   const assignedTeam = classification?.assignedTeam ?? (input.is_emergency === 1 ? "BDRRMO Response" : "Maintenance Team A");
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
   const guestId = userId === null ? (input.guest_session_id ?? crypto.randomUUID()) : null;
+  let preparedPhotos: { rows: GuestPhotoInsert[]; storageKeys: string[] } = { rows: [], storageKeys: [] };
+  if (photos.length) {
+    if (!guestId || !uploads) throw new ReportError("A guest session is required for evidence photos.", 400);
+    preparedPhotos = await prepareGuestPhotos(uploads, id, guestId, photos);
+  }
   const token = guestId && !input.guest_session_id ? Array.from(crypto.getRandomValues(new Uint8Array(32)),
     byte => byte.toString(16).padStart(2, "0")).join("") : undefined;
   const description = input.reporter_type === "GUEST"
@@ -111,6 +140,7 @@ export async function submitIncidentReport(db: Database, input: CreateReportInpu
         guest_session_id: guestId, display_name: cleanSingleLine(input.guest_alias) || "Guest",
         access_token_hash: await sha256(token), created_at: now,
       } : null,
+      guestPhotos: preparedPhotos.rows,
       report: {
         incident_id: id, reported_by_user_id: userId, guest_session_id: guestId,
         incident_status_id: 1, category, priority_code: priority,
@@ -134,6 +164,7 @@ export async function submitIncidentReport(db: Database, input: CreateReportInpu
       languageFlags,
     });
   } catch (error) {
+    if (uploads && preparedPhotos.storageKeys.length) await removePreparedGuestPhotos(uploads, preparedPhotos.storageKeys);
     const winner = await replay();
     if (winner) return winner;
     throw error;

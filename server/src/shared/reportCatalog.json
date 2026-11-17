@@ -12,6 +12,12 @@
     { "label": "Medium", "priorityLevel": "MEDIUM", "priorityCode": "P3" },
     { "label": "High", "priorityLevel": "HIGH", "priorityCode": "P2" }
   ],
+  "guestUrgency": {
+    "sudden": "HIGH",
+    "maintenanceDefault": "MEDIUM",
+    "maintenanceHighCategories": ["Road Damage / Pothole", "Water / Power Hazard", "Streetlight", "Electrical"],
+    "priorityCodes": { "HIGH": "P2", "MEDIUM": "P3", "LOW": "P4" }
+  },
   "adminUrgencies": {
     "critical": "Critical Emergency",
     "standard": "Standard Emergency",

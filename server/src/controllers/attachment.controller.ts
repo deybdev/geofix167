@@ -14,7 +14,30 @@ export async function listAttachments(c: Context<AppEnv>) {
     const report = await getIncidentReportDetails(c.env.geofix167_db, c.req.param("id") ?? "", c.get("user"));
     const rows = await c.env.geofix167_db.prepare("SELECT * FROM incident_media WHERE incident_id = ? AND media_type IN ('PHOTO', 'VIDEO') ORDER BY created_at, incident_media_id")
       .bind(report.incident_id).all<Attachment>();
-    return c.json({ attachments: await Promise.all(rows.results.map(row => attachmentResponse(row, c.env.MEDIA_SIGNING_SECRET))) });
+    const attachments = await Promise.all(rows.results.map(async (row) => row.uploaded_by_guest_session_id
+      ? { id: row.incident_media_id, upload_id: row.upload_key, media_type: row.media_type,
+        content_type: row.content_type, byte_size: row.byte_size, original_filename: row.original_filename,
+        created_at: row.created_at, url: `/api/reports/${encodeURIComponent(report.incident_id)}/photos/${encodeURIComponent(row.incident_media_id)}` }
+      : attachmentResponse(row, c.env.MEDIA_SIGNING_SECRET)));
+    return c.json({ attachments });
+  } catch (error) { return failure(c, error); }
+}
+
+export async function getReportPhoto(c: Context<AppEnv>) {
+  try {
+    const db = c.env.geofix167_db;
+    const report = await getIncidentReportDetails(db, c.req.param("id") ?? "", c.get("user"));
+    const photo = await db.prepare(`SELECT storage_key, content_type FROM incident_media
+      WHERE incident_id = ? AND incident_media_id = ? AND media_type = 'PHOTO'`)
+      .bind(report.incident_id, c.req.param("mediaId") ?? "")
+      .first<{ storage_key: string; content_type: string }>();
+    if (!photo) return c.json({ error: "Report photo not found." }, 404);
+    const object = await c.env.geofix167_uploads.get(photo.storage_key);
+    if (!object) return c.json({ error: "Report photo is unavailable." }, 404);
+    c.header("Cache-Control", "private, no-store");
+    c.header("X-Content-Type-Options", "nosniff");
+    c.header("Content-Type", photo.content_type);
+    return c.body(object.body);
   } catch (error) { return failure(c, error); }
 }
 

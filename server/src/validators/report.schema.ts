@@ -68,9 +68,6 @@ export const createReportSchema = z
     } else if (data.classification && !reportCatalog.categories[data.classification].includes(data.incident_category)) {
       ctx.addIssue({ code: "custom", path: ["incident_category"], message: "Choose a category that matches the incident classification." });
     }
-    if (!data.priority_level || !["LOW", "MEDIUM", "HIGH"].includes(data.priority_level.toUpperCase())) {
-      ctx.addIssue({ code: "custom", path: ["priority_level"], message: "Urgency must be Low, Medium, or High." });
-    }
     if (!hasLatitude && !hasLongitude && !data.reverse_geocoded_address?.trim() && !data.landmark_description?.trim()) {
       ctx.addIssue({ code: "custom", path: ["latitude"], message: "Pin the incident location or provide a location note." });
     }
