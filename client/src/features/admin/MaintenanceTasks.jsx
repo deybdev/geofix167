@@ -316,14 +316,15 @@ function IntakeCard({ item, onIngest }) {
       </div>
       <p className="flex items-start gap-1 text-[9px] text-[#60738f]">
         <MapPinned size={11} className="mt-px shrink-0 text-(--gf-green)" />
-        {item.location} • {item.zone}
+        {item.location}{item.zone ? ` - ${item.zone}` : ""}
       </p>
       <p className="text-[9px] text-[#a8b6c6]">GPS {item.geotag.source} ({item.geotag.accuracy}) • {item.geotag.landmark}</p>
       <p className="text-[9px] italic leading-relaxed text-[#60738f]">“{item.narration}”</p>
       <div className="flex flex-wrap items-center gap-1.5">
         {item.reporter.type === "guest"
-          ? <Chip className="bg-[#eef2fb] text-[#4c6fbf]"><Link2 size={8} />Guest link {item.reporter.token}</Chip>
+          ? <Chip className="bg-[#eef2fb] text-[#4c6fbf]"><Link2 size={8} />{item.reporter.token ? `Guest link ${item.reporter.token}` : `Guest · ${item.reporter.name || "Reporter"}`}</Chip>
           : <Chip className="bg-(--gf-green-tint) text-(--gf-green)"><ShieldCheck size={8} />Verified Resident</Chip>}
+        {item.outsideBarangay && <Chip className="bg-[#fdecea] text-[#dc2626]">Outside Barangay 167</Chip>}
         <EvidenceChips evidence={item.evidence} small />
         <span className="ml-auto text-[8px] font-medium text-[#a8b6c6]">{item.submitted}</span>
       </div>
@@ -869,6 +870,7 @@ const TABS = [
 export default function MaintenanceTasks() {
   const [tasks, setTasks] = useState(initialTasks);
   const [queue, setQueue] = useState(initialQueue);
+  const [dismissedIntakeIds, setDismissedIntakeIds] = useState(() => new Set());
   const [tab, setTab] = useState("intake");
   const [query, setQuery] = useState("");
   const [priority, setPriority] = useState("All Priorities");
@@ -879,6 +881,55 @@ export default function MaintenanceTasks() {
   const [audit, setAudit] = useState({ open: false, taskId: "All tasks" });
   const [auditLog, setAuditLog] = useState(seededAudit);
   const [nowTs] = useState(() => NOW());
+
+  useEffect(() => {
+    let active = true;
+    const loadGuestIntake = async () => {
+      try {
+        const response = await fetch("/api/admin/maintenance/intake", { credentials: "include", cache: "no-store" });
+        if (!response.ok) throw new Error("Maintenance intake could not be loaded.");
+        const data = await response.json();
+        if (!active || !Array.isArray(data.reports)) return;
+        const serverItems = data.reports.map((report) => {
+          const accuracy = report.accuracy_meters == null ? null : Number(report.accuracy_meters);
+          const location = String(report.location ?? "").trim()
+            || (report.within_barangay_boundary === 0 ? "Pinned outside Barangay 167" : "Pinned location, Barangay 167");
+          return {
+            queueId: report.incident_id,
+            incidentId: report.incident_id,
+            serverBacked: true,
+            reportId: report.report_id,
+            issue: report.title || `${report.category || "Maintenance"} report`,
+            reporter: { name: report.reporter_name || "Guest", type: "guest" },
+            location,
+            zone: "",
+            lat: report.latitude == null ? null : Number(report.latitude),
+            lng: report.longitude == null ? null : Number(report.longitude),
+            category: report.category || "Maintenance",
+            geotag: {
+              source: report.pin_manually_adjusted ? "Pin adjusted" : "GPS pin",
+              accuracy: accuracy == null ? "Not available" : `±${Math.round(accuracy)} m`,
+              landmark: location,
+            },
+            outsideBarangay: report.within_barangay_boundary === 0 || report.within_barangay_boundary === false,
+            evidence: [],
+            narration: String(report.description || "No description provided."),
+            submitted: fmtWhen(report.submitted_at),
+          };
+        }).filter((item) => !dismissedIntakeIds.has(item.incidentId));
+        const serverReportIds = new Set(serverItems.map((item) => item.reportId));
+        setQueue((current) => [
+          ...serverItems,
+          ...current.filter((item) => !item.serverBacked && !serverReportIds.has(item.reportId)),
+        ]);
+      } catch (error) {
+        console.error("Unable to load guest maintenance reports:", error);
+      }
+    };
+    void loadGuestIntake();
+    const timer = window.setInterval(loadGuestIntake, 5000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [dismissedIntakeIds]);
 
   const logAudit = useCallback((entry) => {
     setAuditLog((log) => [{ key: `${log.length + 1}-${NOW()}-${entry.taskId}`, at: stamp(true), ...entry }, ...log]);
@@ -912,6 +963,7 @@ export default function MaintenanceTasks() {
     };
     setTasks((current) => [task, ...current]);
     setQueue((current) => current.filter((q) => q.queueId !== queueId));
+    if (item.serverBacked) setDismissedIntakeIds((current) => new Set(current).add(item.incidentId));
     logAudit({ taskId: id, actor: "System — Routing", system: true, action: "Ingested from intake", detail: `${item.reportId} auto-routed straight into the maintenance queue with geotag, landmark and ${item.evidence.length} media file(s). No external approvals required.` });
     toast.add({ type: "info", title: `Ingested ${item.reportId}`, description: `${id} created with geotag and evidence — assign a crew to start the lifecycle.` });
   }

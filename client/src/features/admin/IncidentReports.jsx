@@ -119,7 +119,8 @@ const initialReports = () => [
 ];
 
 const statuses = ["All Statuses", "Reported", "In Progress", "BDRRMO Takeover", "Verified Fixed", "Duplicate"];
-const categories = ["All Categories", ...reportCatalog.categories];
+const reportCategories = [...new Set(Object.values(reportCatalog.categories).flat())];
+const categories = ["All Categories", ...reportCategories];
 const locations = ["All Locations", "Rizal Street", "Quezon Avenue", "Magsaysay Boulevard", "Roxas Boulevard", "Bonifacio Street", "Del Pilar Road"];
 
 const URGENCY_OPTS = Object.values(reportCatalog.adminUrgencies);
@@ -248,7 +249,7 @@ function mapApiReport(item, fetchedAt) {
   const classification = reportCatalog.classifications.find((entry) => entry.value === item.classification)
     ?? reportCatalog.classifications.find((entry) => entry.isEmergency === Boolean(item.is_emergency))
     ?? reportCatalog.classifications[0];
-  const category = reportCatalog.categories.includes(item.category) ? item.category : classification.defaultCategory;
+  const category = reportCatalog.categories[classification.value].includes(item.category) ? item.category : classification.defaultCategory;
   const priority = String(item.priority_code ?? "").toUpperCase();
   const urgencyKey = reportCatalog.adminUrgencyByPriority[priority] ?? "standard";
   const urgency = classification.isEmergency
@@ -1426,7 +1427,9 @@ export default function IncidentReports() {
         const result = await response.json();
         if (!active || !Array.isArray(result.reports)) return;
         const fetchedAt = Date.now();
-        const apiReports = result.reports.map((item) => mapApiReport(item, fetchedAt));
+        const apiReports = result.reports
+          .filter((item) => !(item.reporter_type === "GUEST" && item.classification === "maintenance"))
+          .map((item) => mapApiReport(item, fetchedAt));
         setReports((current) => {
           const existingIds = new Set(current.map((report) => report.id));
           const newReports = apiReports.filter((report) => !existingIds.has(report.id));

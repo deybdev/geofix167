@@ -9,6 +9,7 @@ import {
 } from "../repositories/report.repository";
 import { filterLanguage } from "./languageFilter.service";
 import reportCatalog from "../shared/reportCatalog.json";
+import { reverseGeocodeCoordinates } from "./reverseGeocode.service";
 
 type Database = AppEnv["Bindings"]["geofix167_db"];
 export class ReportError extends Error {
@@ -53,7 +54,8 @@ export async function submitIncidentReport(db: Database, input: CreateReportInpu
   if (user && input.reporter_user_id && input.reporter_user_id !== user.id) {
     throw new ReportError("Reporter identity does not match your session.", 403);
   }
-  const userId = user?.id ?? null;
+  const guestSubmission = input.reporter_type === "GUEST" || !user;
+  const userId = guestSubmission ? null : user?.id ?? null;
   if (userId && input.guest_session_id) {
     throw new ReportError("Provide a user identity or a guest identity, not both.", 400);
   }
@@ -81,7 +83,11 @@ export async function submitIncidentReport(db: Database, input: CreateReportInpu
   const description = input.reporter_type === "GUEST"
     ? cleanMultiline(input.description)
     : (input.description ?? "");
-  const address = cleanSingleLine(input.reverse_geocoded_address) || cleanSingleLine(input.landmark_description);
+  let address = cleanSingleLine(input.reverse_geocoded_address) || cleanSingleLine(input.landmark_description);
+  if (!address && input.latitude != null && input.longitude != null) {
+    try { address = (await reverseGeocodeCoordinates(input.latitude, input.longitude)) ?? ""; }
+    catch { /* Coordinate fallback keeps reporting available when geocoding is offline. */ }
+  }
   const coordinateFallback = input.latitude != null && input.longitude != null
     ? `${input.latitude.toFixed(5)}, ${input.longitude.toFixed(5)}`
     : "";
@@ -114,6 +120,8 @@ export async function submitIncidentReport(db: Database, input: CreateReportInpu
         latitude: input.latitude ?? null, longitude: input.longitude ?? null,
         accuracy_meters: input.accuracy_meters ?? null,
         within_barangay_boundary: input.within_barangay_boundary ?? null,
+        pin_manually_adjusted: input.pin_manually_adjusted,
+        address_geocoded_at: input.latitude != null && input.longitude != null ? now : null,
         assigned_team: assignedTeam,
         location_description: locationDescription,
         submitted_at: now, updated_at: now,
@@ -139,9 +147,33 @@ export async function submitIncidentReport(db: Database, input: CreateReportInpu
 }
 export async function getIncidentReports(db: Database, filters: ListReportsQuery, user?: AuthUser): Promise<IncidentReportRecord[]> {
   if (!user) throw new ReportError("Authentication required.", 401);
+  await resolveLegacyReportAddresses(db);
   return listIncidentReports(db, filters, ["admin", "bdrrmo"].includes(user.role) ? undefined : user.id, ["tanod", "police", "fire"].includes(user.role));
 }
+
+export async function resolveLegacyReportAddresses(db: Database, incidentId?: string): Promise<void> {
+  const candidates = await db.prepare(`
+    SELECT incident_id, latitude, longitude FROM incident_reports
+    WHERE latitude IS NOT NULL AND longitude IS NOT NULL AND address_geocoded_at IS NULL
+      AND (location_description IS NULL OR trim(location_description) = ''
+        OR location_description = printf('%.5f, %.5f', latitude, longitude))
+      ${incidentId ? "AND incident_id = ?" : ""}
+    ORDER BY submitted_at ASC LIMIT ${incidentId ? "1" : "2"}
+  `).bind(...(incidentId ? [incidentId] : [])).all<{ incident_id: string; latitude: number; longitude: number }>();
+
+  for (const report of candidates.results ?? []) {
+    let address: string | null = null;
+    try { address = await reverseGeocodeCoordinates(report.latitude, report.longitude); }
+    catch { /* Record the attempt so an unavailable geocoder is not called on every refresh. */ }
+    await db.prepare(`UPDATE incident_reports
+      SET location_description = COALESCE(NULLIF(?, ''), location_description), address_geocoded_at = datetime('now')
+      WHERE incident_id = ? AND address_geocoded_at IS NULL`)
+      .bind(address ?? "", report.incident_id).run();
+  }
+}
+
 export async function getIncidentReportDetails(db: Database, id: string, user?: AuthUser, guestToken?: string): Promise<IncidentReportDetail> {
+  await resolveLegacyReportAddresses(db, id.trim());
   const report = await findIncidentReportById(db, id.trim());
   if (!report) throw new ReportError("Incident report not found.", 404);
   const owned = user && (user.role === "admin" || user.role === "bdrrmo" || report.reported_by_user_id === user.id || (["tanod", "police", "fire"].includes(user.role) && await hasReportReadAssignment(db, id, user.id)));

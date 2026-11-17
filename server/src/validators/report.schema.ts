@@ -62,8 +62,11 @@ export const createReportSchema = z
     if (!data.classification) {
       ctx.addIssue({ code: "custom", path: ["classification"], message: "Incident classification is required." });
     }
-    if (!data.incident_category || !reportCatalog.categories.includes(data.incident_category)) {
+    const allCategories = Object.values(reportCatalog.categories).flat();
+    if (!data.incident_category || !allCategories.includes(data.incident_category)) {
       ctx.addIssue({ code: "custom", path: ["incident_category"], message: "Choose a valid incident category." });
+    } else if (data.classification && !reportCatalog.categories[data.classification].includes(data.incident_category)) {
+      ctx.addIssue({ code: "custom", path: ["incident_category"], message: "Choose a category that matches the incident classification." });
     }
     if (!data.priority_level || !["LOW", "MEDIUM", "HIGH"].includes(data.priority_level.toUpperCase())) {
       ctx.addIssue({ code: "custom", path: ["priority_level"], message: "Urgency must be Low, Medium, or High." });
