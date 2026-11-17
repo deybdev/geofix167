@@ -5,6 +5,7 @@ export const PATHS = {
   publicMap: "/map",
   services: "/services",
   accomplishments: "/accomplishments",
+  announcements: "/announcements",
   privacy: "/privacy-policy",
   terms: "/terms-of-service",
   adminLogin: "/admin-login",

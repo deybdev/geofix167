@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Link, NavLink, useNavigate } from "react-router-dom";
+import { useState, useEffect, useRef } from "react";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   Menu,
   X,
@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   LogIn,
   ChevronRight,
+  ChevronDown,
   Phone,
   Radio,
 } from "lucide-react";
@@ -20,8 +21,18 @@ import { PATHS } from "../../../router/paths";
 
 export default function LandingHeader({ onReportClick }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const reportAction = onReportClick ?? (() => navigate(PATHS.publicMap));
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [servicesOpen, setServicesOpen] = useState(false);
+  const servicesRef = useRef(null);
+  const mobileServicesRef = useRef(null);
+  useEffect(() => {
+    const outside = (event) => { if (!servicesRef.current?.contains(event.target) && !mobileServicesRef.current?.contains(event.target)) setServicesOpen(false); };
+    const escape = (event) => { if (event.key === "Escape") setServicesOpen(false); };
+    document.addEventListener("pointerdown", outside); document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape); };
+  }, []);
 
   // Prevent body scroll when mobile menu drawer is open
   useEffect(() => {
@@ -78,6 +89,10 @@ export default function LandingHeader({ onReportClick }) {
           {/* Desktop Navigation Links */}
           <nav className="hidden items-center gap-8 md:flex">
             {navLinks.map((link) => (
+              link.label === "Barangay Services" ? <div key={link.label} ref={servicesRef} className="relative">
+                <button type="button" aria-label="Barangay services and announcements" aria-haspopup="menu" aria-expanded={servicesOpen} onClick={() => setServicesOpen((v) => !v)} className={`relative flex items-center gap-1 py-2 text-[13px] font-bold transition-colors ${location.pathname.startsWith(PATHS.services) || location.pathname.startsWith(PATHS.announcements) ? "text-[#17633f] after:absolute after:inset-x-0 after:-bottom-1 after:h-0.5 after:rounded-full after:bg-[#2e8b57]" : "text-slate-600 hover:text-[#2E8B57]"}`}>{link.label}<ChevronDown size={13} className={`transition-transform ${servicesOpen ? "rotate-180" : ""}`} /></button>
+                {servicesOpen && <div role="menu" className="absolute left-0 top-full z-50 mt-2 w-56 rounded-lg border border-slate-200 bg-white p-1 shadow-lg"><Link role="menuitem" to={PATHS.services} onClick={() => setServicesOpen(false)} className="block rounded px-3 py-2 text-xs hover:bg-emerald-50">Barangay Services</Link><Link role="menuitem" to={PATHS.announcements} onClick={() => setServicesOpen(false)} className="block rounded px-3 py-2 text-xs hover:bg-emerald-50">Barangay Announcements</Link></div>}
+              </div> :
               <NavLink
                 key={link.label}
                 to={link.href}
@@ -193,6 +208,10 @@ export default function LandingHeader({ onReportClick }) {
               <nav className="mt-4 px-3 flex flex-col gap-1">
                 {navLinks.map((link) => {
                   const Icon = link.icon;
+                  if (link.label === "Barangay Services") return <div key={link.label} ref={mobileServicesRef} className="rounded-xl">
+                    <button type="button" onClick={() => setServicesOpen((v) => !v)} aria-haspopup="menu" aria-expanded={servicesOpen} className="group flex w-full items-center justify-between rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-700 hover:bg-emerald-50"><span className="flex items-center gap-3"><span className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100"><Icon size={14} /></span>{link.label}</span><ChevronDown size={14} className={servicesOpen ? "rotate-180" : ""} /></button>
+                    {servicesOpen && <div className="ml-12 grid gap-1 pb-2"><Link to={PATHS.services} onClick={() => setMobileMenuOpen(false)} className="rounded px-2 py-2 text-xs text-slate-600 hover:bg-emerald-50">Barangay Services</Link><Link to={PATHS.announcements} onClick={() => setMobileMenuOpen(false)} className="rounded px-2 py-2 text-xs text-slate-600 hover:bg-emerald-50">Barangay Announcements</Link></div>}
+                  </div>;
                   return (
                     <NavLink
                       key={link.label}

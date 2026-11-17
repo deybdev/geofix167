@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import MapViewer from "../../shared/components/MapViewer";
 import { toast } from "../../shared/components/ui/toast";
+import AccessibleDropdown from "../../shared/components/AccessibleDropdown";
 
 async function request(path, options = {}) {
   const response = await fetch(`/api/admin/dispatch${path}`, {
@@ -164,14 +165,16 @@ export default function AdminDispatch() {
             <div className="sticky top-0 z-10 space-y-3 border-b border-slate-200 bg-white p-4">
               <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-bold">Reports awaiting action</h3><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-800">{reports.length} awaiting</span></div>
               <div className="grid grid-cols-[1fr_1fr] gap-2">
-                <label className="sr-only" htmlFor="dispatch-urgency-filter">Filter by urgency</label>
-                <select id="dispatch-urgency-filter" value={urgencyFilter} onChange={(event) => setUrgencyFilter(event.target.value)} className="h-9 min-w-0 rounded-lg border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 outline-none focus-visible:ring-2 focus-visible:ring-emerald-600">
-                  {["All", "High", "Medium"].map((value) => <option key={value} value={value}>{value} urgency</option>)}
-                </select>
-                <label className="sr-only" htmlFor="dispatch-status-filter">Filter by status</label>
-                <select id="dispatch-status-filter" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="h-9 min-w-0 rounded-lg border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 outline-none focus-visible:ring-2 focus-visible:ring-emerald-600">
-                  {["All", "Submitted", "Verified"].map((value) => <option key={value} value={value}>{value} status</option>)}
-                </select>
+                <AccessibleDropdown label="Filter by urgency" value={urgencyFilter} onChange={setUrgencyFilter} options={[
+                  { value: "All", label: "All urgency", tone: "neutral" },
+                  { value: "High", label: "High urgency", tone: "red" },
+                  { value: "Medium", label: "Medium urgency", tone: "amber" },
+                ]} />
+                <AccessibleDropdown label="Filter by report status" value={statusFilter} onChange={setStatusFilter} options={[
+                  { value: "All", label: "All status", tone: "neutral" },
+                  { value: "Submitted", label: "Submitted status", tone: "amber" },
+                  { value: "Verified", label: "Verified status", tone: "green" },
+                ]} />
                 <input type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search reports" aria-label="Search reports" className="col-span-2 h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs outline-none placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-emerald-600" />
               </div>
             </div>

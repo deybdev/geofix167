@@ -123,7 +123,7 @@ function AnnouncementCard({ ann }) {
       </div>
       <h4 className="text-sm font-bold text-slate-900 leading-snug">{ann.title}</h4>
       <p className={`mt-1 text-xs leading-relaxed text-slate-600 ${expanded ? "" : "line-clamp-3"}`}>
-        {ann.content}
+        {ann.details || ann.content}
       </p>
       <button
         type="button"
@@ -324,7 +324,7 @@ export default function Home() {
         {!annLoading && announcements.length > 0 && (
           <div className="space-y-3">
             {announcements.map((ann) => (
-              <AnnouncementCard key={ann.public_id} ann={ann} />
+              <AnnouncementCard key={ann.id || ann.public_id} ann={ann} />
             ))}
           </div>
         )}

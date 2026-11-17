@@ -7,6 +7,7 @@ import {
 import { toast } from "../../shared/components/ui/toast";
 import MapViewer from "../../shared/components/MapViewer";
 import { ModalShell, SelectFilter, stamp } from "../../shared/components/GovernanceUi";
+import reportCatalog from "../../../../server/src/shared/reportCatalog.json";
 
 /* ----------------------------------------------------------------------- */
 /* Constants                                                               */
@@ -15,7 +16,7 @@ import { ModalShell, SelectFilter, stamp } from "../../shared/components/Governa
 const TEAMS = ["Barangay Sanitizers", "Engineering Crew B", "Maintenance Team A", "Barangay Public Works", "Meralco Dispatch"];
 const PRIORITIES = ["High", "Medium", "Low"];
 const ZONES = ["Zone 1 — Rizal St / Quezon Ave", "Zone 2 — Magsaysay Blvd", "Zone 3 — Roxas Blvd", "Zone 4 — Bonifacio St / Del Pilar Rd"];
-const CATEGORIES = ["Sanitation", "Electrical", "Road Damage", "Structural", "Waterways"];
+const CATEGORIES = reportCatalog.categories.maintenance;
 
 /* Strict lifecycle: only these transitions are allowed, forward one step. */
 const STAGE_ORDER = ["Pending", "Assigned", "In Progress", "Awaiting Verification", "Verified Fixed"];
