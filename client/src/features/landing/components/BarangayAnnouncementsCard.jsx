@@ -1,9 +1,9 @@
-import { Megaphone, Calendar, ChevronRight, Bell } from "lucide-react";
+import { Megaphone, Calendar, ChevronRight } from "lucide-react";
 import { BARANGAY_ANNOUNCEMENTS } from "../data/landingData";
 
 export default function BarangayAnnouncementsCard() {
   return (
-    <div className="flex flex-col rounded-2xl border border-slate-200/90 bg-white p-5 shadow-sm transition-all hover:shadow-md">
+    <div className="landing-card flex flex-col p-5">
       {/* Header matching screenshot */}
       <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
         <div className="flex items-center gap-2">
@@ -15,7 +15,7 @@ export default function BarangayAnnouncementsCard() {
           </h3>
         </div>
         <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span className="h-1.5 w-1.5 rounded-full bg-[#2f7550]"></span>
           Live Feed
         </span>
       </div>
@@ -25,7 +25,7 @@ export default function BarangayAnnouncementsCard() {
         {BARANGAY_ANNOUNCEMENTS.map((ann) => (
           <div
             key={ann.id}
-            className="rounded-xl border border-slate-100 bg-slate-50/70 p-3.5 transition-all hover:border-slate-200 hover:bg-white"
+            className="landing-card rounded-lg p-3.5"
           >
             <div className="flex items-center justify-between gap-2 mb-1.5">
               <span

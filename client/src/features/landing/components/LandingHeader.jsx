@@ -52,7 +52,7 @@ export default function LandingHeader({ onReportClick }) {
 
   return (
     <>
-      <header className="sticky top-0 z-40 h-[76px] shrink-0 border-b border-emerald-900/10 bg-[#fdfefd]/95 shadow-[0_8px_30px_rgba(15,64,42,0.08)] backdrop-blur-xl transition-all sm:h-[88px]">
+      <header className="landing-header sticky top-0 z-40 h-[72px] shrink-0 border-b sm:h-[76px]">
         <div className="site-container flex h-full items-center justify-between">
           
           {/* Brand Logo & Name (Responsive) */}
@@ -94,7 +94,7 @@ export default function LandingHeader({ onReportClick }) {
           <div className="hidden items-center gap-3 md:flex">
             <Link
               to={PATHS.login}
-              className="inline-flex h-9.5 items-center justify-center rounded-lg border border-emerald-700 bg-white px-4 text-xs font-bold tracking-wide text-emerald-800 shadow-sm transition hover:bg-emerald-50 hover:shadow active:scale-[0.98]"
+              className="inline-flex h-9.5 items-center justify-center rounded-lg border border-[#9fb6a4] bg-transparent px-4 text-xs font-semibold tracking-wide text-[#174b37] transition-colors hover:border-[#174b37] hover:bg-[#edf3ec] active:scale-[0.98]"
             >
               LOGIN
             </Link>
@@ -102,7 +102,7 @@ export default function LandingHeader({ onReportClick }) {
             <button
               type="button"
               onClick={reportAction}
-              className="group inline-flex h-9.5 items-center gap-1.5 rounded-lg bg-[#c62828] px-4.5 text-xs font-bold tracking-wide text-white shadow-md shadow-red-900/20 transition-colors hover:bg-[#a91f1f] active:scale-[0.98]"
+              className="group inline-flex h-9.5 items-center gap-1.5 rounded-lg bg-[#b42318] px-4.5 text-xs font-semibold tracking-wide text-white transition-colors hover:bg-[#8f1d14] active:scale-[0.98]"
             >
               <AlertTriangle size={15} className="transition-transform group-hover:scale-110" />
               REPORT INCIDENT NOW
@@ -117,9 +117,9 @@ export default function LandingHeader({ onReportClick }) {
               type="button"
               onClick={reportAction}
               aria-label="Report emergency incident immediately"
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#c62828] px-3 text-xs font-bold text-white shadow-md shadow-red-900/20 transition-colors hover:bg-[#a91f1f] active:scale-95 sm:px-3.5"
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#b42318] px-3 text-xs font-semibold text-white transition-colors hover:bg-[#8f1d14] active:scale-95 sm:px-3.5"
             >
-              <AlertTriangle size={14} className="shrink-0 animate-pulse" />
+              <AlertTriangle size={14} className="shrink-0" />
               <span>REPORT</span>
               <span className="hidden sm:inline">INCIDENT</span>
             </button>
@@ -182,12 +182,11 @@ export default function LandingHeader({ onReportClick }) {
               <div className="mx-4 mt-3 flex items-center justify-between rounded-xl bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800 border border-emerald-100">
                 <span className="flex items-center gap-2">
                   <span className="relative flex h-2 w-2">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
                     <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-600"></span>
                   </span>
                   <span>Barangay 167 Online</span>
                 </span>
-                <Radio size={13} className="text-emerald-700 animate-pulse" />
+                <Radio size={13} className="text-emerald-700" />
               </div>
 
               {/* Navigation Links with Icons */}
@@ -233,7 +232,7 @@ export default function LandingHeader({ onReportClick }) {
                 <Link
                   to={PATHS.adminLogin}
                   onClick={() => setMobileMenuOpen(false)}
-                  className="flex h-10.5 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#1e3a8a] to-[#0f172a] text-xs font-bold text-white shadow-md hover:opacity-95 transition active:scale-[0.99]"
+                  className="flex h-10.5 items-center justify-center gap-2 rounded-lg bg-[#174b37] text-xs font-semibold text-white hover:bg-[#103b2b] transition-colors active:scale-[0.99]"
                 >
                   <Shield size={15} />
                   <span>BDRRMO & Officials Portal</span>

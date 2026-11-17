@@ -1,17 +1,17 @@
-import { CheckCircle2, ShieldCheck, QrCode, FileText, Clock, MapPin } from "lucide-react";
+import { CheckCircle2, ShieldCheck, QrCode, Clock, MapPin } from "lucide-react";
 import { ACCOMPLISHMENTS, CAPSTONE_STATS } from "../data/landingData";
 
 export default function AccomplishmentsSection() {
   return (
-    <section id="accomplishments" className="py-16 sm:py-20 bg-white border-t border-slate-200/80">
-      <div className="w-full px-4 sm:px-8 lg:px-10 xl:px-12">
+    <section id="accomplishments" className="landing-section landing-section--paper border-t">
+      <div className="site-container">
         
         {/* Header */}
         <div className="text-center max-w-2xl mx-auto mb-12">
-          <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800 uppercase tracking-wide">
+          <span className="rounded-md bg-[#e5efe6] px-3 py-1 text-xs font-semibold text-[#174b37] uppercase tracking-wide">
             Public Transparency Log
           </span>
-          <h2 className="mt-3 text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900">
+          <h2 className="landing-display mt-3 text-3xl sm:text-4xl">
             Accomplishments & Verified Resolutions
           </h2>
           <p className="mt-2 text-sm text-slate-500">
@@ -24,7 +24,7 @@ export default function AccomplishmentsSection() {
           {CAPSTONE_STATS.map((stat, i) => (
             <div
               key={i}
-              className="rounded-2xl border border-slate-200 bg-slate-50/60 p-5 text-center transition-all hover:bg-emerald-50/40 hover:border-[#2E8B57]"
+              className="landing-card p-5 text-center"
             >
               <p className="text-3xl sm:text-4xl font-black tracking-tight text-[#2E8B57]">
                 {stat.value}
@@ -40,8 +40,8 @@ export default function AccomplishmentsSection() {
         </div>
 
         {/* Public Accomplishment Table */}
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+        <div className="landing-card overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-[#f1f4ee] px-6 py-4">
             <div>
               <h3 className="text-sm font-bold text-slate-900">
                 Recent Public Resolution Log
@@ -50,7 +50,7 @@ export default function AccomplishmentsSection() {
                 All records archived with timestamped geo-coordinates and official sign-off
               </p>
             </div>
-            <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-full">
+            <div className="flex items-center gap-1.5 text-xs font-semibold text-[#174b37] bg-[#e5efe6] px-2.5 py-1 rounded-md">
               <ShieldCheck size={14} />
               <span>100% Cryptographic QR Verified</span>
             </div>
@@ -85,13 +85,13 @@ export default function AccomplishmentsSection() {
                       {item.dateResolved}
                     </td>
                     <td className="px-6 py-4">
-                      <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-2 py-0.5 text-[11px] font-bold text-blue-700">
+                        <span className="inline-flex items-center gap-1 rounded-md bg-[#e5efe6] px-2 py-0.5 text-[11px] font-semibold text-[#174b37]">
                         <Clock size={11} />
                         {item.responseTime}
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-800 border border-emerald-200">
+                    <span className="inline-flex items-center gap-1.5 rounded-md bg-[#e5efe6] px-2.5 py-1 text-[11px] font-semibold text-[#174b37] border border-[#dbe5dc]">
                         <QrCode size={12} className="text-emerald-600" />
                         {item.proofStatus}
                       </span>

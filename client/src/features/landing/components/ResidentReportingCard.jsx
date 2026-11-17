@@ -2,12 +2,9 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
   CheckCircle,
-  Clock,
   MapPin,
   Send,
-  AlertTriangle,
   Camera,
-  Layers,
   ArrowRight,
   ShieldAlert,
 } from "lucide-react";
@@ -146,7 +143,7 @@ export default function ResidentReportingCard({
   };
 
   return (
-    <div className="flex flex-col rounded-2xl border border-slate-200/90 bg-white p-5 shadow-sm transition-all hover:shadow-md">
+    <div className="landing-card flex flex-col p-5">
       {/* Card Header: Matching Screenshot */}
       <div className="flex items-center justify-between pb-3.5 border-b border-slate-100">
         <div>
@@ -169,7 +166,7 @@ export default function ResidentReportingCard({
           }}
           className={`flex items-center justify-center gap-1.5 rounded-lg py-2 transition-all ${
             activeTab === "active"
-              ? "bg-[#2E8B57] text-white shadow-sm"
+              ? "bg-[#174b37] text-white"
               : "text-slate-600 hover:text-slate-900"
           }`}
         >
@@ -190,7 +187,7 @@ export default function ResidentReportingCard({
           onClick={() => setActiveTab("submit")}
           className={`flex items-center justify-center gap-1.5 rounded-lg py-2 transition-all ${
             activeTab === "submit"
-              ? "bg-[#2E8B57] text-white shadow-sm"
+              ? "bg-[#174b37] text-white"
               : "text-slate-600 hover:text-slate-900"
           }`}
         >
@@ -209,7 +206,7 @@ export default function ResidentReportingCard({
                 onClick={() => onSelectReport(report)}
                 className={`group cursor-pointer rounded-xl border p-3 transition-all ${
                   isSelected
-                    ? "border-[#2E8B57] bg-emerald-50/50 shadow-sm"
+                    ? "border-[#174b37] bg-[#edf3ec]"
                     : "border-slate-100 bg-slate-50/60 hover:border-slate-300 hover:bg-white"
                 }`}
               >
@@ -278,7 +275,7 @@ export default function ResidentReportingCard({
                 onClick={() => handleTypeChange("maintenance")}
                 className={`flex items-center justify-center gap-1.5 rounded-lg border py-2 text-xs font-bold transition-all ${
                   formData.type === "maintenance"
-                    ? "border-amber-500 bg-amber-50 text-amber-900 shadow-sm"
+                    ? "border-[#9fb6a4] bg-[#e5efe6] text-[#174b37]"
                     : "border-slate-200 text-slate-600 hover:bg-slate-50"
                 }`}
               >
@@ -328,7 +325,7 @@ export default function ResidentReportingCard({
                 type="button"
                 onClick={() => setIsPickingLocation(!isPickingLocation)}
                 className={`text-[11px] font-bold flex items-center gap-1 ${
-                  isPickingLocation ? "text-red-600 animate-pulse" : "text-[#2E8B57]"
+                  isPickingLocation ? "text-[#b42318]" : "text-[#174b37]"
                 }`}
               >
                 <MapPin size={12} />
@@ -385,9 +382,9 @@ export default function ResidentReportingCard({
                   onClick={() =>
                     setFormData((prev) => ({ ...prev, urgency: lvl }))
                   }
-                  className={`rounded-md px-2.5 py-1 text-[11px] font-bold transition-all ${
+                  className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors ${
                     formData.urgency === lvl
-                      ? "bg-[#ea580c] text-white"
+                      ? lvl === "High" ? "bg-[#b42318] text-white" : "bg-[#174b37] text-white"
                       : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                   }`}
                 >
@@ -401,7 +398,7 @@ export default function ResidentReportingCard({
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#2E8B57] py-2.5 text-xs font-bold text-white shadow transition-all hover:bg-[#247447] active:scale-[0.99] disabled:opacity-50"
+            className="w-full flex items-center justify-center gap-2 rounded-lg bg-[#174b37] py-2.5 text-xs font-semibold text-white transition-colors hover:bg-[#103b2b] active:scale-[0.99] disabled:opacity-50"
           >
             <Send size={14} />
             {isSubmitting ? "Submitting Ticket..." : "Submit Geotagged Report"}

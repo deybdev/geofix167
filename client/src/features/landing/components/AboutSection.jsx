@@ -1,4 +1,4 @@
-import { MapPin, Target, Sparkles, Compass, CheckCircle } from "lucide-react";
+import { Compass, CheckCircle } from "lucide-react";
 import logoImg from "../../../assets/images/logo.png";
 
 export default function AboutSection() {
@@ -22,19 +22,19 @@ export default function AboutSection() {
   ];
 
   return (
-    <section id="about" className="py-16 sm:py-20 bg-white">
-      <div className="w-full px-4 sm:px-8 lg:px-10 xl:px-12">
+    <section id="about" className="landing-section landing-section--paper">
+      <div className="site-container">
         
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
           
           {/* Left Column: Story & Mission */}
           <div className="lg:col-span-7">
-            <div className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-[#2E8B57] mb-4">
+            <div className="inline-flex items-center gap-2 rounded-md bg-[#e5efe6] px-3 py-1 text-xs font-semibold text-[#174b37] mb-4">
               <Compass size={14} />
               <span>About Barangay 167 Capstone Project</span>
             </div>
 
-            <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900 leading-tight">
+            <h2 className="landing-display text-3xl leading-tight sm:text-4xl">
               Smarter, Safer, & Faster Incident Response for{" "}
               <span className="text-[#2E8B57]">Barangay 167</span>
             </h2>
@@ -50,8 +50,8 @@ export default function AboutSection() {
             {/* Feature Checklist */}
             <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
               {highlights.map((item, idx) => (
-                <div key={idx} className="flex items-start gap-3 rounded-xl border border-slate-100 bg-slate-50/50 p-3.5">
-                  <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#2E8B57] text-white">
+                <div key={idx} className="landing-card flex items-start gap-3 p-3.5">
+                  <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#e5efe6] text-[#174b37]">
                     <CheckCircle size={13} />
                   </div>
                   <div>
@@ -65,9 +65,9 @@ export default function AboutSection() {
 
           {/* Right Column: Visual Card */}
           <div className="lg:col-span-5">
-            <div className="relative rounded-3xl border border-slate-200/80 bg-gradient-to-br from-slate-50 via-white to-emerald-50/30 p-8 shadow-xl">
+            <div className="landing-card relative p-6 sm:p-8">
               <div className="flex flex-col items-center text-center">
-                <div className="flex h-24 w-24 items-center justify-center rounded-2xl bg-white p-2 shadow-lg ring-1 ring-slate-900/5">
+                <div className="flex h-20 w-20 items-center justify-center rounded-xl border border-slate-100 bg-white p-2">
                   <img src={logoImg} alt="GeoFix 167" className="h-20 w-20 object-contain" />
                 </div>
 
@@ -81,19 +81,19 @@ export default function AboutSection() {
                 <div className="my-5 h-px w-24 bg-slate-200" />
 
                 <div className="w-full space-y-3 text-left">
-                  <div className="flex items-center justify-between rounded-lg bg-white p-3 text-xs font-semibold shadow-sm border border-slate-100">
+                  <div className="flex items-center justify-between rounded-lg border border-slate-100 bg-white p-3 text-xs font-semibold">
                     <span className="text-slate-500">Jurisdiction:</span>
                     <span className="text-slate-900 font-bold">Caloocan District 3</span>
                   </div>
-                  <div className="flex items-center justify-between rounded-lg bg-white p-3 text-xs font-semibold shadow-sm border border-slate-100">
+                  <div className="flex items-center justify-between rounded-lg border border-slate-100 bg-white p-3 text-xs font-semibold">
                     <span className="text-slate-500">Service Area:</span>
                     <span className="text-slate-900 font-bold">2.87 sq. km (Barangay 167)</span>
                   </div>
-                  <div className="flex items-center justify-between rounded-lg bg-white p-3 text-xs font-semibold shadow-sm border border-slate-100">
+                  <div className="flex items-center justify-between rounded-lg border border-slate-100 bg-white p-3 text-xs font-semibold">
                     <span className="text-slate-500">Lead Responders:</span>
                     <span className="text-emerald-700 font-bold">BDRRMO & Barangay Tanod</span>
                   </div>
-                  <div className="flex items-center justify-between rounded-lg bg-white p-3 text-xs font-semibold shadow-sm border border-slate-100">
+                  <div className="flex items-center justify-between rounded-lg border border-slate-100 bg-white p-3 text-xs font-semibold">
                     <span className="text-slate-500">Target SDG:</span>
                     <span className="text-slate-900 font-bold">SDG 11: Sustainable Communities</span>
                   </div>
