@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { Link } from "react-router-dom";
 import { AlertTriangle, Camera, FileText, ImagePlus, LocateFixed, Locate, RotateCcw, Send, Trash2, UserRound, X } from "lucide-react";
 import L from "leaflet";
-import { Circle, GeoJSON, MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-leaflet";
+import { Circle, GeoJSON, MapContainer, Marker, TileLayer, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import reportCatalog from "../../../../../server/src/shared/reportCatalog.json";
 import { isInside } from "../../../shared/utils/mapUtils";
@@ -39,9 +39,9 @@ const isHighCategory = (type, item) => type === "sudden"
 
 const REPORT_PIN_ICON = L.divIcon({
   className: "guest-report-pin-icon",
-  html: '<span style="display:block;width:20px;height:20px;border:3px solid #fff;border-radius:50%;background:#2e8b57;box-shadow:0 1px 6px #334155"></span>',
-  iconSize: [24, 24],
-  iconAnchor: [12, 12],
+  html: '<span style="display:flex;width:28px;height:28px;align-items:center;justify-content:center;border:3px solid #fff;border-radius:50% 50% 50% 0;background:#2e8b57;box-shadow:0 2px 7px #334155;transform:rotate(-45deg)"><span style="width:8px;height:8px;border:2px solid #fff;border-radius:50%;background:#2e8b57"></span></span>',
+  iconSize: [32, 38],
+  iconAnchor: [16, 34],
 });
 
 async function compressEvidenceImage(file) {
@@ -87,16 +87,6 @@ function loadBarangayBoundary() {
       .catch(() => null);
   }
   return boundaryPromise;
-}
-
-function MapClickHandler({ onPin, onMapFocused }) {
-  useMapEvents({
-    click(event) {
-      onMapFocused();
-      onPin({ lat: event.latlng.lat, lng: event.latlng.lng, accuracy: null });
-    },
-  });
-  return null;
 }
 
 function MapSizeManager() {
@@ -155,7 +145,6 @@ function LocationPickerMap({ pin, boundary, recenterVersion, wheelZoomEnabled, o
       {boundary && <GeoJSON data={boundary} interactive={false} style={{ color: "#2e8b57", weight: 2, fillOpacity: 0.04 }} />}
       {pin?.accuracy > 0 && <Circle center={[pin.lat, pin.lng]} radius={pin.accuracy} pathOptions={{ color: "#2e8b57", weight: 1.5, fillColor: "#2e8b57", fillOpacity: 0.13 }} />}
       <FitBarangayBoundary boundary={boundary} pin={pin} />
-      <MapClickHandler onPin={onPin} onMapFocused={onMapFocused} />
       <MapSizeManager />
       <MapRecenter position={pin} version={recenterVersion} />
       <ZoomButtons />
@@ -630,7 +619,7 @@ export default function GuestReportForm({
               <div
                 className="relative z-0 isolate"
                 tabIndex={0}
-                aria-label="Incident location map. Drag the pin or tap the map to set the exact location."
+            aria-label="Incident location map. Drag the location pin to correct its position. The map itself only pans and zooms."
                 onClick={() => setWheelZoomEnabled(true)}
                 onFocus={() => setWheelZoomEnabled(true)}
                 onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setWheelZoomEnabled(false); }}
@@ -651,7 +640,7 @@ export default function GuestReportForm({
                 {isOutsideBarangay && <p className="text-[10px] font-semibold text-[#9f241b]">This pin appears outside Barangay 167. You can still submit.</p>}
                 {locationError && <p className="text-[10px] text-[#9f241b]">{locationError}</p>}
                 {!pin && locationStatus === "error" && <p className="text-[10px] text-slate-500">The map is centered on Barangay 167. Drop a pin to continue.</p>}
-                <p className="text-[10px] text-slate-500">Drag the pin or tap the map to set the exact location.</p>
+                <p className="text-[10px] text-slate-500">If the location is inaccurate, drag the pin to the correct spot. Dragging the map will only pan it.</p>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-0.5">
                   <button type="button" onClick={requestDeviceLocation} className="inline-flex min-h-8 items-center gap-1 text-[10px] font-bold text-[#247447] hover:underline"><Locate size={12} /> Use my current location</button>
                   {locationError && <button type="button" onClick={requestDeviceLocation} className="min-h-8 text-[10px] font-bold text-[#247447] hover:underline">Retry</button>}
