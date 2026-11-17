@@ -1,17 +1,101 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { ArrowRight, CalendarDays, Clock3, MapPin, Megaphone, Search } from "lucide-react";
 import { PATHS } from "../router/paths";
+import AccessibleDropdown from "../shared/components/AccessibleDropdown";
 import catalog from "../../../server/src/shared/announcementCatalog.json";
 
+const categoryTone = {
+  "Clean & Green": "green",
+  "BDRRMO Advisory": "red",
+  Event: "amber",
+  Health: "red",
+  General: "neutral",
+};
+const categorySurface = {
+  "Clean & Green": "border-emerald-200 bg-emerald-50 text-emerald-800",
+  "BDRRMO Advisory": "border-red-200 bg-red-50 text-red-800",
+  Event: "border-amber-200 bg-amber-50 text-amber-800",
+  Health: "border-sky-200 bg-sky-50 text-sky-800",
+  General: "border-slate-200 bg-slate-100 text-slate-700",
+};
+const dateLabel = (value) => value ? new Date(`${value.slice(0, 10)}T00:00:00`).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }) : "";
+const timeLabel = (value) => value ? new Date(`1970-01-01T${value}:00`).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "";
+
 export default function AnnouncementsPage() {
-  const [items, setItems] = useState([]); const [category, setCategory] = useState(""); const [query, setQuery] = useState(""); const [offset, setOffset] = useState(0); const [more, setMore] = useState(false); const [loading, setLoading] = useState(true); const [error, setError] = useState("");
-  useEffect(() => { const controller = new AbortController(); setLoading(true); setError(""); const params = new URLSearchParams({ limit: "10", offset: String(offset) }); if (category) params.set("category", category); if (query.trim()) params.set("q", query.trim());
-    fetch(`/api/announcements?${params}`, { signal: controller.signal, cache: "no-store" }).then(async (r) => { const d = await r.json(); if (!r.ok) throw new Error(d.error || "Unable to load announcements."); setItems((current) => offset ? [...current, ...(d.announcements || [])] : d.announcements || []); setMore((d.announcements || []).length === 10); }).catch((e) => { if (e.name !== "AbortError") setError(e.message); }).finally(() => setLoading(false)); return () => controller.abort();
+  const [items, setItems] = useState([]);
+  const [category, setCategory] = useState("");
+  const [query, setQuery] = useState("");
+  const [offset, setOffset] = useState(0);
+  const [more, setMore] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const categoryOptions = useMemo(() => [
+    { value: "", label: "All categories", tone: "green", tag: String(catalog.categories.length) },
+    ...catalog.categories.map((name) => ({ value: name, label: name, tone: categoryTone[name] || "neutral" })),
+  ], []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setError("");
+    const params = new URLSearchParams({ limit: "10", offset: String(offset) });
+    if (category) params.set("category", category);
+    if (query.trim()) params.set("q", query.trim());
+    fetch(`/api/announcements?${params}`, { signal: controller.signal, cache: "no-store" })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Unable to load announcements.");
+        setItems((current) => offset ? [...current, ...(data.announcements || [])] : data.announcements || []);
+        setMore((data.announcements || []).length === 10);
+      })
+      .catch((requestError) => { if (requestError.name !== "AbortError") setError(requestError.message); })
+      .finally(() => setLoading(false));
+    return () => controller.abort();
   }, [category, query, offset]);
-  return <div className="mx-auto w-full max-w-5xl px-5 py-10"><p className="text-xs font-bold uppercase tracking-widest text-emerald-700">Barangay 167 · Caloocan City</p><h1 className="mt-2 text-3xl font-extrabold text-slate-900">Barangay Announcements</h1><p className="mt-2 text-sm text-slate-600">Updates, advisories, and community events.</p>
-    <div className="mt-6 flex flex-wrap gap-2"><button onClick={() => { setItems([]); setOffset(0); setCategory(""); }} className="rounded-full border px-3 py-1.5 text-xs">All</button>{catalog.categories.map((item) => <button key={item} onClick={() => { setItems([]); setOffset(0); setCategory(item); }} className="rounded-full border px-3 py-1.5 text-xs">{item}</button>)}<input value={query} onChange={(e) => { setItems([]); setOffset(0); setQuery(e.target.value); }} placeholder="Search announcements" className="ml-auto min-w-48 rounded-lg border px-3 py-2 text-sm" /></div>
-    {error && <div role="alert" className="mt-5 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error} <button onClick={() => setOffset(0)} className="ml-2 underline">Retry</button></div>}
-    <div className="mt-5 grid gap-3">{items.map((item) => <Link key={item.id} to={`${PATHS.announcements}/${item.id}`} className="rounded-xl border border-slate-200 bg-white p-5 hover:border-emerald-400"><span className="text-xs font-semibold text-emerald-700">{item.category} · {new Date(item.published_at).toLocaleDateString()}</span><h2 className="mt-2 text-lg font-bold">{item.title}</h2><p className="mt-1 line-clamp-3 text-sm text-slate-600">{item.details}</p>{(item.event_date || item.venue) && <p className="mt-3 text-xs text-slate-500">{item.event_date || ""}{item.venue ? ` · ${item.venue}` : ""}</p>}</Link>)}{!loading && !error && items.length === 0 && <p className="rounded-xl border border-dashed p-10 text-center text-sm text-slate-500">No announcements yet.</p>}</div>
-    {loading && <p className="py-6 text-center text-sm text-slate-500">Loading announcements…</p>}{more && <button disabled={loading} onClick={() => setOffset((n) => n + 10)} className="mx-auto mt-5 block rounded-lg border px-4 py-2 text-sm">Load more</button>}
+
+  const resetResults = (update) => { setItems([]); setOffset(0); update(); };
+
+  return <div className="min-h-full bg-[#f4f8f5] pb-12">
+    <section className="bg-[#103b2b] text-white">
+      <div className="mx-auto w-full max-w-6xl px-5 py-10 sm:py-14">
+        <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-100"><Megaphone size={13} /> Barangay 167 · Caloocan City</div>
+        <div className="mt-5 flex flex-col justify-between gap-5 md:flex-row md:items-end">
+          <div><p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-300">Community information</p><h1 className="mt-2 text-3xl font-extrabold tracking-tight sm:text-4xl">Barangay Announcements</h1><p className="mt-3 max-w-xl text-sm leading-6 text-emerald-50/85">Official updates, safety advisories, and events for residents of Barangay 167.</p></div>
+          <div className="flex items-center gap-2 text-xs font-semibold text-emerald-100"><span className="h-2 w-2 rounded-full bg-emerald-300" /> Public information feed</div>
+        </div>
+      </div>
+    </section>
+
+    <section className="mx-auto w-full max-w-6xl px-5 pt-7">
+      <div className="rounded-2xl border border-[#dce8df] bg-white p-4 shadow-sm sm:p-5">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div><h2 className="text-sm font-bold text-slate-900">Find an update</h2><p className="mt-1 text-xs text-slate-500">Filter by topic or search announcement details.</p></div>
+          <div className="grid gap-2 sm:w-[460px] sm:grid-cols-[190px_1fr]">
+            <AccessibleDropdown label="Filter announcements by category" value={category} options={categoryOptions} onChange={(value) => resetResults(() => setCategory(value))} />
+            <label className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-slate-400 focus-within:ring-2 focus-within:ring-emerald-600"><Search size={14} /><input value={query} onChange={(event) => resetResults(() => setQuery(event.target.value))} aria-label="Search announcements" placeholder="Search announcements" className="min-w-0 flex-1 bg-transparent text-xs text-slate-800 outline-none placeholder:text-slate-400" /></label>
+          </div>
+        </div>
+      </div>
+
+      {error && <div role="alert" className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}<button onClick={() => setOffset(0)} className="ml-2 font-semibold underline">Retry</button></div>}
+
+      <div className="mt-5 grid gap-4 md:grid-cols-2">
+        {items.map((item) => <Link key={item.id} to={`${PATHS.announcements}/${item.id}`} className="group flex min-h-56 flex-col rounded-2xl border border-[#dce8df] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md">
+          <div className="flex items-start justify-between gap-3"><span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold ${categorySurface[item.category] || categorySurface.General}`}>{item.category}</span><span className="shrink-0 text-[10px] text-slate-400">Posted {dateLabel(item.published_at)}</span></div>
+          <h2 className="mt-4 text-lg font-bold leading-snug text-slate-900 group-hover:text-emerald-800">{item.title}</h2>
+          <p className="mt-2 line-clamp-3 flex-1 text-sm leading-6 text-slate-600">{item.details}</p>
+          {(item.event_date || item.event_time || item.venue) && <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 border-t border-slate-100 pt-3 text-[11px] font-medium text-slate-500">
+            {item.event_date && <span className="inline-flex items-center gap-1.5"><CalendarDays size={13} className="text-emerald-700" />{dateLabel(item.event_date)}</span>}
+            {item.event_time && <span className="inline-flex items-center gap-1.5"><Clock3 size={13} className="text-emerald-700" />{timeLabel(item.event_time)}</span>}
+            {item.venue && <span className="inline-flex items-center gap-1.5"><MapPin size={13} className="text-emerald-700" />{item.venue}</span>}
+          </div>}
+          <span className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-emerald-800">View announcement <ArrowRight size={13} className="transition-transform group-hover:translate-x-1" /></span>
+        </Link>)}
+      </div>
+      {!loading && !error && items.length === 0 && <div className="mt-5 rounded-2xl border border-dashed border-[#cbd9cf] bg-white px-5 py-14 text-center"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700"><Megaphone size={21} /></div><h2 className="mt-4 text-base font-bold text-slate-900">No announcements found</h2><p className="mt-1 text-sm text-slate-500">Try another category or search term.</p></div>}
+      {loading && <p className="py-8 text-center text-sm text-slate-500">Loading announcements…</p>}
+      {more && <button disabled={loading} onClick={() => setOffset((current) => current + 10)} className="mx-auto mt-6 flex items-center gap-2 rounded-lg border border-emerald-200 bg-white px-4 py-2.5 text-xs font-bold text-emerald-800 hover:bg-emerald-50 disabled:opacity-50">Load more announcements <ArrowRight size={13} /></button>}
+    </section>
   </div>;
 }

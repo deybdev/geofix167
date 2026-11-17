@@ -8,15 +8,22 @@ const route = new Hono<AppEnv>();
 const adminOnly = [requireAuth, requireRole("admin")];
 route.use("*", ...adminOnly);
 const idSchema = z.string().trim().min(1).max(64);
+const manilaToday = () => {
+  const parts = new Intl.DateTimeFormat("en", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date());
+  const part = (type: string) => parts.find((item) => item.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+};
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
   const date = new Date(`${value}T00:00:00.000Z`);
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }, "Enter a valid event date.").nullable().optional();
+const timeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().optional();
 const announcementSchema = z.object({
   title: z.string().trim().min(1).max(160),
   details: z.string().trim().min(1).max(10000),
   category: z.enum(catalog.categories),
   event_date: dateSchema,
+  event_time: timeSchema,
   venue: z.string().trim().max(200).nullable().optional(),
 }).strict();
 
@@ -38,9 +45,9 @@ route.post("/", async (c) => {
   if (!body.success) return c.json({ error: "Check the announcement fields.", details: body.error.flatten() }, 400);
   const id = crypto.randomUUID();
   await c.env.geofix167_db.prepare(`INSERT INTO announcements
-    (id, title, details, category, event_date, venue, status, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, 'draft', ?)`)
-    .bind(id, body.data.title, body.data.details, body.data.category, body.data.event_date ?? null, body.data.venue?.trim() || null, c.get("user").id).run();
+    (id, title, details, category, event_date, event_time, venue, status, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?)`)
+    .bind(id, body.data.title, body.data.details, body.data.category, body.data.event_date ?? null, body.data.event_time ?? null, body.data.venue?.trim() || null, c.get("user").id).run();
   const announcement = await c.env.geofix167_db.prepare("SELECT * FROM announcements WHERE id = ?").bind(id).first();
   return c.json({ announcement }, 201);
 });
@@ -49,8 +56,8 @@ route.patch("/:id", async (c) => {
   const id = idSchema.safeParse(c.req.param("id"));
   const body = announcementSchema.safeParse(await c.req.json().catch(() => null));
   if (!id.success || !body.success) return c.json({ error: "Check the announcement fields.", details: body.success ? undefined : body.error.flatten() }, 400);
-  const result = await c.env.geofix167_db.prepare(`UPDATE announcements SET title = ?, details = ?, category = ?, event_date = ?, venue = ?, updated_at = datetime('now') WHERE id = ? AND status != 'archived'`)
-    .bind(body.data.title, body.data.details, body.data.category, body.data.event_date ?? null, body.data.venue?.trim() || null, id.data).run();
+  const result = await c.env.geofix167_db.prepare(`UPDATE announcements SET title = ?, details = ?, category = ?, event_date = ?, event_time = ?, venue = ?, updated_at = datetime('now') WHERE id = ? AND status != 'archived'`)
+    .bind(body.data.title, body.data.details, body.data.category, body.data.event_date ?? null, body.data.event_time ?? null, body.data.venue?.trim() || null, id.data).run();
   if (!result.meta.changes) return c.json({ error: "Announcement not found." }, 404);
   const announcement = await c.env.geofix167_db.prepare("SELECT * FROM announcements WHERE id = ?").bind(id.data).first();
   return c.json({ announcement });
@@ -59,6 +66,9 @@ route.patch("/:id", async (c) => {
 route.post("/:id/publish", async (c) => {
   const id = idSchema.safeParse(c.req.param("id"));
   if (!id.success) return c.json({ error: "Announcement not found." }, 404);
+  const draft = await c.env.geofix167_db.prepare("SELECT event_date FROM announcements WHERE id = ? AND status = 'draft'").bind(id.data).first<{ event_date: string | null }>();
+  if (!draft) return c.json({ error: "Only a draft announcement can be published." }, 409);
+  if (draft.event_date && draft.event_date < manilaToday()) return c.json({ error: "An announcement with a past event date cannot be published. Choose today or a future date." }, 400);
   const result = await c.env.geofix167_db.prepare(`UPDATE announcements SET status = 'published', published_at = datetime('now'), updated_at = datetime('now') WHERE id = ? AND status = 'draft'`)
     .bind(id.data).run();
   if (!result.meta.changes) return c.json({ error: "Only a draft announcement can be published." }, 409);
@@ -94,12 +104,12 @@ publicAnnouncementRoutes.get("/", async (c) => {
   const values: (string | number)[] = [];
   if (category) { clauses.push("category = ?"); values.push(category); }
   if (search) { clauses.push("(title LIKE ? OR details LIKE ? OR venue LIKE ?)"); values.push(`%${search}%`, `%${search}%`, `%${search}%`); }
-  const rows = await c.env.geofix167_db.prepare(`SELECT id, title, details, category, event_date, venue, published_at FROM announcements WHERE ${clauses.join(" AND ")} ORDER BY published_at DESC LIMIT ? OFFSET ?`)
+  const rows = await c.env.geofix167_db.prepare(`SELECT id, title, details, category, event_date, event_time, venue, published_at FROM announcements WHERE ${clauses.join(" AND ")} ORDER BY published_at DESC LIMIT ? OFFSET ?`)
     .bind(...values, limit, offset).all();
   return c.json({ announcements: rows.results ?? [], limit, offset });
 });
 publicAnnouncementRoutes.get("/:id", async (c) => {
-  const announcement = await c.env.geofix167_db.prepare(`SELECT id, title, details, category, event_date, venue, published_at FROM announcements WHERE id = ? AND status = 'published'`)
+  const announcement = await c.env.geofix167_db.prepare(`SELECT id, title, details, category, event_date, event_time, venue, published_at FROM announcements WHERE id = ? AND status = 'published'`)
     .bind(c.req.param("id")).first();
   if (!announcement) return c.json({ error: "Announcement not found." }, 404);
   return c.json({ announcement });
