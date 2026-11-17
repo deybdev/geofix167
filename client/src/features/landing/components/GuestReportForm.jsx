@@ -34,6 +34,8 @@ const CATEGORY_COLORS = {
   "Garbage Collection": "border-[#cbd8ce] bg-[#edf3ec] text-[#315440] focus:border-[#78917d]",
   "Water / Power Hazard": "border-red-300 bg-red-50 text-red-800 focus:border-red-500",
 };
+const isHighCategory = (type, item) => type === "sudden"
+  || reportCatalog.guestUrgency.maintenanceHighCategories.includes(item);
 
 const REPORT_PIN_ICON = L.divIcon({
   className: "guest-report-pin-icon",
@@ -187,6 +189,9 @@ export default function GuestReportForm({
   const [reportType, setReportType] = useState("sudden");
   const initialClassification = reportCatalog.classifications.find((item) => item.value === "sudden");
   const [category, setCategory] = useState(initialClassification.defaultCategory);
+  const [categoryOpen, setCategoryOpen] = useState(false);
+  const [activeCategoryIndex, setActiveCategoryIndex] = useState(0);
+  const categoryControlRef = useRef(null);
   const [title, setTitle] = useState("");
   const [reporterName, setReporterName] = useState("");
   const [locationNote, setLocationNote] = useState("");
@@ -217,6 +222,7 @@ export default function GuestReportForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const classification = reportCatalog.classifications.find((item) => item.value === reportType);
   const categories = reportCatalog.categories[reportType] ?? [];
+  const categoryIsHigh = isHighCategory(reportType, category);
   const urgencyCode = reportType === "sudden"
     ? reportCatalog.guestUrgency.sudden
     : reportCatalog.guestUrgency.maintenanceHighCategories.includes(category)
@@ -228,6 +234,29 @@ export default function GuestReportForm({
     [pin?.lat, pin?.lng, boundary],
   );
   const needsAccuracyConfirmation = pin?.accuracy > 100 && !manuallyAdjusted;
+
+  useEffect(() => {
+    if (!categoryOpen) return undefined;
+    const closeOutside = (event) => {
+      if (!categoryControlRef.current?.contains(event.target)) setCategoryOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    return () => document.removeEventListener("pointerdown", closeOutside);
+  }, [categoryOpen]);
+
+  const handleCategoryKeyDown = (event) => {
+    if (["ArrowDown", "ArrowUp", "Enter", " "].includes(event.key)) event.preventDefault();
+    if (event.key === "Escape") { setCategoryOpen(false); return; }
+    if (event.key === "ArrowDown") {
+      if (!categoryOpen) setCategoryOpen(true);
+      setActiveCategoryIndex((index) => Math.min(categories.length - 1, index + 1));
+    } else if (event.key === "ArrowUp") {
+      if (!categoryOpen) setCategoryOpen(true);
+      setActiveCategoryIndex((index) => Math.max(0, index - 1));
+    } else if ((event.key === "Enter" || event.key === " ") && categoryOpen) {
+      setCategory(categories[activeCategoryIndex]); setCategoryOpen(false);
+    }
+  };
 
   const commitPhotos = useCallback((nextPhotos) => {
     photosRef.current = nextPhotos;
@@ -450,8 +479,8 @@ export default function GuestReportForm({
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    if (!title.trim() || !reporterName.trim() || !description.trim()) {
-      toast.add({ title: "Required details missing", description: "Add an incident title, your name, and a description.", type: "error" });
+    if (!title.trim() || !reporterName.trim() || (reportType === "maintenance" && !description.trim())) {
+      toast.add({ title: "Required details missing", description: reportType === "maintenance" ? "Add an incident title, your name, and a description." : "Add an incident title and your name.", type: "error" });
       return;
     }
     if (reportType === "sudden" && photosRef.current.length === 0) {
@@ -564,9 +593,19 @@ export default function GuestReportForm({
 
           <div>
             <label htmlFor={`${idPrefix}-category`} className="mb-1.5 block text-xs font-bold text-slate-700">Category</label>
-            <select id={`${idPrefix}-category`} value={category} onChange={(event) => setCategory(event.target.value)} className={`w-full rounded-lg border px-3 py-2 text-xs font-semibold outline-none ${CATEGORY_COLORS[category] ?? "border-slate-200 bg-white text-slate-800 focus:border-[#2E8B57]"}`}>
-              {categories.map((item) => <option key={item} value={item} className={CATEGORY_COLORS[item]}>{item}</option>)}
-            </select>
+            <div ref={categoryControlRef} className="relative">
+              <button id={`${idPrefix}-category`} type="button" role="combobox" aria-label="Category" aria-haspopup="listbox" aria-expanded={categoryOpen} aria-controls={`${idPrefix}-category-options`} onKeyDown={handleCategoryKeyDown} onClick={() => { setCategoryOpen((open) => !open); setActiveCategoryIndex(Math.max(0, categories.indexOf(category))); }} className={`flex min-h-10 w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${categoryIsHigh ? "border-red-300 bg-red-50 text-red-800" : "border-slate-200 bg-white text-slate-800"}`}>
+                <span className="flex min-w-0 items-center gap-2 truncate">{categoryIsHigh && <span className="h-2 w-2 shrink-0 rounded-full bg-red-600" aria-hidden="true" />}{category}<span className={`rounded-full px-1.5 py-0.5 text-[9px] ${categoryIsHigh ? "bg-red-100 text-red-700" : "bg-amber-50 text-amber-800"}`}>{categoryIsHigh ? "High" : "Medium"}</span></span><span aria-hidden="true">⌄</span>
+              </button>
+              {categoryOpen && <div id={`${idPrefix}-category-options`} role="listbox" aria-label="Incident category" className="absolute z-30 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-lg">
+                {categories.map((item, index) => {
+                  const high = isHighCategory(reportType, item);
+                  return <button key={item} type="button" role="option" aria-selected={category === item} onMouseEnter={() => setActiveCategoryIndex(index)} onClick={() => { setCategory(item); setCategoryOpen(false); }} className={`flex min-h-9 w-full items-center justify-between rounded-md px-2 text-left text-xs hover:bg-slate-50 ${index === activeCategoryIndex ? "bg-slate-50" : ""} ${high ? "text-red-700" : "text-slate-700"}`}>
+                    <span className="flex items-center gap-2">{high && <span className="h-2 w-2 rounded-full bg-red-600" aria-hidden="true" />}{item}</span>{high && <span className="rounded-full bg-red-50 px-1.5 py-0.5 text-[9px] font-bold text-red-700">High</span>}
+                  </button>;
+                })}
+              </div>}
+            </div>
           </div>
 
           <div>
@@ -627,8 +666,9 @@ export default function GuestReportForm({
           </div>
 
           <div>
-            <label htmlFor={`${idPrefix}-description`} className="mb-1.5 block text-xs font-bold text-slate-700">Incident Description</label>
-            <textarea id={`${idPrefix}-description`} rows={3} value={description} onChange={(event) => setDescription(event.target.value)} maxLength={10000} placeholder="Provide exact details of the situation, visible risks, or landmarks..." required className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#2E8B57]" />
+            <label htmlFor={`${idPrefix}-description`} className="mb-1.5 block text-xs font-bold text-slate-700">Incident Description{reportType === "sudden" ? " (optional)" : ""}</label>
+            {reportType === "sudden" && <p className="mb-1 text-[10px] text-slate-500">The photo is enough evidence in an emergency.</p>}
+            <textarea id={`${idPrefix}-description`} rows={3} value={description} onChange={(event) => setDescription(event.target.value)} maxLength={10000} placeholder="Provide exact details of the situation, visible risks, or landmarks..." required={reportType === "maintenance"} className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#2E8B57]" />
           </div>
 
           <section className="rounded-lg border border-slate-200 bg-slate-50/70 p-3" aria-label="Photo evidence">

@@ -56,7 +56,7 @@ export const createReportSchema = z
     if (!data.guest_alias?.trim()) {
       ctx.addIssue({ code: "custom", path: ["guest_alias"], message: "Reporter name is required." });
     }
-    if (!data.description?.trim()) {
+    if (data.classification === "maintenance" && !data.description?.trim()) {
       ctx.addIssue({ code: "custom", path: ["description"], message: "Incident description is required." });
     }
     if (!data.classification) {

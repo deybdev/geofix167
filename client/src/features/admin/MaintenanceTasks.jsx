@@ -913,7 +913,7 @@ export default function MaintenanceTasks() {
             },
             outsideBarangay: report.within_barangay_boundary === 0 || report.within_barangay_boundary === false,
             evidence: [],
-            narration: String(report.description || "No description provided."),
+            narration: String(report.description || "").trim() || "No description. See photo evidence.",
             submitted: fmtWhen(report.submitted_at),
           };
         }).filter((item) => !dismissedIntakeIds.has(item.incidentId));

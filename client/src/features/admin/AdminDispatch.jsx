@@ -142,12 +142,11 @@ export default function AdminDispatch() {
   }, [lightboxOpen, selectedPhotos.length]);
 
   return (
-    <div className="space-y-4 text-slate-800">
+    <div className="flex h-[calc(100dvh-132px)] min-h-[560px] flex-col gap-3 overflow-hidden text-slate-800 max-xl:h-auto max-xl:min-h-0 max-xl:overflow-visible">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-[10px] font-bold uppercase tracking-[.16em] text-emerald-700">Operations center</p>
-          <h2 className="mt-1 text-xl font-bold text-slate-900">Incoming reports &amp; dispatch</h2>
-          <p className="mt-1 text-xs text-slate-500">Review each report and assign an available responder.</p>
+          <h2 className="text-lg font-bold text-slate-900">Incoming reports &amp; dispatch</h2>
+          <p className="mt-1 text-xs text-slate-500">{reports.length} awaiting · {reports.filter((report) => urgencyLabel(report) === "High").length} High · {availableUnits.length} {availableUnits.length === 1 ? "unit" : "units"} available</p>
         </div>
         <button type="button" onClick={refresh} disabled={loading} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 disabled:opacity-60"><RefreshCw size={14} className={loading ? "animate-spin" : ""} />Refresh</button>
       </div>
@@ -155,8 +154,8 @@ export default function AdminDispatch() {
       {allDeployed && <div role="alert" className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"><AlertTriangle size={15} />All units are deployed. City Hall DRRMO support can be requested for the selected report.</div>}
       {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800"><span>{error}</span><button type="button" onClick={refresh} className="font-bold underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600">Try again</button></div>}
 
-      {loading ? <div className="grid gap-4 xl:grid-cols-2" aria-label="Loading dispatch reports" aria-busy="true"><div className={`${card} space-y-3 p-4`}>{[1, 2, 3].map((item) => <div key={item} className="animate-pulse space-y-2 border-b border-slate-100 pb-3"><div className="h-3 w-1/3 rounded bg-slate-100" /><div className="h-3 w-2/3 rounded bg-slate-100" /><div className="h-2 w-1/2 rounded bg-slate-100" /></div>)}</div><div className={`${card} min-h-72 animate-pulse bg-slate-50`} /></div> : (
-        <div className="grid items-start gap-4 xl:grid-cols-[minmax(300px,.85fr)_minmax(430px,1.15fr)]">
+      {loading ? <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[380px_minmax(0,1fr)]" aria-label="Loading dispatch reports" aria-busy="true"><div className={`${card} space-y-3 p-4`}>{[1, 2, 3].map((item) => <div key={item} className="animate-pulse space-y-2 border-b border-slate-100 pb-3"><div className="h-3 w-1/3 rounded bg-slate-100" /><div className="h-3 w-2/3 rounded bg-slate-100" /><div className="h-2 w-1/2 rounded bg-slate-100" /></div>)}</div><div className={`${card} min-h-72 animate-pulse bg-slate-50`} /></div> : (
+        <div className="grid min-h-0 flex-1 items-stretch gap-3 xl:grid-cols-[380px_minmax(0,1fr)] max-xl:grid-cols-1">
           <section className={`${card} overflow-hidden`}>
             <div className="sticky top-0 z-10 space-y-3 border-b border-slate-200 bg-white p-4">
               <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-bold">Reports awaiting action</h3><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-800">{reports.length} awaiting</span></div>
@@ -206,7 +205,7 @@ export default function AdminDispatch() {
                   </> : <div className="flex min-h-20 items-center justify-center gap-2 rounded-lg border border-dashed border-slate-200 bg-slate-50 text-xs text-slate-500"><ImageIcon size={15} />No photo submitted</div>}
                 </section>
 
-                <section aria-label="Description"><h4 className="mb-1 text-xs font-bold">Description</h4><p className="whitespace-pre-wrap text-xs leading-relaxed text-slate-700">{selectedReport.description || selectedReport.description_original || "No description provided."}</p></section>
+                <section aria-label="Description"><h4 className="mb-1 text-xs font-bold">Description</h4><p className={`whitespace-pre-wrap text-xs leading-relaxed ${selectedReport.description || selectedReport.description_original ? "text-slate-700" : "text-slate-500"}`}>{String(selectedReport.description || selectedReport.description_original || "").trim() || "No description. See photo evidence."}</p></section>
 
                 <section aria-label="Location"><h4 className="mb-1 text-xs font-bold">Location</h4><p className="flex items-start gap-1.5 text-xs text-slate-600"><MapPin size={13} className="mt-0.5 shrink-0 text-emerald-700" />{selectedReport.location || "Location not provided"}{hasCoordinates && <span className="text-slate-400">· {Number(selectedReport.latitude).toFixed(5)}, {Number(selectedReport.longitude).toFixed(5)}</span>}</p>
                   {hasCoordinates && <div className="mt-2 h-48 overflow-hidden rounded-lg border border-slate-200"><MapViewer compact showBackButton={false} incidents={[{ id: selectedReport.id, title: selectedReport.title, category: selectedReport.category, status: selectedReport.status, lat: Number(selectedReport.latitude), lng: Number(selectedReport.longitude) }]} selectedIncident={{ id: selectedReport.id, lat: Number(selectedReport.latitude), lng: Number(selectedReport.longitude) }} /></div>}

@@ -170,7 +170,7 @@ export default function MyReports() {
                   <p className="mt-0.5 text-sm font-semibold text-slate-800">
                     {report.title || CATEGORY_LABELS[report.category] || report.category}
                   </p>
-                  <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">{report.description}</p>
+                  <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">{String(report.description || "").trim() || "No description. See photo evidence."}</p>
                   <div className="mt-1.5 flex items-center justify-between">
                     <span className="text-[10px] text-slate-400">
                       {report.address || "—"} · {new Date(report.created_at).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" })}

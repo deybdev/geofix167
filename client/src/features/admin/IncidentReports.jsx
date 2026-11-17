@@ -309,7 +309,7 @@ function mapApiReport(item, fetchedAt) {
       ...(accuracy != null && accuracy > 100 ? { note: "GPS accuracy is over 100 m; the reporter was prompted to adjust the pin." } : {}),
     },
     ...(outsideBoundary ? { outsideBarangayBoundary: true } : {}),
-    text: String(item.sanitized_description ?? item.description_sanitized ?? item.description_original ?? "No description provided."),
+    text: String(item.sanitized_description ?? item.description_sanitized ?? item.description_original ?? "").trim() || "No description. See photo evidence.",
     ...(classification.isEmergency && status === "Reported" ? { sla: { start: triageStartedAt } } : {}),
   };
 }
