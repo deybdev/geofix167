@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowRight, CalendarDays, Clock3, MapPin, Megaphone, Search } from "lucide-react";
+import { ArrowRight, CalendarDays, Clock3, MapPin, Megaphone, Search, Video } from "lucide-react";
 import AccessibleDropdown from "../shared/components/AccessibleDropdown";
 import AnnouncementDetailsModal from "./AnnouncementDetailsModal";
 import { announcementCategoryBadge, announcementCategoryOptions } from "../shared/constants/announcementCategoryStyles";
@@ -72,6 +72,7 @@ export default function AnnouncementsPage({ initialSelectedId = "", onCloseAnnou
       <div className="mt-5 grid gap-4 md:grid-cols-2">
         {items.map((item) => <button key={item.id} type="button" aria-haspopup="dialog" onClick={() => setSelectedId(item.id)} className="group flex min-h-56 flex-col rounded-2xl border border-[#dce8df] bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600">
           <div className="flex w-full items-start justify-between gap-3"><span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-bold ${announcementCategoryBadge(item.category)}`}>{item.category}</span><span className="shrink-0 text-[10px] text-slate-400">Posted {dateLabel(item.published_at)}</span></div>
+          {item.media?.[0] && <div className="mt-4 overflow-hidden rounded-xl border border-slate-100 bg-slate-50">{item.media[0].media_type === "VIDEO" ? <div className="flex h-36 items-center justify-center gap-2 text-xs font-semibold text-emerald-800"><Video size={18} />Video attached</div> : <img src={item.media[0].url} alt="" loading="lazy" className="h-36 w-full object-cover" />}{item.media.length > 1 && <span className="block bg-white px-3 py-1.5 text-[10px] text-slate-500">+{item.media.length - 1} more attachment{item.media.length === 2 ? "" : "s"}</span>}</div>}
           <h2 className="mt-4 text-lg font-bold leading-snug text-slate-900 group-hover:text-emerald-800">{item.title}</h2>
           <p className="mt-2 line-clamp-3 flex-1 text-sm leading-6 text-slate-600">{item.details}</p>
           {(item.event_date || item.event_time || item.venue) && <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 border-t border-slate-100 pt-3 text-[11px] font-medium text-slate-500">

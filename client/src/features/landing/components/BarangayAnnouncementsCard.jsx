@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Megaphone, Calendar, ChevronRight } from "lucide-react";
+import { Megaphone, Calendar, ChevronRight, Video } from "lucide-react";
 import { PATHS } from "../../../router/paths";
 import AnnouncementDetailsModal from "../../../pages/AnnouncementDetailsModal";
 import { announcementCategoryBadge } from "../../../shared/constants/announcementCategoryStyles";
@@ -50,6 +50,7 @@ export default function BarangayAnnouncementsCard() {
             <p className="mt-1 text-[11px] leading-relaxed text-slate-600 line-clamp-3">
               {ann.details}
             </p>
+            {ann.media?.length > 0 && <div className="mt-2 flex items-center gap-2 text-[10px] font-semibold text-emerald-800"><span className="flex h-7 w-9 items-center justify-center overflow-hidden rounded border border-emerald-100 bg-emerald-50">{ann.media[0].media_type === "VIDEO" ? <Video size={14} /> : <img src={ann.media[0].url} alt="" loading="lazy" className="h-full w-full object-cover" />}</span>{ann.media.length} media attachment{ann.media.length === 1 ? "" : "s"}</div>}
           </button>
         ))}
         {items.length === 0 && <p className="rounded-lg border border-dashed border-slate-200 p-6 text-center text-xs text-slate-500">No announcements yet.</p>}
