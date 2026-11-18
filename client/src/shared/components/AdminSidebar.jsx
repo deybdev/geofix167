@@ -142,7 +142,7 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
             : "w-[72px] -translate-x-full md:translate-x-0"
         }`}
       >
-        <div className={`mb-6 ${open ? "relative flex items-center justify-center py-1" : "flex flex-col items-center gap-4 px-0"}`}>
+        <div className={`mb-6 ${open ? "relative flex items-center justify-between gap-2 px-1 py-1" : "flex flex-col items-center gap-4 px-0"}`}>
           {!open && <button
             type="button"
             className="rounded-lg p-2 text-slate-600 transition hover:bg-(--gf-green-soft) hover:text-(--gf-green) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--gf-green)"
@@ -158,7 +158,7 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
           </div>
           {open && <button
             type="button"
-            className="absolute right-1 rounded-lg p-2 text-slate-500 transition hover:bg-(--gf-green-soft) hover:text-(--gf-green) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--gf-green)"
+            className="ml-auto shrink-0 rounded-lg p-2 text-slate-500 transition hover:bg-(--gf-green-soft) hover:text-(--gf-green) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--gf-green)"
             onClick={onToggle}
             aria-expanded={true}
             aria-label="Close menu"

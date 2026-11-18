@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  AlertTriangle, Check, ChevronLeft, ChevronRight, Clock3, Image as ImageIcon,
+  AlertTriangle, Check, ChevronLeft, ChevronRight, Clock3, Eye, Image as ImageIcon,
   LoaderCircle, MapPin, Radio, RefreshCw, ShieldCheck, Truck, X,
 } from "lucide-react";
 import MapViewer from "../../shared/components/MapViewer";
@@ -241,7 +241,7 @@ export default function AdminDispatch() {
             {!selectedReport ? <div className="px-5 py-12 text-center"><ShieldCheck size={28} className="mx-auto text-emerald-700" /><p className="mt-3 text-sm font-semibold">Select a report</p><p className="mt-1 text-xs text-slate-500">The report details and responder actions will appear here.</p></div> : <>
               <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 pb-3 sm:p-5">
                 <section aria-label="Report summary" className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
-                  <div className="flex flex-wrap items-center gap-2"><span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${urgencyClasses[urgencyLabel(selectedReport)]}`}>{urgencyLabel(selectedReport)} urgency</span><span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${isVerified ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>{isVerified ? "Verified" : selectedReport.status || "Submitted"}</span>{selectedReport.id && <span className="ml-auto rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-medium text-slate-500">{selectedReport.id}</span>}</div>
+                  <div className="flex flex-wrap items-center gap-2"><span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${urgencyClasses[urgencyLabel(selectedReport)]}`}>{urgencyLabel(selectedReport)} urgency</span><span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${isVerified ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>{isVerified ? "Verified" : selectedReport.status || "Submitted"}</span></div>
                   <h3 className="mt-3 text-lg font-bold leading-snug text-slate-900">{selectedReport.title || "Incident report"}</h3>
                   <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-600"><span className="font-semibold text-slate-700">{selectedReport.category || "Uncategorized"}</span><span className="text-slate-300">•</span><span>Reported by {selectedReport.reporter || "Guest"}</span><span className="text-slate-300">•</span><span title={selectedReport.submitted_at ? new Date(selectedReport.submitted_at).toLocaleString() : "Time unavailable"}>{relativeTime(selectedReport.submitted_at)}</span></div>
                 </section>
@@ -249,7 +249,7 @@ export default function AdminDispatch() {
                 <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(290px,0.85fr)]">
                   <div className="space-y-4">
                 <section aria-label="Photo evidence" className="rounded-xl border border-slate-200 bg-white p-3.5">
-                  <div className="mb-2 flex items-center justify-between"><h4 className="text-xs font-bold">Photo evidence</h4>{selectedPhotos.length > 0 && <span className="text-[10px] text-slate-500">{selectedPhotos.length} {selectedPhotos.length === 1 ? "photo" : "photos"}</span>}</div>
+                  <div className="mb-2 flex items-center justify-between gap-2"><h4 className="text-xs font-bold">Photo evidence</h4><button type="button" disabled={!selectedPhotos.length} onClick={() => { setPhotoIndex(0); setLightboxOpen(true); }} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-[10px] font-semibold text-emerald-800 transition hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"><Eye size={13} />{selectedPhotos.length ? `View ${selectedPhotos.length === 1 ? "photo" : `${selectedPhotos.length} photos`}` : "No photo attached"}</button></div>
                   {activePhoto ? <>
                     <button type="button" onClick={() => setLightboxOpen(true)} className="block w-full overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" aria-label="Open report photo gallery">
                       <img src={photoUrl(selectedReport.id, activePhoto.media_id)} alt={`Report evidence ${photoIndex + 1}`} className="h-40 w-full bg-slate-950/[0.02] object-contain sm:h-48" />
@@ -285,21 +285,23 @@ export default function AdminDispatch() {
                       <span className={`text-[10px] font-semibold ${available ? "text-emerald-800" : deployed ? "text-amber-800" : "text-slate-500"}`}>{unitStatus}</span>
                     </label>;
                   })}</div>}
+                  <div className="mt-3 border-t border-slate-100 pt-3">
+                    <button type="button" disabled={!canDispatch} onClick={requestDispatch} className="flex min-h-9 w-full items-center justify-center gap-2 rounded-lg bg-emerald-800 px-3 text-xs font-bold text-white shadow-sm transition hover:bg-emerald-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"><Radio size={14} />Dispatch responder</button>
+                    {dispatchReason && <p className="mt-1.5 text-center text-[10px] text-slate-500">{dispatchReason}</p>}
+                    {allDeployed && <div className="mt-3 border-t border-slate-100 pt-3"><label htmlFor="drrmo-note" className="mb-1.5 block text-[10px] font-semibold text-slate-600">Optional note for City Hall DRRMO</label><textarea id="drrmo-note" value={helpNote} onChange={(event) => setHelpNote(event.target.value)} rows={2} maxLength={500} placeholder="All local response units are deployed." className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs outline-none focus:border-amber-500 focus-visible:ring-2 focus-visible:ring-amber-100" /><button type="button" disabled={busy || !["SUBMITTED", "UNDER_REVIEW", "VERIFIED"].includes(reviewStatus)} onClick={() => performAction(`/reports/${encodeURIComponent(selectedReport.id)}/request-drrmo`, { note: helpNote }, "City Hall DRRMO support requested")} className="mt-2 min-h-9 w-full rounded-lg border border-amber-300 bg-amber-50 px-3 text-xs font-bold text-amber-900 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 disabled:opacity-50">Request help from City Hall DRRMO</button></div>}
+                  </div>
                 </section>
                   </div>
                 </div>
               </div>
 
-              <div className="shrink-0 border-t border-slate-200 bg-white p-4">
+              {(canReview || rejectOpen) && <div className="shrink-0 border-t border-slate-200 bg-white p-4">
                 {canReview && <div className="mb-2 flex flex-wrap items-center gap-2">
                   <button type="button" disabled={busy} onClick={requestVerification} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-emerald-800 px-4 text-xs font-bold text-white shadow-sm shadow-emerald-900/10 transition hover:bg-emerald-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 disabled:opacity-60"><Check size={14} />Approve / mark reviewed</button>
                   <button type="button" disabled={busy} onClick={() => setRejectOpen((open) => !open)} className="min-h-10 rounded-lg border border-red-200 bg-white px-4 text-xs font-semibold text-red-700 transition hover:border-red-300 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600 disabled:opacity-60">{rejectOpen ? "Cancel rejection" : "Reject as invalid"}</button>
                 </div>}
                 {rejectOpen && canReview && <div className="mb-2 flex gap-2"><textarea value={rejectReason} onChange={(event) => setRejectReason(event.target.value)} placeholder="Reason for rejecting this report" rows={2} maxLength={500} className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-xs outline-none focus:border-red-400 focus-visible:ring-2 focus-visible:ring-red-200" /><button type="button" disabled={busy || !rejectReason.trim()} onClick={() => performAction(`/reports/${encodeURIComponent(selectedReport.id)}/verify`, { decision: "REJECTED", reason: rejectReason }, "Report rejected")} className="rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50">Confirm</button></div>}
-                <button type="button" disabled={!canDispatch} onClick={requestDispatch} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-emerald-800 px-3 text-xs font-bold text-white shadow-sm shadow-emerald-900/10 transition hover:bg-emerald-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"><Radio size={14} />Dispatch responder</button>
-                {dispatchReason && <p className="mt-1.5 text-center text-[10px] text-slate-500">{dispatchReason}</p>}
-                {allDeployed && <div className="mt-3 border-t border-slate-100 pt-3"><label htmlFor="drrmo-note" className="mb-1.5 block text-[10px] font-semibold text-slate-600">Optional note for City Hall DRRMO</label><textarea id="drrmo-note" value={helpNote} onChange={(event) => setHelpNote(event.target.value)} rows={2} maxLength={500} placeholder="All local response units are deployed." className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs outline-none focus:border-amber-500 focus-visible:ring-2 focus-visible:ring-amber-100" /><button type="button" disabled={busy || !["SUBMITTED", "UNDER_REVIEW", "VERIFIED"].includes(reviewStatus)} onClick={() => performAction(`/reports/${encodeURIComponent(selectedReport.id)}/request-drrmo`, { note: helpNote }, "City Hall DRRMO support requested")} className="mt-2 min-h-9 w-full rounded-lg border border-amber-300 bg-amber-50 px-3 text-xs font-bold text-amber-900 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 disabled:opacity-50">Request help from City Hall DRRMO</button></div>}
-              </div>
+              </div>}
             </>}
           </section>
         </div>
