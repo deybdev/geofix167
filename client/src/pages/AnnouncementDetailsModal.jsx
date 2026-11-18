@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { CalendarDays, Clock3, Expand, MapPin, Megaphone, X } from "lucide-react";
 import { announcementCategoryBadge } from "../shared/constants/announcementCategoryStyles";
 
@@ -42,8 +43,8 @@ export default function AnnouncementDetailsModal({ id, onClose }) {
     };
   }, [onClose, selectedImage]);
 
-  return <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 p-3 backdrop-blur-sm sm:p-6" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <section role="dialog" aria-modal="true" aria-labelledby="announcement-dialog-title" className="relative max-h-[min(88dvh,720px)] w-full max-w-2xl overflow-y-auto rounded-2xl border border-white/70 bg-[#fffefa] shadow-2xl">
+  return createPortal(<div className="fixed inset-0 z-[10000] grid place-items-center overflow-y-auto bg-slate-950/60 p-3 backdrop-blur-sm sm:p-6" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <section role="dialog" aria-modal="true" aria-labelledby="announcement-dialog-title" className="relative my-auto max-h-[min(88dvh,760px)] w-full max-w-2xl overflow-y-auto rounded-2xl border border-white/70 bg-[#fffefa] shadow-2xl">
       <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-[#fffefa]/95 px-5 py-4 backdrop-blur sm:px-7">
         <div className="flex items-center gap-2 text-xs font-bold text-emerald-800"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50"><Megaphone size={16} /></span>Barangay 167 announcement</div>
         <button type="button" onClick={onClose} aria-label="Close announcement" className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600"><X size={19} /></button>
@@ -69,6 +70,6 @@ export default function AnnouncementDetailsModal({ id, onClose }) {
             </>}
       </div>
     </section>
-    {selectedImage && <div role="dialog" aria-modal="true" aria-label={`Image preview: ${selectedImage.original_filename}`} className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/90 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedImage(null); }}><div className="relative flex max-h-[92dvh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-white/15 bg-slate-950"><div className="flex items-center justify-between gap-3 px-4 py-3 text-white"><span className="truncate text-xs font-semibold">{selectedImage.original_filename}</span><button type="button" onClick={() => setSelectedImage(null)} aria-label="Close image preview" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white/80 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"><X size={18} /></button></div><img src={selectedImage.url} alt={selectedImage.original_filename} className="max-h-[82dvh] max-w-full self-center object-contain" /></div></div>}
-  </div>;
+    {selectedImage && <div role="dialog" aria-modal="true" aria-label={`Image preview: ${selectedImage.original_filename}`} className="fixed inset-0 z-[10010] flex items-center justify-center bg-slate-950/90 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedImage(null); }}><div className="relative flex max-h-[92dvh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-white/15 bg-slate-950"><div className="flex items-center justify-between gap-3 px-4 py-3 text-white"><span className="truncate text-xs font-semibold">{selectedImage.original_filename}</span><button type="button" onClick={() => setSelectedImage(null)} aria-label="Close image preview" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white/80 transition hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"><X size={18} /></button></div><img src={selectedImage.url} alt={selectedImage.original_filename} className="max-h-[82dvh] max-w-full self-center object-contain" /></div></div>}
+  </div>, document.body);
 }

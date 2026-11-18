@@ -58,6 +58,7 @@ export default function AdminDispatch() {
   const [units, setUnits] = useState([]);
   const [selectedId, setSelectedId] = useState("");
   const [selectedUnit, setSelectedUnit] = useState("");
+  const [mapFocusedIncident, setMapFocusedIncident] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
   const [rejectOpen, setRejectOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
@@ -92,7 +93,7 @@ export default function AdminDispatch() {
   }, []);
 
   useEffect(() => { void refresh(); }, [refresh]);
-  useEffect(() => { setPhotoIndex(0); setLightboxOpen(false); setRejectOpen(false); setRejectReason(""); }, [selectedId]);
+  useEffect(() => { setPhotoIndex(0); setLightboxOpen(false); setRejectOpen(false); setRejectReason(""); setMapFocusedIncident(null); }, [selectedId]);
 
   const sortedReports = useMemo(() => [...reports].sort((a, b) =>
     urgencyRank[urgencyLabel(a)] - urgencyRank[urgencyLabel(b)]
@@ -109,12 +110,25 @@ export default function AdminDispatch() {
     return matchesUrgency && matchesStatus && matchesSearch;
   }), [sortedReports, statusFilter, urgencyFilter, searchQuery]);
   const selectedReport = reports.find((report) => report.id === selectedId) || null;
+  const mapIncidents = useMemo(() => reports.flatMap((report) => {
+    const hasLatitude = report.latitude !== null && report.latitude !== undefined && report.latitude !== "";
+    const hasLongitude = report.longitude !== null && report.longitude !== undefined && report.longitude !== "";
+    const lat = Number(report.latitude);
+    const lng = Number(report.longitude);
+    if (!hasLatitude || !hasLongitude || !Number.isFinite(lat) || !Number.isFinite(lng)
+      || lat < -90 || lat > 90 || lng < -180 || lng > 180) return [];
+    return [{ id: report.id, title: report.title, category: report.category, status: report.status, lat, lng }];
+  }), [reports]);
   const selectedPhotos = selectedReport?.photos ?? [];
   const activePhoto = selectedPhotos[photoIndex] ?? selectedPhotos[0] ?? null;
   const availableUnits = useMemo(() => units.filter((unit) => unit.availability_status === "AVAILABLE"), [units]);
   const allDeployed = units.length > 0 && availableUnits.length === 0;
+  const reportLatitude = Number(selectedReport?.latitude);
+  const reportLongitude = Number(selectedReport?.longitude);
   const hasCoordinates = selectedReport?.latitude != null && selectedReport?.longitude != null
-    && Number.isFinite(Number(selectedReport.latitude)) && Number.isFinite(Number(selectedReport.longitude));
+    && Number.isFinite(reportLatitude) && Number.isFinite(reportLongitude)
+    && reportLatitude >= -90 && reportLatitude <= 90
+    && reportLongitude >= -180 && reportLongitude <= 180;
   const reviewStatus = String(selectedReport?.status_code || "").toUpperCase();
   const canReview = ["SUBMITTED", "UNDER_REVIEW"].includes(reviewStatus);
   const isVerified = reviewStatus === "VERIFIED";
@@ -124,6 +138,18 @@ export default function AdminDispatch() {
     : !isVerified ? "Approve the report before dispatching."
       : !selectedUnit ? "Select an available responder."
         : "";
+
+  function focusReportOnMap() {
+    if (!selectedReport || !hasCoordinates) return;
+    setMapFocusedIncident({
+      id: selectedReport.id,
+      title: selectedReport.title,
+      category: selectedReport.category,
+      status: selectedReport.status,
+      lat: Number(selectedReport.latitude),
+      lng: Number(selectedReport.longitude),
+    });
+  }
 
   async function performAction(path, body, successMessage) {
     setBusy(true);
@@ -261,7 +287,8 @@ export default function AdminDispatch() {
                 <section aria-label="Description" className="rounded-xl border border-slate-200 bg-white p-3.5"><h4 className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">Incident description</h4><p className={`whitespace-pre-wrap text-xs leading-relaxed ${selectedReport.description || selectedReport.description_original ? "text-slate-700" : "text-slate-500"}`}>{String(selectedReport.description || selectedReport.description_original || "").trim() || "No description. See photo evidence."}</p></section>
 
                 <section aria-label="Location" className="rounded-xl border border-slate-200 bg-white p-3.5"><h4 className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">Location</h4><p className="flex items-start gap-1.5 text-xs text-slate-600"><MapPin size={13} className="mt-0.5 shrink-0 text-emerald-700" />{selectedReport.location || "Location not provided"}{hasCoordinates && <span className="text-slate-400">· {Number(selectedReport.latitude).toFixed(5)}, {Number(selectedReport.longitude).toFixed(5)}</span>}</p>
-                  {hasCoordinates && <div className="mt-2 h-32 overflow-hidden rounded-lg border border-slate-200"><MapViewer compact showBackButton={false} incidents={[{ id: selectedReport.id, title: selectedReport.title, category: selectedReport.category, status: selectedReport.status, lat: Number(selectedReport.latitude), lng: Number(selectedReport.longitude) }]} selectedIncident={{ id: selectedReport.id, lat: Number(selectedReport.latitude), lng: Number(selectedReport.longitude) }} /></div>}
+                  <div className="mt-2 flex justify-end"><button type="button" disabled={!hasCoordinates} onClick={focusReportOnMap} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-[10px] font-semibold text-emerald-800 transition hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"><MapPin size={12} />Pin report on map</button></div>
+                  <div className="mt-2 h-[320px] overflow-hidden rounded-lg border border-slate-200 sm:h-[380px]"><MapViewer compact mapHeight="h-full" showBackButton={false} incidents={mapIncidents} reportCount={mapIncidents.length} selectedIncident={mapFocusedIncident} allowOutsideIncidents allowOutsideBounds fitWholeBarangay showFitButton /></div>
                 </section>
 
                   </div>
