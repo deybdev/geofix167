@@ -6,6 +6,11 @@ import {
 import MapViewer from "../../shared/components/MapViewer";
 import { toast } from "../../shared/components/ui/toast";
 import AccessibleDropdown from "../../shared/components/AccessibleDropdown";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader,
+  AlertDialogTitle,
+} from "../../shared/components/ui/alert-dialog";
 
 async function request(path, options = {}) {
   const response = await fetch(`/api/admin/dispatch${path}`, {
@@ -55,6 +60,7 @@ export default function AdminDispatch() {
   const [selectedUnit, setSelectedUnit] = useState("");
   const [rejectReason, setRejectReason] = useState("");
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState(null);
   const [helpNote, setHelpNote] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -135,6 +141,41 @@ export default function AdminDispatch() {
     }
   }
 
+  async function confirmPendingAction() {
+    if (!pendingAction) return;
+    const action = pendingAction;
+    setPendingAction(null);
+    await performAction(action.path, action.body, action.successMessage);
+  }
+
+  function requestVerification() {
+    if (!selectedReport || !canReview) return;
+    setPendingAction({
+      kind: "verify",
+      path: `/reports/${encodeURIComponent(selectedReport.id)}/verify`,
+      body: { decision: "VERIFIED" },
+      successMessage: "Report approved and marked reviewed",
+      title: "Approve this report?",
+      description: `Confirm that “${selectedReport.title || "Incident report"}” is valid. It will be marked reviewed and become eligible for responder dispatch.`,
+      confirmLabel: "Approve report",
+    });
+  }
+
+  function requestDispatch() {
+    if (!selectedReport || !canDispatch) return;
+    const unit = units.find((candidate) => candidate.id === selectedUnit);
+    const unitName = unit?.display_name?.trim() || unit?.responder_name?.trim() || unit?.resource_type || "selected responder";
+    setPendingAction({
+      kind: "dispatch",
+      path: `/reports/${encodeURIComponent(selectedReport.id)}/dispatch`,
+      body: { unit_id: selectedUnit },
+      successMessage: "Responder dispatched",
+      title: "Dispatch this responder?",
+      description: `${unitName} will be assigned to “${selectedReport.title || "Incident report"}” and marked as deployed.`,
+      confirmLabel: "Confirm dispatch",
+    });
+  }
+
   useEffect(() => {
     if (!lightboxOpen) return undefined;
     const onKeyDown = (event) => {
@@ -198,35 +239,39 @@ export default function AdminDispatch() {
 
           <section className={`${card} flex min-h-0 flex-col overflow-hidden`}>
             {!selectedReport ? <div className="px-5 py-12 text-center"><ShieldCheck size={28} className="mx-auto text-emerald-700" /><p className="mt-3 text-sm font-semibold">Select a report</p><p className="mt-1 text-xs text-slate-500">The report details and responder actions will appear here.</p></div> : <>
-              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3 pb-2">
-                <section aria-label="Report summary">
-                  <div className="flex flex-wrap items-center gap-2"><span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${urgencyClasses[urgencyLabel(selectedReport)]}`}>{urgencyLabel(selectedReport)}</span><span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${isVerified ? "bg-emerald-50 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>{isVerified ? "Verified" : selectedReport.status || "Submitted"}</span></div>
-                  <h3 className="mt-2 text-base font-bold leading-snug text-slate-900">{selectedReport.title || "Incident report"}</h3>
-                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-600"><span>{selectedReport.category || "Uncategorized"}</span><span>Reporter: {selectedReport.reporter || "Guest"}</span><span title={selectedReport.submitted_at ? new Date(selectedReport.submitted_at).toLocaleString() : "Time unavailable"}>{relativeTime(selectedReport.submitted_at)}</span></div>
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 pb-3 sm:p-5">
+                <section aria-label="Report summary" className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                  <div className="flex flex-wrap items-center gap-2"><span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${urgencyClasses[urgencyLabel(selectedReport)]}`}>{urgencyLabel(selectedReport)} urgency</span><span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${isVerified ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>{isVerified ? "Verified" : selectedReport.status || "Submitted"}</span>{selectedReport.id && <span className="ml-auto rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-medium text-slate-500">{selectedReport.id}</span>}</div>
+                  <h3 className="mt-3 text-lg font-bold leading-snug text-slate-900">{selectedReport.title || "Incident report"}</h3>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-600"><span className="font-semibold text-slate-700">{selectedReport.category || "Uncategorized"}</span><span className="text-slate-300">•</span><span>Reported by {selectedReport.reporter || "Guest"}</span><span className="text-slate-300">•</span><span title={selectedReport.submitted_at ? new Date(selectedReport.submitted_at).toLocaleString() : "Time unavailable"}>{relativeTime(selectedReport.submitted_at)}</span></div>
                 </section>
 
-                <section aria-label="Photo evidence">
+                <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(290px,0.85fr)]">
+                  <div className="space-y-4">
+                <section aria-label="Photo evidence" className="rounded-xl border border-slate-200 bg-white p-3.5">
                   <div className="mb-2 flex items-center justify-between"><h4 className="text-xs font-bold">Photo evidence</h4>{selectedPhotos.length > 0 && <span className="text-[10px] text-slate-500">{selectedPhotos.length} {selectedPhotos.length === 1 ? "photo" : "photos"}</span>}</div>
                   {activePhoto ? <>
                     <button type="button" onClick={() => setLightboxOpen(true)} className="block w-full overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" aria-label="Open report photo gallery">
-                      <img src={photoUrl(selectedReport.id, activePhoto.media_id)} alt={`Report evidence ${photoIndex + 1}`} className="max-h-40 w-full object-contain" />
+                      <img src={photoUrl(selectedReport.id, activePhoto.media_id)} alt={`Report evidence ${photoIndex + 1}`} className="h-40 w-full bg-slate-950/[0.02] object-contain sm:h-48" />
                     </button>
                     {selectedPhotos.length > 1 && <div className="mt-2 flex gap-2 overflow-x-auto pb-1">{selectedPhotos.map((photo, index) => <button key={photo.media_id} type="button" aria-label={`Show photo ${index + 1}`} aria-pressed={photoIndex === index} onClick={() => setPhotoIndex(index)} className={`h-14 w-16 shrink-0 overflow-hidden rounded-md border-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 ${photoIndex === index ? "border-emerald-700" : "border-slate-200"}`}><img src={photoUrl(selectedReport.id, photo.media_id)} alt="" className="h-full w-full object-cover" /></button>)}</div>}
                   </> : <div className="flex min-h-20 items-center justify-center gap-2 rounded-lg border border-dashed border-slate-200 bg-slate-50 text-xs text-slate-500"><ImageIcon size={15} />No photo submitted</div>}
                 </section>
 
-                <section aria-label="Description"><h4 className="mb-1 text-xs font-bold">Description</h4><p className={`whitespace-pre-wrap text-xs leading-relaxed ${selectedReport.description || selectedReport.description_original ? "text-slate-700" : "text-slate-500"}`}>{String(selectedReport.description || selectedReport.description_original || "").trim() || "No description. See photo evidence."}</p></section>
+                <section aria-label="Description" className="rounded-xl border border-slate-200 bg-white p-3.5"><h4 className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">Incident description</h4><p className={`whitespace-pre-wrap text-xs leading-relaxed ${selectedReport.description || selectedReport.description_original ? "text-slate-700" : "text-slate-500"}`}>{String(selectedReport.description || selectedReport.description_original || "").trim() || "No description. See photo evidence."}</p></section>
 
-                <section aria-label="Location"><h4 className="mb-1 text-xs font-bold">Location</h4><p className="flex items-start gap-1.5 text-xs text-slate-600"><MapPin size={13} className="mt-0.5 shrink-0 text-emerald-700" />{selectedReport.location || "Location not provided"}{hasCoordinates && <span className="text-slate-400">· {Number(selectedReport.latitude).toFixed(5)}, {Number(selectedReport.longitude).toFixed(5)}</span>}</p>
+                <section aria-label="Location" className="rounded-xl border border-slate-200 bg-white p-3.5"><h4 className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">Location</h4><p className="flex items-start gap-1.5 text-xs text-slate-600"><MapPin size={13} className="mt-0.5 shrink-0 text-emerald-700" />{selectedReport.location || "Location not provided"}{hasCoordinates && <span className="text-slate-400">· {Number(selectedReport.latitude).toFixed(5)}, {Number(selectedReport.longitude).toFixed(5)}</span>}</p>
                   {hasCoordinates && <div className="mt-2 h-32 overflow-hidden rounded-lg border border-slate-200"><MapViewer compact showBackButton={false} incidents={[{ id: selectedReport.id, title: selectedReport.title, category: selectedReport.category, status: selectedReport.status, lat: Number(selectedReport.latitude), lng: Number(selectedReport.longitude) }]} selectedIncident={{ id: selectedReport.id, lat: Number(selectedReport.latitude), lng: Number(selectedReport.longitude) }} /></div>}
                 </section>
 
-                <section aria-label="Verification" className="border-t border-slate-100 pt-3">
-                  <div className="flex flex-wrap items-center gap-2 text-xs"><h4 className="font-bold">Review status</h4><span className={isVerified ? "text-emerald-700" : "text-slate-500"}>{isVerified ? "Verified" : "Waiting for verification"}</span></div>
+                  </div>
+                  <div className="space-y-4">
+                <section aria-label="Verification" className={`rounded-xl border p-3.5 ${isVerified ? "border-emerald-200 bg-emerald-50/70" : "border-amber-200 bg-amber-50/60"}`}>
+                  <div className="flex items-start gap-3"><span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${isVerified ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}><ShieldCheck size={17} /></span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center justify-between gap-2"><h4 className="text-xs font-bold text-slate-900">Report review</h4><span className={`rounded-full px-2 py-1 text-[9px] font-bold ${isVerified ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>{isVerified ? "Verified" : "Awaiting review"}</span></div><p className="mt-1 text-[11px] leading-relaxed text-slate-600">{isVerified ? "This report has been approved and can be assigned to an available responder." : "Check the report details and evidence before approving it for dispatch."}</p></div></div>
                 </section>
 
-                <section aria-label="Responders" className="border-t border-slate-100 pt-3">
-                  <div className="flex items-center justify-between gap-2"><h4 className="flex items-center gap-2 text-xs font-bold"><Truck size={14} />Responders / mobile units</h4><span className="text-[10px] text-slate-500">{availableUnits.length} available</span></div>
+                <section aria-label="Responders" className="rounded-xl border border-slate-200 bg-white p-3.5">
+                  <div className="flex items-center justify-between gap-2"><h4 className="flex items-center gap-2 text-xs font-bold"><Truck size={14} className="text-emerald-800" />Responders / mobile units</h4><span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-800">{availableUnits.length} available</span></div>
                   {units.length === 0 ? <p className="mt-3 text-xs text-slate-500">No responder units are registered.</p> : <div className="mt-2 space-y-1.5">{units.map((unit) => {
                     const available = unit.availability_status === "AVAILABLE";
                     const deployed = unit.availability_status === "BUSY";
@@ -241,15 +286,17 @@ export default function AdminDispatch() {
                     </label>;
                   })}</div>}
                 </section>
+                  </div>
+                </div>
               </div>
 
-              <div className="shrink-0 border-t border-slate-200 bg-white p-3">
+              <div className="shrink-0 border-t border-slate-200 bg-white p-4">
                 {canReview && <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <button type="button" disabled={busy} onClick={() => performAction(`/reports/${encodeURIComponent(selectedReport.id)}/verify`, { decision: "VERIFIED" }, "Report approved and marked reviewed")} className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-emerald-800 px-3 text-xs font-bold text-white hover:bg-emerald-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 disabled:opacity-60"><Check size={14} />Verify report</button>
-                  <button type="button" disabled={busy} onClick={() => setRejectOpen((open) => !open)} className="min-h-9 rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-700 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600 disabled:opacity-60">{rejectOpen ? "Cancel rejection" : "Reject as invalid"}</button>
+                  <button type="button" disabled={busy} onClick={requestVerification} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-emerald-800 px-4 text-xs font-bold text-white shadow-sm shadow-emerald-900/10 transition hover:bg-emerald-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 disabled:opacity-60"><Check size={14} />Approve / mark reviewed</button>
+                  <button type="button" disabled={busy} onClick={() => setRejectOpen((open) => !open)} className="min-h-10 rounded-lg border border-red-200 bg-white px-4 text-xs font-semibold text-red-700 transition hover:border-red-300 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600 disabled:opacity-60">{rejectOpen ? "Cancel rejection" : "Reject as invalid"}</button>
                 </div>}
                 {rejectOpen && canReview && <div className="mb-2 flex gap-2"><textarea value={rejectReason} onChange={(event) => setRejectReason(event.target.value)} placeholder="Reason for rejecting this report" rows={2} maxLength={500} className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-xs outline-none focus:border-red-400 focus-visible:ring-2 focus-visible:ring-red-200" /><button type="button" disabled={busy || !rejectReason.trim()} onClick={() => performAction(`/reports/${encodeURIComponent(selectedReport.id)}/verify`, { decision: "REJECTED", reason: rejectReason }, "Report rejected")} className="rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50">Confirm</button></div>}
-                <button type="button" disabled={!canDispatch} onClick={() => performAction(`/reports/${encodeURIComponent(selectedReport.id)}/dispatch`, { unit_id: selectedUnit }, "Responder dispatched")} className="flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-emerald-800 px-3 text-xs font-bold text-white hover:bg-emerald-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"><Radio size={14} />Dispatch responder</button>
+                <button type="button" disabled={!canDispatch} onClick={requestDispatch} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-emerald-800 px-3 text-xs font-bold text-white shadow-sm shadow-emerald-900/10 transition hover:bg-emerald-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"><Radio size={14} />Dispatch responder</button>
                 {dispatchReason && <p className="mt-1.5 text-center text-[10px] text-slate-500">{dispatchReason}</p>}
                 {allDeployed && <div className="mt-3 border-t border-slate-100 pt-3"><label htmlFor="drrmo-note" className="mb-1.5 block text-[10px] font-semibold text-slate-600">Optional note for City Hall DRRMO</label><textarea id="drrmo-note" value={helpNote} onChange={(event) => setHelpNote(event.target.value)} rows={2} maxLength={500} placeholder="All local response units are deployed." className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs outline-none focus:border-amber-500 focus-visible:ring-2 focus-visible:ring-amber-100" /><button type="button" disabled={busy || !["SUBMITTED", "UNDER_REVIEW", "VERIFIED"].includes(reviewStatus)} onClick={() => performAction(`/reports/${encodeURIComponent(selectedReport.id)}/request-drrmo`, { note: helpNote }, "City Hall DRRMO support requested")} className="mt-2 min-h-9 w-full rounded-lg border border-amber-300 bg-amber-50 px-3 text-xs font-bold text-amber-900 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 disabled:opacity-50">Request help from City Hall DRRMO</button></div>}
               </div>
@@ -257,6 +304,22 @@ export default function AdminDispatch() {
           </section>
         </div>
       )}
+
+      <AlertDialog open={Boolean(pendingAction)} onOpenChange={(open) => { if (!open && !busy) setPendingAction(null); }}>
+        <AlertDialogContent className="overflow-hidden rounded-2xl border border-slate-200 p-0 shadow-2xl">
+          <div className={`h-1.5 ${pendingAction?.kind === "dispatch" ? "bg-emerald-700" : "bg-teal-700"}`} />
+          <div className="p-5 sm:p-6">
+            <AlertDialogHeader className="gap-3 text-left">
+              <div className={`flex h-11 w-11 items-center justify-center rounded-2xl ${pendingAction?.kind === "dispatch" ? "bg-emerald-50 text-emerald-800" : "bg-teal-50 text-teal-800"}`}>{pendingAction?.kind === "dispatch" ? <Radio size={20} /> : <ShieldCheck size={20} />}</div>
+              <div><AlertDialogTitle className="text-base font-bold text-slate-900">{pendingAction?.title}</AlertDialogTitle><AlertDialogDescription className="mt-1.5 text-xs leading-relaxed text-slate-600">{pendingAction?.description}</AlertDialogDescription></div>
+            </AlertDialogHeader>
+          </div>
+          <AlertDialogFooter className="border-slate-100 bg-slate-50/80 p-4 sm:px-6">
+            <AlertDialogCancel disabled={busy} className="h-9 rounded-lg px-4 text-xs">Cancel</AlertDialogCancel>
+            <AlertDialogAction disabled={busy} onClick={confirmPendingAction} className={`h-9 rounded-lg px-4 text-xs font-bold text-white ${pendingAction?.kind === "dispatch" ? "bg-emerald-800 hover:bg-emerald-900" : "bg-teal-800 hover:bg-teal-900"}`}>{pendingAction?.confirmLabel || "Confirm"}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {lightboxOpen && selectedReport && activePhoto && <div role="dialog" aria-modal="true" aria-label="Report photo gallery" className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/85 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setLightboxOpen(false); }}>
         <div className="relative flex max-h-[92dvh] w-full max-w-5xl flex-col rounded-xl border border-white/15 bg-slate-950 p-3">

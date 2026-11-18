@@ -142,24 +142,29 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
             : "w-[72px] -translate-x-full md:translate-x-0"
         }`}
       >
-        <div className={`mb-7 flex items-center gap-2 px-2 ${open ? "" : "md:justify-center md:px-0"}`}>
-          <div className="flex h-6 w-6 items-center justify-center rounded-full border-[4px] border-(--gf-green) text-[8px] font-bold text-(--gf-green)">
-            G
-          </div>
-          <div className={`text-[11px] font-bold leading-tight text-(--gf-green) ${open ? "" : "md:hidden"}`}>
-            GeoFix <span className="block text-[8px]">Barangay 167</span>
-          </div>
-          <button
+        <div className={`mb-6 ${open ? "relative flex items-center justify-center py-1" : "flex flex-col items-center gap-4 px-0"}`}>
+          {!open && <button
             type="button"
-            className="ml-auto rounded-md p-1 text-slate-500 hover:bg-(--gf-green-soft) hover:text-(--gf-green)"
+            className="rounded-lg p-2 text-slate-600 transition hover:bg-(--gf-green-soft) hover:text-(--gf-green) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--gf-green)"
             onClick={onToggle}
-            aria-expanded={open}
-            aria-label={open ? "Close menu" : "Open menu"}
-          >
-            <Menu size={19} />
-          </button>
+            aria-expanded={false}
+            aria-label="Open menu"
+          ><Menu size={19} /></button>}
+          <div className={`flex items-center gap-2 ${open ? "" : "flex-col"}`}>
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-[4px] border-(--gf-green) text-[10px] font-bold text-(--gf-green)" aria-label="GeoFix 167">G</div>
+            <div className={`min-w-0 text-[11px] font-bold leading-tight text-(--gf-green) ${open ? "" : "md:hidden"}`}>
+              GeoFix <span className="block text-[8px]">Barangay 167</span>
+            </div>
+          </div>
+          {open && <button
+            type="button"
+            className="absolute right-1 rounded-lg p-2 text-slate-500 transition hover:bg-(--gf-green-soft) hover:text-(--gf-green) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--gf-green)"
+            onClick={onToggle}
+            aria-expanded={true}
+            aria-label="Close menu"
+          ><Menu size={19} /></button>}
         </div>
-        <nav className="max-h-[calc(100vh-118px)] space-y-1 overflow-y-auto pr-0.5">
+        <nav className="max-h-[calc(100dvh-142px)] space-y-1 overflow-y-auto pr-0.5">
           {navigation.map(({ label, icon: Icon, path, children, section }) => {
             const active = path && (path === PATHS.admin ? location.pathname === path : location.pathname.startsWith(path));
             const expanded = expandedGroup === label;
