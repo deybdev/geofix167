@@ -223,7 +223,7 @@ const DROP_OFF_ICON = L.divIcon({
 /* ------------------------------ Map behavior ------------------------------ */
 
 // Start zoomed in, stop zooming out at the whole barangay, lock panning
-function FitBarangay({ boundary, fitRef }) {
+function FitBarangay({ boundary, fitRef, fitWholeBarangay = false, allowOutsideBounds = false }) {
   const map = useMap();
 
   useEffect(() => {
@@ -245,9 +245,9 @@ function FitBarangay({ boundary, fitRef }) {
 
       map.invalidateSize();
       const fullZoom = map.getBoundsZoom(bounds, false, L.point(20, 20));
-      const zoom = Math.max(DEFAULT_ZOOM, fullZoom);
+      const zoom = fitWholeBarangay ? fullZoom : Math.max(DEFAULT_ZOOM, fullZoom);
 
-      map.setMaxBounds(bounds.pad(0.15));
+      map.setMaxBounds(allowOutsideBounds ? null : bounds.pad(0.15));
       map.setMinZoom(fullZoom);
       map.setView(bounds.getCenter(), zoom, { animate: false });
 
@@ -256,7 +256,7 @@ function FitBarangay({ boundary, fitRef }) {
 
     fit();
     return () => cancelAnimationFrame(frame);
-  }, [boundary, map, fitRef]);
+  }, [boundary, map, fitRef, fitWholeBarangay, allowOutsideBounds]);
 
   return null;
 }
@@ -295,16 +295,16 @@ function ClickHandler({ boundary, onSelect }) {
 // Gently center the map on the selected incident pin — only when the incident
 // actually sits inside the barangay. Out-of-boundary selections (bad/mock data)
 // must not drag the camera away from the highlighted scope.
-function FlyToIncident({ incident, boundary }) {
+function FlyToIncident({ incident, boundary, allowOutsideBounds = false }) {
   const map = useMap();
 
   useEffect(() => {
-    if (incident && isInside(incident.lat, incident.lng, boundary)) {
+    if (incident && (allowOutsideBounds || isInside(incident.lat, incident.lng, boundary))) {
       map.flyTo([incident.lat, incident.lng], Math.max(map.getZoom(), 17), {
         duration: 0.6,
       });
     }
-  }, [incident, boundary, map]);
+  }, [incident, boundary, map, allowOutsideBounds]);
 
   return null;
 }
@@ -412,6 +412,11 @@ export default function MapViewer({
   backPath = "/resident",
   mapHeight = null,
   hideMapLabel = false,
+  reportCount = null,
+  allowOutsideIncidents = false,
+  allowOutsideBounds = false,
+  fitWholeBarangay = false,
+  showFitButton = false,
 }) {
   const navigate = useNavigate();
   const [boundary, setBoundary] = useState(null);
@@ -457,13 +462,14 @@ export default function MapViewer({
   // wherever they are — stations can sit outside the boundary.
   const visible = useMemo(
     () =>
-      !highlightBoundary
+      !highlightBoundary || allowOutsideIncidents
         ? incidents
         : boundary
           ? incidents.filter((i) => isInside(i.lat, i.lng, boundary))
           : [],
-    [incidents, boundary, highlightBoundary],
+    [incidents, boundary, highlightBoundary, allowOutsideIncidents],
   );
+  const displayedReportCount = Number.isFinite(reportCount) ? reportCount : visible.length;
 
   const heatPoints = useMemo(
     () => visible.map((i) => [i.lat, i.lng, 1]),
@@ -523,9 +529,9 @@ export default function MapViewer({
           />
         )}
 
-        {highlightBoundary && <FitBarangay boundary={boundary} fitRef={fitRef} />}
+        {highlightBoundary && <FitBarangay boundary={boundary} fitRef={fitRef} fitWholeBarangay={fitWholeBarangay} allowOutsideBounds={allowOutsideBounds} />}
         <ClickHandler boundary={boundary} onSelect={onLocationSelect} />
-        <FlyToIncident incident={selectedIncident} boundary={boundary} />
+        <FlyToIncident incident={selectedIncident} boundary={boundary} allowOutsideBounds={allowOutsideBounds} />
         {useFitOverlay ? (
           <FitOverlay points={fitPoints} bottomInset={bottomInset} />
         ) : (
@@ -653,7 +659,7 @@ export default function MapViewer({
             <div className={`${CARD} ${compact ? "rounded-lg px-1.5 py-1" : "px-3 py-2"}`}>
               <p className={`${compact ? "text-[9px]" : "text-sm"} font-bold leading-tight`}>Barangay 167</p>
               <p className={`${compact ? "text-[8px]" : "text-[11px]"} text-gray-500`}>
-                {visible.length} report{visible.length === 1 ? "" : "s"}
+                {displayedReportCount} report{displayedReportCount === 1 ? "" : "s"}
               </p>
             </div>
           )}
@@ -765,6 +771,20 @@ export default function MapViewer({
               strokeLinejoin="round"
             >
               <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+            </svg>
+          </button>
+        )}
+
+        {compact && showFitButton && (
+          <button
+            type="button"
+            aria-label="Show the whole Barangay 167 map"
+            title="Show whole barangay"
+            onClick={() => fitRef.current?.()}
+            className={`${BTN} bg-white text-gray-700`}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" />
             </svg>
           </button>
         )}
