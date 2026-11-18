@@ -21,7 +21,7 @@ route.get("/reports", async (c) => {
   const result = await c.env.geofix167_db.prepare(`
     SELECT r.incident_id AS id, r.title, r.category, r.description_sanitized AS description,
       r.description_original, r.latitude, r.longitude, r.location_description AS location,
-      r.submitted_at, r.is_emergency, r.priority_code,
+      r.submitted_at, r.is_emergency, r.priority_code, r.within_barangay_boundary,
       s.code AS status_code, s.display_name AS status,
       COALESCE(NULLIF(trim(u.first_name || ' ' || u.last_name), ''), gs.display_name, 'Guest') AS reporter
     FROM incident_reports r

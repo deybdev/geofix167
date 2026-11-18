@@ -4,6 +4,7 @@ import {
   LoaderCircle, MapPin, Radio, RefreshCw, ShieldCheck, Truck, X,
 } from "lucide-react";
 import MapViewer from "../../shared/components/MapViewer";
+import { isInside } from "../../shared/utils/mapUtils";
 import { toast } from "../../shared/components/ui/toast";
 import AccessibleDropdown from "../../shared/components/AccessibleDropdown";
 import {
@@ -56,6 +57,7 @@ function photoUrl(reportId, mediaId) {
 export default function AdminDispatch() {
   const [reports, setReports] = useState([]);
   const [units, setUnits] = useState([]);
+  const [barangayBoundary, setBarangayBoundary] = useState(null);
   const [selectedId, setSelectedId] = useState("");
   const [selectedUnit, setSelectedUnit] = useState("");
   const [mapFocusedIncident, setMapFocusedIncident] = useState(null);
@@ -93,6 +95,14 @@ export default function AdminDispatch() {
   }, []);
 
   useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    let active = true;
+    fetch("/barangay-167.geojson", { cache: "force-cache" })
+      .then((response) => response.ok ? response.json() : null)
+      .then((boundary) => { if (active && boundary) setBarangayBoundary(boundary); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
   useEffect(() => { setPhotoIndex(0); setLightboxOpen(false); setRejectOpen(false); setRejectReason(""); setMapFocusedIncident(null); }, [selectedId]);
 
   const sortedReports = useMemo(() => [...reports].sort((a, b) =>
@@ -117,8 +127,14 @@ export default function AdminDispatch() {
     const lng = Number(report.longitude);
     if (!hasLatitude || !hasLongitude || !Number.isFinite(lat) || !Number.isFinite(lng)
       || lat < -90 || lat > 90 || lng < -180 || lng > 180) return [];
-    return [{ id: report.id, title: report.title, category: report.category, status: report.status, lat, lng }];
-  }), [reports]);
+    const hasBoundaryFlag = report.within_barangay_boundary !== null
+      && report.within_barangay_boundary !== undefined
+      && report.within_barangay_boundary !== "";
+    const outsideBarangay = hasBoundaryFlag
+      ? Number(report.within_barangay_boundary) === 0
+      : Boolean(barangayBoundary && !isInside(lat, lng, barangayBoundary));
+    return [{ id: report.id, title: report.title, category: report.category, status: report.status, lat, lng, outsideBarangay }];
+  }), [reports, barangayBoundary]);
   const selectedPhotos = selectedReport?.photos ?? [];
   const activePhoto = selectedPhotos[photoIndex] ?? selectedPhotos[0] ?? null;
   const availableUnits = useMemo(() => units.filter((unit) => unit.availability_status === "AVAILABLE"), [units]);
@@ -129,6 +145,12 @@ export default function AdminDispatch() {
     && Number.isFinite(reportLatitude) && Number.isFinite(reportLongitude)
     && reportLatitude >= -90 && reportLatitude <= 90
     && reportLongitude >= -180 && reportLongitude <= 180;
+  const hasBoundaryFlag = selectedReport?.within_barangay_boundary !== null
+    && selectedReport?.within_barangay_boundary !== undefined
+    && selectedReport?.within_barangay_boundary !== "";
+  const outsideBarangay = hasCoordinates && (hasBoundaryFlag
+    ? Number(selectedReport.within_barangay_boundary) === 0
+    : Boolean(barangayBoundary && !isInside(reportLatitude, reportLongitude, barangayBoundary)));
   const reviewStatus = String(selectedReport?.status_code || "").toUpperCase();
   const canReview = ["SUBMITTED", "UNDER_REVIEW"].includes(reviewStatus);
   const isVerified = reviewStatus === "VERIFIED";
@@ -287,7 +309,10 @@ export default function AdminDispatch() {
                 <section aria-label="Description" className="rounded-xl border border-slate-200 bg-white p-3.5"><h4 className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">Incident description</h4><p className={`whitespace-pre-wrap text-xs leading-relaxed ${selectedReport.description || selectedReport.description_original ? "text-slate-700" : "text-slate-500"}`}>{String(selectedReport.description || selectedReport.description_original || "").trim() || "No description. See photo evidence."}</p></section>
 
                 <section aria-label="Location" className="rounded-xl border border-slate-200 bg-white p-3.5"><h4 className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">Location</h4><p className="flex items-start gap-1.5 text-xs text-slate-600"><MapPin size={13} className="mt-0.5 shrink-0 text-emerald-700" />{selectedReport.location || "Location not provided"}{hasCoordinates && <span className="text-slate-400">· {Number(selectedReport.latitude).toFixed(5)}, {Number(selectedReport.longitude).toFixed(5)}</span>}</p>
-                  <div className="mt-2 flex justify-end"><button type="button" disabled={!hasCoordinates} onClick={focusReportOnMap} className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-[10px] font-semibold text-emerald-800 transition hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"><MapPin size={12} />Pin report on map</button></div>
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                    {outsideBarangay && <span role="status" className="inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 text-[10px] font-semibold text-amber-900"><AlertTriangle size={12} />Outside Barangay 167</span>}
+                    <button type="button" disabled={!hasCoordinates} onClick={focusReportOnMap} className="ml-auto inline-flex min-h-8 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-[10px] font-semibold text-emerald-800 transition hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"><MapPin size={12} />Pin report on map</button>
+                  </div>
                   <div className="mt-2 h-[320px] overflow-hidden rounded-lg border border-slate-200 sm:h-[380px]"><MapViewer compact mapHeight="h-full" showBackButton={false} incidents={mapIncidents} reportCount={mapIncidents.length} selectedIncident={mapFocusedIncident} allowOutsideIncidents allowOutsideBounds fitWholeBarangay showFitButton /></div>
                 </section>
 
