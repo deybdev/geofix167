@@ -23,6 +23,8 @@ export type AppEnv = {
     GOOGLE_CLIENT_ID?: string;
     GOOGLE_CLIENT_SECRET?: string;
     GOOGLE_REDIRECT_URI?: string;
+    GOOGLE_MOBILE_REDIRECT_URI?: string;
+    MOBILE_OAUTH_RETURN_URIS?: string;
     AUTH_HASH_SECRET?: string;
     BREVO_API_KEY: string;
     BREVO_API_URL: string;

@@ -37,6 +37,12 @@ export async function readFlow<T>(c: Context<AppEnv>, kind: string): Promise<{ k
   return row ? { key, payload: JSON.parse(row.payload) as T, attempts: row.attempts } : null;
 }
 export async function identity(c: Context<AppEnv>) {
+  const mobileToken = c.req.header("X-Registration-Token");
+  if (mobileToken) {
+    const row = await c.env.geofix167_db.prepare(`SELECT payload FROM auth_flows
+      WHERE token_hash = ? AND kind = 'MOBILE_IDENTITY' AND expires_at > ?`).bind(await hash(mobileToken), Date.now()).first<{ payload: string }>();
+    if (row) return JSON.parse(row.payload) as Identity;
+  }
   const current = await readFlow<Identity>(c, "IDENTITY");
   if (!current) throw new HTTPException(401, { message: "Verify your email or continue with Google first." });
   return current.payload;

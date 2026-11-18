@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useState } from 'react';
 
 import {
   login as loginService,
+  loginWithGoogle,
   getMe,
   logout as logoutService,
   refreshMobileSession,
@@ -184,6 +185,28 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const signInWithGoogle = async () => {
+    try {
+      setLoading(true);
+      const response = await loginWithGoogle();
+      if (response.canceled) return { success: false, canceled: true };
+      const { access_token, refresh_token, user: userData } = response.data ?? {};
+      if (!access_token || !refresh_token || !userData?.id || !userData?.role) {
+        return { success: false, message: 'Invalid authentication response from server.' };
+      }
+      await secureStorage.saveTokens(access_token, refresh_token);
+      setUser(userData);
+      return { success: true, user: userData };
+    } catch (error) {
+      return {
+        success: false,
+        message: error.response?.data?.error || error.message || 'Google sign-in failed.',
+      };
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const signOut = async () => {
     try {
       await logoutService();
@@ -205,6 +228,7 @@ export function AuthProvider({ children }) {
         loading,
         isRestoring,
         signIn,
+        signInWithGoogle,
         signOut,
       }}
     >

@@ -1,5 +1,6 @@
 import { Route } from "react-router-dom";
 import { PATHS } from "./paths";
+import { RESPONDER_ROLES } from "./roleAccess";
 
 import ProtectedRoute from "../shared/components/ProtectedRoute";
 import ResponderLayout from "../layouts/ResponderLayout";
@@ -26,7 +27,7 @@ import ReassignmentPending from "../features/responder/ReassignmentPending";
 import ReassignmentConfirmed from "../features/responder/ReassignmentConfirmed";
 
 export const responderRoutes = (
-  <Route element={<ProtectedRoute allowedRoles={["tanod", "responder"]} />}>
+  <Route element={<ProtectedRoute allowedRoles={RESPONDER_ROLES} />}>
     <Route path={PATHS.responder} element={<ResponderLayout />}>
       <Route index element={<NewDispatchNotif />} />
       <Route path="assignment-offer" element={<AssignmentOffer />} />
