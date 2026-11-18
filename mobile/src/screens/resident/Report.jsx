@@ -587,18 +587,19 @@ function SummaryCard({ label, onEdit, children }) {
    REPORT SCREEN
 ------------------------------------------ */
 
-export default function Report() {
+export default function Report({ guestMode = false }) {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const scrollRef = useRef(null);
   const submittingRef = useRef(false);
-  const fade = useRef(new Animated.Value(1)).current;
+  const [fade] = useState(() => new Animated.Value(1));
 
   const [step, setStep] = useState(0);
   const [reportType, setReportType] = useState(null); // 'emergency' | 'infrastructure'
   const [priority, setPriority] = useState(null); // 1-4, emergency only
   const [checks, setChecks] = useState([]); // quick-detail check ids
   const [description, setDescription] = useState('');
+  const [guestAlias, setGuestAlias] = useState('');
   const [location, setLocation] = useState(null); // { lat, lng, source }
   const [photos, setPhotos] = useState([]); // up to MAX_PHOTOS image uris
 
@@ -618,15 +619,18 @@ export default function Report() {
   const stepKey = steps[step].key;
   const stepIndex = (key) => steps.findIndex((item) => item.key === key);
 
-  // Only the photo is required (the captain validates from it); checks and the
-  // note are optional quick details.
+  // Only the photo is required for residents. Guests also provide the name
+  // associated with their report.
   const photoError =
     photos.length > 0 ? null : 'At least one photo is required. Take one or choose from your gallery.';
+  const detailsError = guestMode && !guestAlias.trim()
+    ? 'Your name is required.'
+    : photoError;
 
   const errors = {
     type: reportType ? null : 'Please choose the type of report.',
     priority: priority ? null : 'Please choose a priority level.',
-    details: photoError,
+    details: detailsError,
     location: location ? null : 'Tap the map or use your current location.',
     review: null,
   };
@@ -798,6 +802,7 @@ export default function Report() {
     setPriority(null);
     setChecks([]);
     setDescription('');
+    setGuestAlias('');
     setLocation(null);
     setPhotos([]);
     setLocationMessage(null);
@@ -820,7 +825,7 @@ export default function Report() {
 
     try {
       const selectedChecks = checks.length ? `Selected details: ${checks.join(', ')}` : '';
-      const result = await createReport(buildResidentReportPayload({
+      const residentPayload = buildResidentReportPayload({
         category: checks[0] || 'other',
         urgency: ({ 1: 'CRITICAL', 2: 'HIGH', 3: 'MEDIUM', 4: 'LOW' })[priority] || 'MEDIUM',
         isEmergency: reportType === 'emergency',
@@ -829,9 +834,18 @@ export default function Report() {
         address: null,
         landmark: null,
         callbackContact: null,
-      }));
+      });
+      const result = await createReport(guestMode ? {
+        ...residentPayload,
+        reporter_type: 'GUEST',
+        guest_alias: guestAlias.trim(),
+        title: reportType === 'emergency' ? 'Emergency incident' : 'Infrastructure concern',
+        classification: reportType === 'emergency' ? 'sudden' : 'maintenance',
+        incident_category: reportType === 'emergency' ? 'Incident / Emergency' : 'Road Damage',
+        priority_level: priority === 4 ? 'LOW' : priority === 3 ? 'MEDIUM' : 'HIGH',
+      } : residentPayload);
 
-      if (reportType === 'emergency') {
+      if (reportType === 'emergency' && !guestMode) {
         navigation.replace('Track', {
           reportId: result.data.report.public_id,
           location: { lat: location.lat, lng: location.lng },
@@ -903,6 +917,21 @@ export default function Report() {
         title="Quick details"
         subtitle="Add up to 5 photos so the captain can validate your report, then tick what applies."
       />
+
+      {guestMode ? (
+        <View style={tw`mb-5`}>
+          <Text style={tw`mb-2 text-sm font-bold text-slate-900`}>Your name</Text>
+          <TextInput
+            value={guestAlias}
+            onChangeText={setGuestAlias}
+            placeholder="Enter your name"
+            maxLength={100}
+            autoCapitalize="words"
+            style={tw`rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base text-slate-900`}
+          />
+          {!guestAlias.trim() && attempted ? <FieldError message="Your name is required." /> : null}
+        </View>
+      ) : null}
 
       <View style={tw`mb-2 flex-row items-center justify-between`}>
         <Text style={tw`text-sm font-bold text-slate-900`}>

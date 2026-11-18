@@ -29,7 +29,7 @@ app.use(
     },
     credentials: true,
     allowMethods: ["GET", "HEAD", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allowHeaders: ["Content-Type", "X-Guest-Token", "Range", "If-Range"],
+    allowHeaders: ["Content-Type", "Authorization", "X-Guest-Token", "X-Registration-Token", "Range", "If-Range"],
   }),
 );
 

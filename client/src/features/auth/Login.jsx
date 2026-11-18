@@ -15,15 +15,8 @@ import { PATHS } from "../../router/paths";
 import AuthLoading from "./AuthLoading";
 import { getApiErrorMessage } from "../../shared/utils/apiError";
 import LoadingOverlay from "../../shared/components/loading/LoadingOverlay";
+import { getRoleHome } from "../../router/roleAccess";
 
-const ROLE_PATHS = {
-  tanod: "/responder",
-  responder: PATHS.responder,
-  resident: "/resident",
-  bdrrmo: "/unauthorized",
-  police: "/unauthorized",
-  fire: "/unauthorized",
-};
 
 export default function Login() {
   const { signIn, commitSignIn, signOut } = useAuth();
@@ -69,7 +62,7 @@ export default function Login() {
       });
 
       // Straight into the app — location is pinned inside the report flows
-      navigate(ROLE_PATHS[user.role] ?? PATHS.home, { replace: true });
+      navigate(getRoleHome(user.role) ?? PATHS.forbidden, { replace: true });
     } catch (err) {
       const message = getApiErrorMessage(err, "Login failed. Please try again.");
       setServerError(message);

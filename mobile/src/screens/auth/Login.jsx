@@ -24,7 +24,7 @@ import {
 
 export default function Login() {
   const navigation = useNavigation();
-  const { signIn, signOut } = useAuth();
+  const { signIn, signInWithGoogle, signOut } = useAuth();
 
   const [serverError, setServerError] = useState("");
 
@@ -60,6 +60,15 @@ export default function Login() {
       return;
     }
 
+  };
+
+  const handleGoogleLogin = async () => {
+    setServerError("");
+    const result = await signInWithGoogle();
+    if (!result.success && !result.canceled) {
+      setServerError(result.message ?? "Google sign-in failed. Please try again.");
+      triggerShake();
+    }
   };
 
   return (
@@ -161,7 +170,7 @@ export default function Login() {
           </View>
 
           <PressableScale
-            onPress={() => {}}
+            onPress={handleGoogleLogin}
             disabled={isSubmitting}
             accessibilityRole="button"
             accessibilityLabel="Sign in with Google"
