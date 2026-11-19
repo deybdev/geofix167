@@ -1051,3 +1051,18 @@
   from { opacity: 0; }
   to { opacity: 1; }
 }
+@keyframes bdrrmo-enter { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes bdrrmo-drawer { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: translateX(0); } }
+
+@media (prefers-reduced-motion: no-preference) {
+  .bdrrmo-reveal { animation: bdrrmo-enter 220ms ease-out both; }
+  html { scroll-behavior: smooth; }
+}
+
+@media print {
+  body * { visibility: hidden !important; }
+  .bdrrmo-report, .bdrrmo-report * { visibility: visible !important; }
+  .bdrrmo-report { position: absolute; inset: 0; width: 100%; border: 0 !important; box-shadow: none !important; color: #000 !important; }
+  .bdrrmo-report textarea { border: 0 !important; resize: none; overflow: visible; }
+  @page { size: letter portrait; margin: 0.75in; }
+}
