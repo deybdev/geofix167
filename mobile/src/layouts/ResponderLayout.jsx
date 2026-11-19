@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Alert, Pressable, Text, View } from 'react-native';
 import {
   ClipboardList,
@@ -9,11 +9,13 @@ import {
   MessageCircle,
   UserRound,
 } from 'lucide-react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import tw from 'twrnc';
 
 import { useAuth } from '../context/AuthContext';
+import { getMapLocationPermissionParams } from '../services/locationPermissionService';
+import { getResponderDispatches } from '../services/responderDispatchService';
 
 const NAV_ITEMS = [
   { route: 'Home', label: 'Home', Icon: House },
@@ -46,8 +48,28 @@ export default function ResponderLayout({ children }) {
   const navigation = useNavigation();
   const { name: currentRoute } = useRoute();
   const [loggingOut, setLoggingOut] = useState(false);
+  const [activeAssignment, setActiveAssignment] = useState(null);
   const role = String(user?.role || '').toLowerCase();
   const navItems = NAV_ITEMS_BY_ROLE[role] || NAV_ITEMS;
+
+  async function openActiveAssignmentMap() {
+    if (!activeAssignment) return;
+    const locationParams = await getMapLocationPermissionParams();
+    navigation.navigate('Map', { assignment: activeAssignment, ...locationParams });
+  }
+
+  useFocusEffect(useCallback(() => {
+    if (currentRoute === 'Map') return undefined;
+    let active = true;
+    getResponderDispatches()
+      .then((dispatches) => {
+        if (!active) return;
+        setActiveAssignment(dispatches.find((assignment) =>
+          ['ACCEPTED', 'EN_ROUTE', 'ON_SCENE'].includes(assignment.status)) ?? null);
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [currentRoute]));
 
   const confirmSignOut = () => {
     Alert.alert('Sign out', 'Are you sure you want to sign out?', [
@@ -96,7 +118,31 @@ export default function ResponderLayout({ children }) {
           <LogOut size={20} color="#fff" />
         </Pressable>
       </View>
-      <View style={tw`flex-1`}>{children}</View>
+      <View style={tw`flex-1`}>
+        {currentRoute !== 'Map' && activeAssignment ? (
+          <Pressable
+            onPress={() => void openActiveAssignmentMap()}
+            accessibilityRole="button"
+            accessibilityLabel="View active response in map"
+            style={({ pressed }) => [
+              tw`mx-3 mt-2 flex-row items-center justify-between rounded-xl border border-green-200 bg-green-50 px-3 py-2.5`,
+              { opacity: pressed ? 0.8 : 1 },
+            ]}
+          >
+            <View style={tw`flex-1 pr-3`}>
+              <Text style={tw`text-[10px] font-extrabold uppercase tracking-wider text-green-800`}>Active response</Text>
+              <Text numberOfLines={1} style={tw`mt-0.5 text-xs font-semibold text-slate-800`}>
+                {activeAssignment.incident_title || activeAssignment.incident_category || 'Incident assignment'}
+              </Text>
+            </View>
+            <View style={tw`flex-row items-center gap-1`}>
+              <Map size={14} color="#1F7A4D" />
+              <Text style={tw`text-xs font-bold text-green-800`}>View in map</Text>
+            </View>
+          </Pressable>
+        ) : null}
+        <View style={tw`flex-1`}>{children}</View>
+      </View>
       <View style={tw`flex-row border-t border-slate-200 bg-white px-1 pt-2`}>
         {navItems.map(({ route, label, Icon }) => {
           const isActive = currentRoute === route;

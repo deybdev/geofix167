@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
   Modal,
@@ -31,7 +31,6 @@ import {
 import tw from 'twrnc';
 
 import MapViewer from '../../components/map/MapViewer';
-import { useAuth } from '../../context/AuthContext';
 import {
   generateHospitalQrHandover,
   getNearestHospitals,
@@ -183,13 +182,14 @@ function buildInitialPatients(assignment) {
 }
 
 export default function ResponderMap() {
-  const { user } = useAuth();
   const navigation = useNavigation();
   const route = useRoute();
 
   const [activeAssignment, setActiveAssignment] = useState(route.params?.assignment || null);
   const [currentLocation, setCurrentLocation] = useState(null);
+  const currentLocationRef = useRef(null);
   const [locationPermissionGranted, setLocationPermissionGranted] = useState(false);
+  const [locationSharingOff, setLocationSharingOff] = useState(Boolean(route.params?.locationSharingOff));
   const [nearestHospital, setNearestHospital] = useState(null);
   const [routePoints, setRoutePoints] = useState([]);
   const [routeInfo, setRouteInfo] = useState(null);
@@ -208,29 +208,77 @@ export default function ResponderMap() {
   const [selectedPin, setSelectedPin] = useState(null);
   const [caseClosedOnMap, setCaseClosedOnMap] = useState(false);
 
+  const tryEnableLocationSharing = useCallback(async () => {
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== 'granted') {
+        setLocationPermissionGranted(false);
+        setLocationSharingOff(true);
+        return;
+      }
+      setLocationPermissionGranted(true);
+      setLocationSharingOff(false);
+      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      const location = { lat: position.coords.latitude, lng: position.coords.longitude };
+      currentLocationRef.current = location;
+      setCurrentLocation(location);
+    } catch {
+      setLocationSharingOff(true);
+    }
+  }, []);
+
   useEffect(() => {
     let active = true;
+    const permissionHandled = route.params?.locationPermissionHandled === true;
+    const skipLocation = route.params?.locationSharingOff === true;
+    if (skipLocation) {
+      const timer = setTimeout(() => {
+        if (active) {
+          setLocationPermissionGranted(false);
+          setLocationSharingOff(true);
+        }
+      }, 0);
+      return () => {
+        active = false;
+        clearTimeout(timer);
+      };
+    }
     (async () => {
       try {
-        const perm = await Location.requestForegroundPermissionsAsync();
-        if (perm.status !== 'granted') return;
-        if (active) setLocationPermissionGranted(true);
+        const perm = permissionHandled
+          ? await Location.getForegroundPermissionsAsync()
+          : await Location.requestForegroundPermissionsAsync();
+        if (perm.status !== 'granted') {
+          if (active) {
+            setLocationPermissionGranted(false);
+            setLocationSharingOff(true);
+          }
+          return;
+        }
         const pos = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.High,
         });
         if (active) {
-          setCurrentLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+          const location = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+          currentLocationRef.current = location;
+          setCurrentLocation(location);
+          setLocationPermissionGranted(true);
+          setLocationSharingOff(false);
         }
-      } catch {}
+      } catch {
+        if (active) setLocationSharingOff(true);
+      }
     })();
     return () => {
       active = false;
     };
-  }, []);
+  }, [route.params?.locationPermissionHandled, route.params?.locationSharingOff]);
 
   useEffect(() => {
     const activeStatuses = ['ACCEPTED', 'EN_ROUTE', 'ON_SCENE'];
-    if (!activeAssignment || !activeStatuses.includes(activeAssignment.status) || !locationPermissionGranted) return undefined;
+    const assignmentId = activeAssignment?.id;
+    const assignmentStatus = activeAssignment?.status;
+    if (!assignmentId || !activeStatuses.includes(assignmentStatus) || !locationPermissionGranted) return undefined;
     let active = true;
     let watcher = null;
     let lastPostAt = 0;
@@ -238,10 +286,12 @@ export default function ResponderMap() {
     const publishLocation = async (position) => {
       if (!active) return;
       const coords = position.coords;
-      setCurrentLocation({ lat: coords.latitude, lng: coords.longitude });
+      const location = { lat: coords.latitude, lng: coords.longitude };
+      currentLocationRef.current = location;
+      setCurrentLocation(location);
       if (Date.now() - lastPostAt < 8000) return;
       lastPostAt = Date.now();
-      try { await postResponderLocation(activeAssignment.id, coords); }
+      try { await postResponderLocation(assignmentId, coords); }
       catch { /* Location sharing failures do not interrupt responder navigation. */ }
     };
 
@@ -296,7 +346,7 @@ export default function ResponderMap() {
     return () => {
       mounted = false;
     };
-  }, [activeAssignment]);
+  }, [activeAssignment, caseClosedOnMap]);
 
   const patientPoint = useMemo(() => {
     if (activeAssignment && hasCoordinates(activeAssignment)) {
@@ -336,38 +386,20 @@ export default function ResponderMap() {
   useEffect(() => {
     if (!patientPoint) return undefined;
     let active = true;
-    let watcher = null;
 
     (async () => {
-      let origin = currentLocation;
-      try {
-        const perm = await Location.requestForegroundPermissionsAsync();
-        if (perm.status === 'granted') {
-          const pos = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.High,
-          });
+      let origin = currentLocationRef.current;
+      if (locationPermissionGranted) {
+        try {
+          const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
           origin = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-          if (active) setCurrentLocation(origin);
-
-          if (isNavigating && active) {
-            watcher = await Location.watchPositionAsync(
-              {
-                accuracy: Location.Accuracy.High,
-                distanceInterval: 5,
-                timeInterval: 3000,
-              },
-              (livePos) => {
-                if (!active) return;
-                setCurrentLocation({
-                  lat: livePos.coords.latitude,
-                  lng: livePos.coords.longitude,
-                });
-              },
-            );
+          if (active) {
+            currentLocationRef.current = origin;
+            setCurrentLocation(origin);
           }
+        } catch {
+          // Keep the incident map usable if the device cannot provide a fix.
         }
-      } catch {
-        // Unable to read device GPS
       }
 
       if (!active) return;
@@ -396,9 +428,8 @@ export default function ResponderMap() {
 
     return () => {
       active = false;
-      if (watcher) watcher.remove();
     };
-  }, [patientPoint, hospitalPoint, isNavigating]);
+  }, [patientPoint, hospitalPoint, isNavigating, locationPermissionGranted]);
 
   const incidents = useMemo(() => {
     if (activeAssignment && patientPoint) {
@@ -529,42 +560,61 @@ export default function ResponderMap() {
 
   return (
     <View style={tw`flex-1`}>
-      <MapViewer
-        variant="viewer"
-        incidents={incidents}
-        dropOffs={hospitalDropOffs}
-        disableIncidentSheet={Boolean(activeAssignment)}
-        onIncidentSelect={(pin) => setSelectedPin(pin)}
-        selectedLocation={null}
-        routes={
-          activeAssignment && routePoints.filter(hasValidPoint).length > 1
-            ? [
-                {
-                  id: `route-${activeAssignment?.id || 'active'}`,
-                  points: routePoints.filter(hasValidPoint),
-                  color: '#1F7A4D',
-                  dashed: false,
-                },
-              ]
-            : []
-        }
-        trackers={
-          activeAssignment && currentLocation
-            ? [{ id: 'responder-current', ...currentLocation }]
-            : []
-        }
-        fitPoints={fitPoints}
-        navigationMode={isNavigating}
-        navigationHeading={getRouteHeading(headingPoints)}
-        recenterSignal={recenterKey}
-        compassResetSignal={compassResetKey}
-        navigationUserLocation={currentLocation}
-        highwayShields={getHighwayShields(routePoints)}
-        showBackButton={false}
-        showBoundary={!isNavigating}
-        highlightBoundary={!isNavigating}
-        compact={false}
-      />
+      {locationSharingOff ? (
+        <View style={tw`z-20 flex-row items-center justify-between border-b border-amber-200 bg-amber-50 px-4 py-2.5`}>
+          <View style={tw`mr-3 flex-1 flex-row items-start gap-2`}>
+            <MapPin size={16} color="#B45309" style={tw`mt-0.5`} />
+            <View style={tw`flex-1`}>
+              <Text style={tw`text-xs font-extrabold text-amber-900`}>Location sharing is off</Text>
+              <Text style={tw`mt-0.5 text-[11px] leading-4 text-amber-800`}>You can still use this map manually. Turn on location to share your position.</Text>
+            </View>
+          </View>
+          <Pressable
+            onPress={() => void tryEnableLocationSharing()}
+            style={({ pressed }) => [tw`rounded-lg bg-white px-3 py-2`, { opacity: pressed ? 0.7 : 1 }]}
+          >
+            <Text style={tw`text-[11px] font-bold text-green-800`}>Try again</Text>
+          </Pressable>
+        </View>
+      ) : null}
+      <View style={tw`flex-1`}>
+        <MapViewer
+          variant="viewer"
+          incidents={incidents}
+          dropOffs={hospitalDropOffs}
+          disableIncidentSheet={Boolean(activeAssignment)}
+          onIncidentSelect={(pin) => setSelectedPin(pin)}
+          selectedLocation={null}
+          routes={
+            activeAssignment && routePoints.filter(hasValidPoint).length > 1
+              ? [
+                  {
+                    id: `route-${activeAssignment?.id || 'active'}`,
+                    points: routePoints.filter(hasValidPoint),
+                    color: '#1F7A4D',
+                    dashed: false,
+                  },
+                ]
+              : []
+          }
+          trackers={
+            activeAssignment && currentLocation
+              ? [{ id: 'responder-current', ...currentLocation }]
+              : []
+          }
+          fitPoints={fitPoints}
+          navigationMode={isNavigating}
+          navigationHeading={getRouteHeading(headingPoints)}
+          recenterSignal={recenterKey}
+          compassResetSignal={compassResetKey}
+          navigationUserLocation={currentLocation}
+          highwayShields={getHighwayShields(routePoints)}
+          showBackButton={false}
+          showBoundary={!isNavigating}
+          highlightBoundary={!isNavigating}
+          compact={false}
+        />
+      </View>
 
       {selectedPin && activeAssignment ? (
         <View
