@@ -1,5 +1,5 @@
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -16,7 +16,7 @@ import {
   RefreshCw,
 } from "lucide-react-native";
 import tw from "twrnc";
-import { useNavigation, useRoute } from "@react-navigation/native";
+import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
 
 import { getReports } from "../../services/residentService";
 
@@ -108,6 +108,7 @@ export default function MyReports() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const requestRef = useRef(null);
 
   const fetchReports = useCallback(
     async (signal) => {
@@ -142,28 +143,30 @@ export default function MyReports() {
     [activeFilter]
   );
 
-  useEffect(() => {
+  const loadReports = useCallback(() => {
+    requestRef.current?.abort();
+    setRefreshing(true);
     const controller = new AbortController();
-
-    setLoading(true);
+    requestRef.current = controller;
     fetchReports(controller.signal);
-
-    return () => controller.abort();
   }, [fetchReports]);
+
+  useFocusEffect(useCallback(() => {
+    loadReports();
+    return () => requestRef.current?.abort();
+  }, [loadReports]));
 
   const onRefresh = () => {
     setRefreshing(true);
 
-    const controller = new AbortController();
-    fetchReports(controller.signal);
+    loadReports();
   };
 
   const retry = () => {
     setLoading(true);
     setError(null);
 
-    const controller = new AbortController();
-    fetchReports(controller.signal);
+    loadReports();
   };
 
   const openReport = (publicId) => {

@@ -52,6 +52,7 @@ const RIGHT_TABS = ["MyReports", "Profile"];
 
 const SUB_PAGE_TITLES = {
   MyReports: "My Reports",
+  ReportDetails: "Report Details",
   Notifications: "Notifications",
   Emergency: "Emergency",
   PhotoCapture: "Photo Capture",
@@ -364,7 +365,11 @@ export default function ResidentLayout({ children, getNotifications }) {
               pointerEvents="box-none"
               style={[tw`absolute right-5`, { bottom: bottomInset + 88 }]}
             >
-              <SosButton onTriggered={() => navigation.navigate("Emergency")} />
+              <SosButton
+                onTriggered={() =>
+                  navigation.navigate("Report", { reportType: "emergency" })
+                }
+              />
             </View>
           )}
         </>

@@ -587,7 +587,7 @@ function SummaryCard({ label, onEdit, children }) {
    REPORT SCREEN
 ------------------------------------------ */
 
-export default function Report({ guestMode = false }) {
+export default function Report({ guestMode = false, route }) {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const scrollRef = useRef(null);
@@ -595,7 +595,9 @@ export default function Report({ guestMode = false }) {
   const [fade] = useState(() => new Animated.Value(1));
 
   const [step, setStep] = useState(0);
-  const [reportType, setReportType] = useState(null); // 'emergency' | 'infrastructure'
+  const [reportType, setReportType] = useState(
+    route?.params?.reportType === 'emergency' ? 'emergency' : null
+  ); // 'emergency' | 'infrastructure'
   const [priority, setPriority] = useState(null); // 1-4, emergency only
   const [checks, setChecks] = useState([]); // quick-detail check ids
   const [description, setDescription] = useState('');

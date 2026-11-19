@@ -1,4 +1,5 @@
 import api from "./api";
+import { secureStorage } from './secureStorage';
 
 // Status IDs are defined by migrations 0005 and 0015. Keep the exact database
 // status alongside the smaller set of card/filter groups used by the UI.
@@ -77,7 +78,7 @@ export function summarizeReports(reports) {
     .map(key => [key, key === "total" ? reports.length : reports.filter(r => matchesReportStatus(r, key)).length]));
 }
 
-async function reportRequest(path = "", { method = "GET", body, signal } = {}) {
+async function reportRequest(path = "", { method = "GET", body, signal, timeout } = {}) {
   let response;
   try {
     response = await api.request({
@@ -85,6 +86,7 @@ async function reportRequest(path = "", { method = "GET", body, signal } = {}) {
       method,
       data: body,
       signal,
+      ...(timeout ? { timeout } : {}),
       ...(body instanceof FormData
         ? { headers: { "Content-Type": "multipart/form-data" } }
         : {}),
@@ -93,6 +95,11 @@ async function reportRequest(path = "", { method = "GET", body, signal } = {}) {
     if (signal?.aborted || error.name === "AbortError" || error.code === "ERR_CANCELED") {
       throw error;
     }
+    // Never log request objects, credentials, media URLs, or response contents.
+    console.warn('Resident report request failed', {
+      endpoint: `${method} /api/reports${path}`,
+      status: error.response?.status ?? 'No HTTP status',
+    });
     if (error.response) {
       const requestError = new Error(
         error.response.data?.error ||
@@ -148,15 +155,31 @@ export async function getReportDetails(id, { signal } = {}) {
 export async function getReportAttachments(id, { signal } = {}) {
   const { attachments } = await reportRequest(`/${encodeURIComponent(id)}/attachments`, { signal });
   if (!Array.isArray(attachments)) throw new Error("Unable to load photos and videos.");
-  return { data: { attachments } };
+  const base = new URL(api.defaults.baseURL);
+  let token;
+  const resolved = [];
+  for (const attachment of attachments) {
+    if (typeof attachment.url !== 'string' || !attachment.url) throw new Error('Media URL is unavailable. Retry media.');
+    const url = new URL(attachment.url, base);
+    if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Unsupported media URL.');
+    // Signed URLs need no credentials. Protected report photos use the API token
+    // only on the configured origin; never forward it to an external host.
+    const protectedPhoto = url.origin === base.origin && /^\/api\/reports\/[^/]+\/photos\//.test(url.pathname);
+    if (protectedPhoto && token === undefined) token = await secureStorage.getAccessToken();
+    resolved.push({ ...attachment, url: url.href, source: {
+      uri: url.href,
+      ...(protectedPhoto && token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+    } });
+  }
+  return { data: { attachments: resolved } };
 }
 
 export async function uploadReportAttachment(reportId, file, uploadId) {
   const body = new FormData();
-  body.append("file", file, file.name);
+  // React Native FormData expects a URI descriptor, not a browser File.
+  body.append("file", { uri: file.uri, name: file.name, type: file.type });
   body.append("upload_id", uploadId);
-  // The browser supplies Content-Type including the multipart boundary.
-  return reportRequest(`/${encodeURIComponent(reportId)}/attachments`, { method: "POST", body });
+  return reportRequest(`/${encodeURIComponent(reportId)}/attachments`, { method: "POST", body, timeout: 120000 });
 }
 
 export function buildResidentReportPayload({ category, urgency, isEmergency, description, position, address, landmark, callbackContact }) {
@@ -252,10 +275,17 @@ export async function getAnnouncements() {
   return { data: { announcements: SAMPLE_ANNOUNCEMENTS } };
 }
 
-export async function getNotifications() {
-  await delay();
-  const unread_count = SAMPLE_NOTIFICATIONS.filter((n) => !n.is_read).length;
-  return { data: { notifications: SAMPLE_NOTIFICATIONS, unread_count } };
+export async function getNotifications({ signal, cursor } = {}) {
+  const response = await api.get('/notifications', {
+    signal,
+    params: cursor ? { cursor } : undefined,
+  });
+  if (!Array.isArray(response.data?.notifications)) {
+    const error = new Error('Invalid notifications response');
+    error.status = response.status;
+    throw error;
+  }
+  return response;
 }
 
 export async function markNotificationRead(id) {
