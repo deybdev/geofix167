@@ -10,6 +10,7 @@ import { authRoutes } from "./AuthRoutes";
 import { residentRoutes } from "./ResidentRoutes";
 import { responderRoutes } from "./ResponderRoutes";
 import { adminRoutes } from "./AdminRoutes";
+import { bdrrmoRoutes } from "./BdrrmoRoutes";
 
 export default function AppRouter() {
   return (
@@ -23,6 +24,7 @@ export default function AppRouter() {
           {residentRoutes}
           {responderRoutes}
           {adminRoutes}
+          {bdrrmoRoutes}
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
         </LocationProvider>
