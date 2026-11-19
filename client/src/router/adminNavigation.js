@@ -38,14 +38,6 @@ export const ADMIN_NAVIGATION = [
   },
   { key: "dispatch", label: "Dispatch Responders", icon: Radio, path: PATHS.adminDispatch },
   {
-    key: "bdrrmo",
-    label: "BDRRMO Dispatch",
-    icon: Radio,
-    path: PATHS.adminBdrrmoDispatch,
-    comingSoon: true,
-    comingSoonDescription: "Verified emergency reports will be dispatched from this page when the BDRRMO workflow is ready.",
-  },
-  {
     key: "maintenance-tasks",
     label: "Maintenance Tasks",
     icon: ShieldCheck,

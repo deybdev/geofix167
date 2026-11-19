@@ -18,6 +18,7 @@ export default function ResidentReportingCard({
   reports = [],
   selectedReport = null,
   onSelectReport = () => {},
+  onViewReport = onSelectReport,
   onSubmitNewReport = () => {},
   activeTab = "active",
   setActiveTab = () => {},
@@ -69,7 +70,7 @@ export default function ResidentReportingCard({
                     <p className="mt-0.5 text-[11px] font-medium text-slate-600">{location}</p>
                     <p className="mt-0.5 text-[11px] font-medium text-slate-500">({report.statusLabel})</p>
                     {hasCoordinates && (
-                      <button type="button" onClick={(event) => { event.stopPropagation(); onSelectReport(report); }} className="mt-1 min-h-7 text-[10px] font-bold text-[#247447] underline-offset-2 hover:underline">
+                      <button type="button" aria-label={`View ${report.title} on map`} aria-pressed={isSelected} onClick={(event) => { event.stopPropagation(); onViewReport(report); }} className="relative z-10 mt-1 inline-flex min-h-8 cursor-pointer items-center rounded-md px-2 text-[10px] font-bold text-[#247447] underline-offset-2 transition hover:bg-emerald-50 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600">
                         View on map
                       </button>
                     )}

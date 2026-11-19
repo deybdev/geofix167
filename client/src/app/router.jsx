@@ -99,7 +99,6 @@ export default function AppRouter() {
               <Route path="incident-reports" element={<IncidentReports />} />
               <Route path="incident-reports/:id/report" element={<IncidentReportPrint />} />
               <Route path="dispatch" element={<AdminDispatch />} />
-              <Route path="bdrrmo" element={adminPage("bdrrmo")} />
               <Route path="maintenance-tasks" element={<MaintenanceTasks />} />
               <Route path="resolution-verification" element={<ResolutionVerification />} />
               <Route path="announcements" element={<Announcements />} />

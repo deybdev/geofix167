@@ -1,4 +1,4 @@
-import { ChevronDown, Menu } from "lucide-react";
+import { ChevronDown, LockKeyhole, Menu } from "lucide-react";
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ADMIN_NAVIGATION } from "../../router/adminNavigation";
@@ -69,8 +69,11 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
                 )}
                 <button
                   type="button"
-                  title={comingSoon ? `${label} · Coming soon` : open ? undefined : label}
+                  title={comingSoon ? `${label} · Locked, coming soon` : open ? undefined : label}
+                  disabled={comingSoon}
+                  aria-disabled={comingSoon || undefined}
                   onClick={() => {
+                    if (comingSoon) return;
                     if (children) {
                       setExpansion({ pathname: location.pathname, label: expanded ? null : label });
                       if (path) navigate(path);
@@ -79,10 +82,12 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
                     }
                   }}
                   aria-expanded={children ? expanded : undefined}
-                  className={`group relative flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[10px] font-medium transition-colors ${
+                  className={`group relative flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[10px] font-medium transition-colors disabled:cursor-not-allowed ${
                     open ? "" : "md:justify-center md:px-0"
                   } ${
-                    active
+                    comingSoon
+                      ? "cursor-not-allowed text-slate-400"
+                      : active
                       ? "bg-(--gf-green) text-white"
                       : "text-[#263246] hover:bg-(--gf-green-soft)"
                   }`}
@@ -91,15 +96,15 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
                   <span className={`min-w-0 flex-1 truncate ${open ? "" : "md:hidden"}`}>{label}</span>
                   {!open && (
                     <span className="pointer-events-none absolute left-[calc(100%+10px)] z-50 hidden whitespace-nowrap rounded-md bg-slate-900 px-2.5 py-1.5 text-[10px] text-white shadow-lg group-hover:md:block">
-                      {comingSoon ? `${label} · Coming soon` : label}
+                      {comingSoon ? `${label} · Locked, coming soon` : label}
                     </span>
                   )}
                   {open && <span aria-hidden="true" className="ml-auto flex w-[68px] shrink-0 items-center justify-end gap-1.5">
-                    {comingSoon && <span className="rounded-full bg-amber-50 px-1.5 py-1 text-center text-[7px] font-semibold leading-none text-amber-700">Coming soon</span>}
-                    {children && <ChevronDown size={13} className={`shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`} />}
+                    {comingSoon && <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-1.5 py-1 text-center text-[7px] font-semibold leading-none text-amber-700"><LockKeyhole size={8} />Coming soon</span>}
+                    {children && !comingSoon && <ChevronDown size={13} className={`shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`} />}
                   </span>}
                 </button>
-                {children && expanded && open && (
+                {children && expanded && open && !comingSoon && (
                   <div className="ml-5 border-l border-(--gf-green-border) py-1 pl-2">
                     {children.map((child) => {
                       const childLabel = typeof child === "string" ? child : child.label;

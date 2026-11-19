@@ -1,9 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowLeft } from "lucide-react";
+import { Link } from "react-router-dom";
 import LandingMapViewer from "../features/landing/components/LandingMapViewer";
 import ResidentReportingCard from "../features/landing/components/ResidentReportingCard";
 import BarangayAnnouncementsCard from "../features/landing/components/BarangayAnnouncementsCard";
 import QuickReportModal from "../features/landing/components/QuickReportModal";
 import { INITIAL_BDRRMO_UNITS } from "../features/landing/data/landingData";
+import { PATHS } from "../router/paths";
 
 function toMapReport(report) {
   const lat = report.latitude == null ? null : Number(report.latitude);
@@ -27,11 +30,16 @@ function toMapReport(report) {
 }
 
 export default function LiveMapPage() {
+  const mapContainerRef = useRef(null);
   const [reports, setReports] = useState([]);
   const [selectedReport, setSelectedReport] = useState(null);
   const [activeTab, setActiveTab] = useState("active");
   const [isQuickReportOpen, setIsQuickReportOpen] = useState(false);
   const handleAddReport = (report) => { setReports((current) => [report, ...current.filter((item) => item.id !== report.id)]); setSelectedReport(report); };
+  const handleViewReport = (report) => {
+    setSelectedReport(report);
+    requestAnimationFrame(() => mapContainerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }));
+  };
 
   useEffect(() => {
     const openQuickReport = () => setIsQuickReportOpen(true);
@@ -65,10 +73,13 @@ export default function LiveMapPage() {
   }, []);
 
   return <div className="landing-page"><div className="site-container public-page-content">
+      <Link to={PATHS.home} className="mb-4 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 text-xs font-semibold text-[#247447] transition hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600">
+        <ArrowLeft size={15} /> Back to Home
+      </Link>
       <div className="mb-6"><p className="text-xs font-semibold uppercase tracking-[.18em] text-[#47745a]">Barangay 167 · Caloocan City</p><h1 className="landing-display mt-2 text-3xl sm:text-4xl">Live Map &amp; Reports</h1><p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600">View community reports, response activity, and choose a location for your report.</p></div>
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12">
-        <div className="relative z-0 isolate flex h-[500px] flex-col sm:h-[580px] lg:col-span-7 lg:h-[680px] xl:col-span-8"><LandingMapViewer reports={reports} bdrrmoUnits={INITIAL_BDRRMO_UNITS} selectedReport={selectedReport} onSelectReport={setSelectedReport} /></div>
-        <div className="flex flex-col gap-5 lg:col-span-5 xl:col-span-4"><ResidentReportingCard reports={reports} selectedReport={selectedReport} onSelectReport={setSelectedReport} onSubmitNewReport={handleAddReport} activeTab={activeTab} setActiveTab={setActiveTab} /><BarangayAnnouncementsCard /></div>
+        <div ref={mapContainerRef} className="relative z-0 isolate flex h-[500px] flex-col sm:h-[580px] lg:col-span-7 lg:h-[680px] xl:col-span-8"><LandingMapViewer reports={reports} bdrrmoUnits={INITIAL_BDRRMO_UNITS} selectedReport={selectedReport} onSelectReport={setSelectedReport} /></div>
+        <div className="flex flex-col gap-5 lg:col-span-5 xl:col-span-4"><ResidentReportingCard reports={reports} selectedReport={selectedReport} onSelectReport={setSelectedReport} onViewReport={handleViewReport} onSubmitNewReport={handleAddReport} activeTab={activeTab} setActiveTab={setActiveTab} /><BarangayAnnouncementsCard /></div>
       </div>
     <QuickReportModal isOpen={isQuickReportOpen} onClose={() => setIsQuickReportOpen(false)} onSubmitNewReport={handleAddReport} />
   </div></div>;
