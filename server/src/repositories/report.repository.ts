@@ -126,6 +126,7 @@ export async function createIncidentReportBundle(db: Database, params: {
   languageFlags: LanguageFlagRecord[];
   guestSession: InsertGuestSessionParams | null;
   guestPhotos?: GuestPhotoInsert[];
+  trackingLink?: { id: string; report_id: string; token_hash: string; created_at: string; expires_at: string };
   creationAudit?: { id: string; key: string };
 }): Promise<void> {
   const statements: D1PreparedStatement[] = [];
@@ -159,6 +160,13 @@ export async function createIncidentReportBundle(db: Database, params: {
   }
   statements.push(db.prepare("INSERT INTO incident_report_references (incident_id) VALUES (?)")
     .bind(r.incident_id));
+  if (params.trackingLink) {
+    const link = params.trackingLink;
+    statements.push(db.prepare(`INSERT INTO tracking_links
+      (tracking_link_id, report_id, token_hash, created_at, expires_at)
+      VALUES (?, ?, ?, ?, ?)`)
+      .bind(link.id, link.report_id, link.token_hash, link.created_at, link.expires_at));
+  }
   const e = params.statusEvent;
   statements.push(db.prepare(`INSERT INTO incident_status_events (
     incident_status_event_id, incident_id, from_incident_status_id,

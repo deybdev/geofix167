@@ -21,7 +21,7 @@ INSERT INTO roles VALUES(1,'admin'),(2,'resident'),(3,'tanod');
 INSERT INTO account_statuses VALUES(1,'ACTIVE');
 INSERT INTO users VALUES('admin','Admin','User','09123123123','hash',1,1),('resident','Resident','User','09246246246','hash',2,1),
 ('usr_demo_responder_001','Renus','Manipon','09369369369','hash',3,1);`);
-for (const file of ['0005_guest_incidents.sql', '0006_review_alerts.sql', '0007_dispatch_support.sql', '0012_community_audit.sql', '0015_admin_dispatch.sql', '0017_report_attachments.sql', '0018_guest_report_intake.sql', '0019_resident_report_notifications.sql', '0020_guest_report_location_metadata.sql', '0021_guest_report_urgency.sql', '0022_normalize_maintenance_categories.sql']) {
+for (const file of ['0005_guest_incidents.sql', '0006_review_alerts.sql', '0007_dispatch_support.sql', '0012_community_audit.sql', '0015_admin_dispatch.sql', '0017_report_attachments.sql', '0018_guest_report_intake.sql', '0019_resident_report_notifications.sql', '0020_guest_report_location_metadata.sql', '0021_guest_report_urgency.sql', '0022_normalize_maintenance_categories.sql', '0028_responder_dispatches.sql', '0029_dispatch_coordinates.sql', '0033_live_tracking.sql']) {
   sql.exec(readFileSync(resolve(serverRoot, `src/migrations/${file}`), 'utf8'));
 }
 const sha256 = async (value) => Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))).toString('hex');

@@ -36,6 +36,7 @@ import {
   generateHospitalQrHandover,
   getNearestHospitals,
   getResponderDispatches,
+  postResponderLocation,
 } from '../../services/responderDispatchService';
 
 function hasCoordinates(item) {
@@ -188,6 +189,7 @@ export default function ResponderMap() {
 
   const [activeAssignment, setActiveAssignment] = useState(route.params?.assignment || null);
   const [currentLocation, setCurrentLocation] = useState(null);
+  const [locationPermissionGranted, setLocationPermissionGranted] = useState(false);
   const [nearestHospital, setNearestHospital] = useState(null);
   const [routePoints, setRoutePoints] = useState([]);
   const [routeInfo, setRouteInfo] = useState(null);
@@ -212,6 +214,7 @@ export default function ResponderMap() {
       try {
         const perm = await Location.requestForegroundPermissionsAsync();
         if (perm.status !== 'granted') return;
+        if (active) setLocationPermissionGranted(true);
         const pos = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.High,
         });
@@ -224,6 +227,42 @@ export default function ResponderMap() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    const activeStatuses = ['ACCEPTED', 'EN_ROUTE', 'ON_SCENE'];
+    if (!activeAssignment || !activeStatuses.includes(activeAssignment.status) || !locationPermissionGranted) return undefined;
+    let active = true;
+    let watcher = null;
+    let lastPostAt = 0;
+
+    const publishLocation = async (position) => {
+      if (!active) return;
+      const coords = position.coords;
+      setCurrentLocation({ lat: coords.latitude, lng: coords.longitude });
+      if (Date.now() - lastPostAt < 8000) return;
+      lastPostAt = Date.now();
+      try { await postResponderLocation(activeAssignment.id, coords); }
+      catch { /* Location sharing failures do not interrupt responder navigation. */ }
+    };
+
+    (async () => {
+      try {
+        const first = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+        await publishLocation(first);
+        watcher = await Location.watchPositionAsync(
+          { accuracy: Location.Accuracy.High, distanceInterval: 5, timeInterval: 3000 },
+          (position) => { void publishLocation(position); },
+        );
+      } catch {
+        // Permission or GPS failures leave the existing map flow usable.
+      }
+    })();
+
+    return () => {
+      active = false;
+      watcher?.remove();
+    };
+  }, [activeAssignment?.id, activeAssignment?.status, locationPermissionGranted]);
 
   useEffect(() => {
     if (route.params?.assignment) {

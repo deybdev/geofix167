@@ -19,6 +19,7 @@ export type SubmitReportResult = {
   report: IncidentReportRecord & { guest_access_token?: string };
   status_events: IncidentStatusEventRecord[];
   idempotent_replay: boolean;
+  tracking_url?: string;
 };
 export type IncidentReportDetail = IncidentReportRecord & {
   status_events: IncidentStatusEventRecord[];
@@ -27,6 +28,10 @@ export type IncidentReportDetail = IncidentReportRecord & {
 async function sha256(value: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+}
+function base64UrlToken(bytes: Uint8Array): string {
+  const binary = Array.from(bytes, byte => String.fromCharCode(byte)).join("");
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 function priorityCode(value: string): PriorityCode {
   const formUrgency = reportCatalog.formUrgencies.find((urgency) =>
@@ -58,6 +63,7 @@ export async function submitIncidentReport(
   guestToken?: string,
   photos: File[] = [],
   uploads?: AppEnv["Bindings"]["geofix167_uploads"],
+  frontendOrigin?: string,
 ): Promise<SubmitReportResult> {
   if (!user && (input.reporter_type === "RESIDENT" || input.reporter_user_id)) {
     throw new ReportError("Sign in to submit a resident report.", 401);
@@ -109,6 +115,9 @@ export async function submitIncidentReport(
   }
   const token = guestId && !input.guest_session_id ? Array.from(crypto.getRandomValues(new Uint8Array(32)),
     byte => byte.toString(16).padStart(2, "0")).join("") : undefined;
+  const trackingToken = input.is_emergency === 1
+    ? base64UrlToken(crypto.getRandomValues(new Uint8Array(32)))
+    : undefined;
   const description = input.reporter_type === "GUEST"
     ? cleanMultiline(input.description)
     : (input.description ?? "");
@@ -133,9 +142,17 @@ export async function submitIncidentReport(
     key: input.idempotency_key,
     id: "report-created:" + await sha256(JSON.stringify([userId ? "user" : "guest", userId ?? guestId, input.idempotency_key])),
   } : undefined;
+  const trackingLink = trackingToken ? {
+    id: crypto.randomUUID(),
+    report_id: id,
+    token_hash: await sha256(trackingToken),
+    created_at: now,
+    expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+  } : undefined;
   try {
     await createIncidentReportBundle(db, {
       creationAudit,
+      trackingLink,
       guestSession: guestId && token ? {
         guest_session_id: guestId, display_name: cleanSingleLine(input.guest_alias) || "Guest",
         access_token_hash: await sha256(token), created_at: now,
@@ -174,6 +191,9 @@ export async function submitIncidentReport(
   return {
     report: { ...report, ...(token ? { guest_access_token: token } : {}) },
     status_events: await findStatusEventsByIncidentId(db, id), idempotent_replay: false,
+    ...(trackingToken && frontendOrigin
+      ? { tracking_url: new URL(`/track/${trackingToken}`, frontendOrigin).toString() }
+      : {}),
   };
 }
 export async function getIncidentReports(db: Database, filters: ListReportsQuery, user?: AuthUser): Promise<IncidentReportRecord[]> {

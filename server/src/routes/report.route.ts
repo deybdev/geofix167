@@ -81,6 +81,12 @@ reportRoutes.post("/:id/resolve", requireAuth, async (c) => {
         (incident_status_event_id, incident_id, from_incident_status_id, to_incident_status_id, changed_by_user_id, note)
       VALUES (?, ?, 9, 10, ?, 'Admin marked incident as resolved after handover verification')
     `).bind(crypto.randomUUID(), incidentId, currentUser?.id ?? null),
+    db.prepare(`UPDATE tracking_links SET expires_at = datetime('now'),
+      revoked_at = COALESCE(revoked_at, datetime('now')) WHERE report_id = ?`).bind(incidentId),
+    db.prepare(`DELETE FROM responder_locations WHERE assignment_id IN (
+      SELECT tanod_assignment_id FROM tanod_assignments WHERE incident_id = ?
+      UNION SELECT responder_dispatch_id FROM responder_dispatches WHERE incident_id = ?
+    )`).bind(incidentId, incidentId),
   ]);
 
   return c.json({ ok: true, status: "CLOSED" });

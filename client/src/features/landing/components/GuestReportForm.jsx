@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
-import { AlertTriangle, Camera, FileText, Image as ImageIcon, LocateFixed, Locate, RotateCcw, Send, Trash2, UserRound, X } from "lucide-react";
+import { AlertTriangle, Camera, Check, Copy, FileText, Image as ImageIcon, LocateFixed, Locate, RotateCcw, Send, Share2, Trash2, UserRound, X } from "lucide-react";
 import L from "leaflet";
 import { Circle, GeoJSON, MapContainer, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
@@ -189,6 +189,12 @@ export default function GuestReportForm({
   const [addressStatus, setAddressStatus] = useState(initialPin ? "loading" : "idle");
   const [boundary, setBoundary] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [trackingUrl, setTrackingUrl] = useState("");
+  const [savedTrackingUrl, setSavedTrackingUrl] = useState(() => {
+    try { return window.localStorage.getItem("geofix:last-tracking-url") || ""; }
+    catch { return ""; }
+  });
+  const [trackingLinkCopied, setTrackingLinkCopied] = useState(false);
   const classification = reportCatalog.classifications.find((item) => item.value === reportType);
   const categories = reportCatalog.categories[reportType] ?? [];
   const isSuddenIncident = reportType === "sudden";
@@ -200,7 +206,7 @@ export default function GuestReportForm({
   const urgency = urgencyCode === "HIGH" ? "High" : urgencyCode === "LOW" ? "Low" : "Medium";
   const isOutsideBarangay = useMemo(
     () => Boolean(pin && boundary && !isInside(pin.lat, pin.lng, boundary)),
-    [pin?.lat, pin?.lng, boundary],
+    [pin, boundary],
   );
   const needsAccuracyConfirmation = pin?.accuracy > 100 && !manuallyAdjusted;
 
@@ -440,8 +446,11 @@ export default function GuestReportForm({
   }, [setPinnedLocation]);
 
   useEffect(() => {
-    if (!initialPin) requestDeviceLocation();
-    return () => { locationRequestRef.current += 1; };
+    const timer = initialPin ? null : window.setTimeout(requestDeviceLocation, 0);
+    return () => {
+      if (timer !== null) window.clearTimeout(timer);
+      locationRequestRef.current += 1;
+    };
   }, [initialPin, requestDeviceLocation]);
 
   useEffect(() => {
@@ -453,10 +462,7 @@ export default function GuestReportForm({
   const pinLatitude = pin?.lat;
   const pinLongitude = pin?.lng;
   useEffect(() => {
-    if (!Number.isFinite(pinLatitude) || !Number.isFinite(pinLongitude)) {
-      setAddressStatus("idle");
-      return undefined;
-    }
+    if (!Number.isFinite(pinLatitude) || !Number.isFinite(pinLongitude)) return undefined;
     const key = `${pinLatitude.toFixed(5)},${pinLongitude.toFixed(5)}`;
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
@@ -581,6 +587,14 @@ export default function GuestReportForm({
         sessionStorage.setItem(`geofix:guest-report:${savedReport.incident_id}`, savedReport.guest_access_token);
         sessionStorage.setItem("geofix:last-guest-report", savedReport.incident_id);
       }
+      const reportTrackingUrl = typeof data?.tracking_url === "string" ? data.tracking_url : "";
+      if (reportTrackingUrl) {
+        setTrackingUrl(reportTrackingUrl);
+        setSavedTrackingUrl(reportTrackingUrl);
+        setFormStep(3);
+        try { window.localStorage.setItem("geofix:last-tracking-url", reportTrackingUrl); }
+        catch { /* The success screen still provides the link if storage is unavailable. */ }
+      }
       const latitude = savedReport.latitude == null ? null : Number(savedReport.latitude);
       const longitude = savedReport.longitude == null ? null : Number(savedReport.longitude);
       onSubmitNewReport?.({
@@ -600,9 +614,9 @@ export default function GuestReportForm({
         description: savedReport.sanitized_description ?? description.trim(),
         hasProof: photosRef.current.length > 0,
       });
-      onSuccess?.(savedReport);
+      onSuccess?.({ ...savedReport, tracking_url: reportTrackingUrl || undefined });
       toast.add({ title: "Report submitted successfully", description: "Your report is saved and will be reviewed by barangay staff.", type: "success" });
-      if (!embedded) onClose();
+      if (!embedded && !reportTrackingUrl) onClose();
     } catch (error) {
       toast.add({ title: "Submission Failed", description: error instanceof Error ? error.message : "Unable to submit your report right now.", type: "error" });
     } finally {
@@ -614,6 +628,25 @@ export default function GuestReportForm({
     setCameraConsentOpen(false);
     stopCamera();
     onClose();
+  };
+
+  const copyTrackingLink = async (url = trackingUrl || savedTrackingUrl) => {
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setTrackingLinkCopied(true);
+      window.setTimeout(() => setTrackingLinkCopied(false), 1800);
+    } catch {
+      toast.add({ title: "Copy unavailable", description: "Open the tracking page and copy its address from your browser.", type: "error" });
+    }
+  };
+
+  const shareTrackingLink = async () => {
+    if (!trackingUrl) return;
+    if (navigator.share) {
+      try { await navigator.share({ title: "GeoFix 167 incident tracking", url: trackingUrl }); }
+      catch (error) { if (error?.name !== "AbortError") await copyTrackingLink(trackingUrl); }
+    } else await copyTrackingLink(trackingUrl);
   };
 
   const locationSummary = address || (pin ? (isOutsideBarangay ? "Pinned outside Barangay 167" : "Pinned location, Barangay 167") : "Tap the map to place a pin");
@@ -633,12 +666,32 @@ export default function GuestReportForm({
         </div>
 
         <form onSubmit={handleSubmit} className={`${embedded ? "mt-4 space-y-3" : "mt-5 space-y-4"}`}>
-          <div className="flex items-center gap-2" aria-label={`Step ${formStep} of 2`}>
+          {formStep < 3 && <div className="flex items-center gap-2" aria-label={`Step ${formStep} of 2`}>
             <span className={`h-1.5 flex-1 rounded-full ${formStep === 1 ? "bg-[#2E8B57]" : "bg-emerald-200"}`} />
             <span className={`h-1.5 flex-1 rounded-full ${formStep === 2 ? "bg-[#2E8B57]" : "bg-slate-200"}`} />
             <span className="ml-1 text-[10px] font-semibold text-slate-500">Step {formStep} of 2</span>
-          </div>
-          {formStep === 1 ? <>
+          </div>}
+          {formStep === 3 ? <section className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4" role="status">
+            <div className="flex items-start gap-3">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-emerald-100 text-emerald-800"><Check size={19} /></span>
+              <div>
+                <h4 className="text-sm font-extrabold text-slate-900">Your report was sent for review</h4>
+                <p className="mt-1 text-xs leading-5 text-slate-600">Keep this private link to follow the responder assigned to your incident.</p>
+              </div>
+            </div>
+            <a href={trackingUrl} className="mt-4 block break-all rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-xs font-semibold text-emerald-900 underline decoration-emerald-300 underline-offset-2">{trackingUrl}</a>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <a href={trackingUrl} className="inline-flex min-h-10 items-center justify-center rounded-lg bg-[#174b37] px-3 text-xs font-bold text-white">Open tracking</a>
+              <button type="button" onClick={() => void copyTrackingLink()} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-3 text-xs font-bold text-emerald-800">{trackingLinkCopied ? <Check size={14} /> : <Copy size={14} />}{trackingLinkCopied ? "Copied" : "Copy link"}</button>
+              <button type="button" onClick={() => void shareTrackingLink()} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-3 text-xs font-bold text-emerald-800"><Share2 size={14} />Share</button>
+            </div>
+            <p className="mt-3 rounded-lg bg-white/70 px-3 py-2 text-[10px] leading-4 text-slate-600">Anyone with this link can see your responder&apos;s live location until the incident is resolved.</p>
+            <button type="button" onClick={() => onClose?.()} className="mt-3 min-h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50">Done</button>
+          </section> : formStep === 1 ? <>
+          {savedTrackingUrl && <aside className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-100 bg-emerald-50/60 px-3 py-2">
+            <span className="text-[10px] font-semibold text-emerald-900">A tracking link is saved on this device.</span>
+            <a href={savedTrackingUrl} className="text-[10px] font-bold text-emerald-800 underline underline-offset-2">Reopen tracking</a>
+          </aside>}
           <div>
             <label htmlFor={`${idPrefix}-classification`} className="mb-1.5 block text-xs font-bold text-slate-700">Incident Classification</label>
             <select id={`${idPrefix}-classification`} aria-invalid={Boolean(validationErrors.classification)} value={reportType} onChange={(event) => handleTypeChange(event.target.value)} className={`w-full rounded-lg border px-3 py-2 text-xs font-semibold outline-none ${validationErrors.classification ? "border-red-400" : ""} ${CLASSIFICATION_COLORS[reportType]?.select ?? "border-slate-200 bg-white text-slate-800 focus:border-[#2E8B57]"}`}>

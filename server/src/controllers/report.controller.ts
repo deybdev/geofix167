@@ -56,6 +56,7 @@ export async function createReportController(c: Context<AppEnv>) {
       c.req.header("X-Guest-Token"),
       photos,
       c.env.geofix167_uploads,
+      c.env.FRONTEND_ORIGIN,
     );
 
     return c.json(
@@ -65,6 +66,7 @@ export async function createReportController(c: Context<AppEnv>) {
           status_events: result.status_events,
         },
         idempotent_replay: result.idempotent_replay,
+        ...(result.tracking_url ? { tracking_url: result.tracking_url } : {}),
       },
       result.idempotent_replay ? 200 : 201,
     );

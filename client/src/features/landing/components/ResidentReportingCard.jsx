@@ -93,7 +93,8 @@ export default function ResidentReportingCard({
           <GuestReportForm
             embedded
             onSubmitNewReport={onSubmitNewReport}
-            onSuccess={() => setActiveTab("active")}
+            onSuccess={(report) => { if (!report?.tracking_url) setActiveTab("active"); }}
+            onClose={() => setActiveTab("active")}
           />
         </div>
       )}

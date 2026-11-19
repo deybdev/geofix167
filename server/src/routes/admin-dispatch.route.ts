@@ -96,7 +96,7 @@ route.post("/reports/:reportId/verify", async (c) => {
     ? "Emergency report verified and forwarded to BDRRMO."
     : "Report verified by administrator.");
   const eventId = crypto.randomUUID();
-  const result = await db.batch([
+  const statements = [
     db.prepare(`INSERT INTO incident_status_events
       (incident_status_event_id, incident_id, from_incident_status_id, to_incident_status_id, changed_by_user_id, note)
       SELECT ?, r.incident_id, r.incident_status_id, ?, ?, ? FROM incident_reports r
@@ -106,7 +106,19 @@ route.post("/reports/:reportId/verify", async (c) => {
     db.prepare(`UPDATE incident_reports SET incident_status_id = ?, updated_at = datetime('now')
       WHERE incident_id = ? AND incident_status_id IN (1, 2)`)
       .bind(statusId, id.data),
-  ]);
+  ];
+  if (statusCode === "REJECTED") {
+    statements.push(db.prepare(`UPDATE tracking_links SET expires_at = datetime('now'),
+      revoked_at = COALESCE(revoked_at, datetime('now'))
+      WHERE report_id = ? AND EXISTS (SELECT 1 FROM incident_reports WHERE incident_id = ? AND incident_status_id = 11)`)
+      .bind(id.data, id.data));
+    statements.push(db.prepare(`DELETE FROM responder_locations WHERE assignment_id IN (
+      SELECT tanod_assignment_id FROM tanod_assignments WHERE incident_id = ?
+      UNION SELECT responder_dispatch_id FROM responder_dispatches WHERE incident_id = ?
+    ) AND EXISTS (SELECT 1 FROM incident_reports WHERE incident_id = ? AND incident_status_id = 11)`)
+      .bind(id.data, id.data, id.data));
+  }
+  const result = await db.batch(statements);
   if (!result[1]?.meta.changes) return c.json({ error: "This report is no longer pending verification." }, 409);
   return c.json({ ok: true, status: forwardedEmergency ? "FORWARDED_TO_BDRRMO" : statusCode });
 });
