@@ -54,6 +54,38 @@ reportRoutes.post("/:id/attachments", requireAuth, bodyLimit({
   maxSize: MAX_UPLOAD_BYTES,
   onError: c => c.json({ error: "Upload exceeds the 25 MiB video limit." }, 413),
 }), uploadAttachment);
+reportRoutes.post("/:id/resolve", requireAuth, async (c) => {
+  const incidentId = c.req.param("id")?.trim();
+  if (!incidentId) return c.json({ error: "Incident ID is required." }, 400);
+  const currentUser = c.get("user");
+  const db = c.env.geofix167_db;
+
+  await db.batch([
+    db.prepare(`
+      UPDATE incident_reports
+      SET incident_status_id = 10, closed_at = datetime('now'), closed_by_user_id = ?, updated_at = datetime('now')
+      WHERE incident_id = ?
+    `).bind(currentUser?.id ?? null, incidentId),
+    db.prepare(`
+      UPDATE tanod_assignments
+      SET assignment_status_id = 5, completed_at = COALESCE(completed_at, datetime('now'))
+      WHERE incident_id = ?
+    `).bind(incidentId),
+    db.prepare(`
+      UPDATE responder_dispatches
+      SET status = 'COMPLETED'
+      WHERE incident_id = ?
+    `).bind(incidentId),
+    db.prepare(`
+      INSERT INTO incident_status_events
+        (incident_status_event_id, incident_id, from_incident_status_id, to_incident_status_id, changed_by_user_id, note)
+      VALUES (?, ?, 9, 10, ?, 'Admin marked incident as resolved after handover verification')
+    `).bind(crypto.randomUUID(), incidentId, currentUser?.id ?? null),
+  ]);
+
+  return c.json({ ok: true, status: "CLOSED" });
+});
+
 reportRoutes.patch("/:id/status", updateReportStatusController);
 reportRoutes.patch("/:id", updateReportDetailsController);
 reportRoutes.get("/", listReportsController);

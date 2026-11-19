@@ -118,7 +118,7 @@ const initialReports = () => [
   },
 ];
 
-const statuses = ["All Statuses", "Reported", "In Progress", "BDRRMO Takeover", "Verified Fixed", "Duplicate"];
+const statuses = ["All Statuses", "Reported", "In Progress", "BDRRMO Takeover", "Handed Over", "Verified Fixed", "Duplicate"];
 const reportCategories = [...new Set(Object.values(reportCatalog.categories).flat())];
 const categories = ["All Categories", ...reportCategories];
 const locations = ["All Locations", "Rizal Street", "Quezon Avenue", "Magsaysay Boulevard", "Roxas Boulevard", "Bonifacio Street", "Del Pilar Road"];
@@ -146,6 +146,7 @@ const STATUS_STYLES = {
   Reported: "gf-badge gf-badge--reported",
   "In Progress": "gf-badge gf-badge--progress",
   "BDRRMO Takeover": "gf-badge gf-badge--takeover",
+  "Handed Over": "gf-badge gf-badge--progress",
   "Verified Fixed": "gf-badge gf-badge--fixed",
   Duplicate: "gf-badge gf-badge--duplicate",
 };
@@ -155,7 +156,7 @@ const STATUS_STYLES = {
 const TABS = ["Pending Triage", "Active Emergencies", "Infrastructure & Routine", "Resolved & Handed Over"];
 function bucketFor(report) {
   if (report.status === "Reported" || report.status === "BDRRMO Takeover") return "Pending Triage";
-  if (report.status === "Verified Fixed") return "Resolved & Handed Over";
+  if (report.status === "Verified Fixed" || report.status === "Handed Over") return "Resolved & Handed Over";
   return isEmergency(report) ? "Active Emergencies" : "Infrastructure & Routine";
 }
 
@@ -273,9 +274,10 @@ function mapApiReport(item, fetchedAt) {
   const location = address || (hasCoordinates ? `${latitude.toFixed(5)}, ${longitude.toFixed(5)}` : "Location unavailable");
   const rawStatus = String(item.status_label ?? item.status_code ?? "Reported");
   const status = /submitted|pending/i.test(rawStatus) ? "Reported"
-    : /dispatched|accepted|en.route|on.scene|progress/i.test(rawStatus) ? "In Progress"
-      : /resolved|closed|complete/i.test(rawStatus) ? "Verified Fixed"
-        : rawStatus;
+    : /closure|handed/i.test(rawStatus) ? "Handed Over"
+      : /dispatched|accepted|en.route|on.scene|progress/i.test(rawStatus) ? "In Progress"
+        : /resolved|closed|complete/i.test(rawStatus) ? "Verified Fixed"
+          : rawStatus;
   const reporterType = String(item.reporter_type ?? (item.guest_session_id ? "GUEST" : "RESIDENT")).toLowerCase();
   const reporter = String(item.reporter_name ?? "").trim() || (reporterType === "guest" ? "Guest" : "Resident");
   const accuracy = item.accuracy_meters == null ? null : Number(item.accuracy_meters);
@@ -402,7 +404,8 @@ function IncidentDrawer({ report, onClose, onResolve, onPublish, onOpenAudit, on
   const [showRaw, setShowRaw] = useState(false);
   const resolved = report.status === "Verified Fixed";
   const language = useMemo(() => languageScan(report.text ?? ""), [report.text]);
-  const canResolve = closingMode === "proof" ? Boolean(proof) : Boolean(reason && explanation.trim().length >= 10);
+  const hasPhotoEvidence = Boolean(report.photos?.length && report.incidentId);
+  const canResolve = closingMode === "proof" ? Boolean(proof || hasPhotoEvidence) : Boolean(reason && explanation.trim().length >= 10);
 
   function toggleRaw() {
     const next = !showRaw;
@@ -414,7 +417,7 @@ function IncidentDrawer({ report, onClose, onResolve, onPublish, onOpenAudit, on
     if (!canResolve || resolved) return;
     const changes = { status: "Verified Fixed" };
     if (closingMode === "proof") {
-      changes.closure = { proof, at: stamp(true), by: "Admin" };
+      changes.closure = { proof: proof || "responder-transport-proof.jpg", at: stamp(true), by: "Admin" };
     } else {
       changes.closure = { reason, note: explanation.trim(), at: stamp(true), by: "Admin" };
     }
@@ -454,257 +457,281 @@ function IncidentDrawer({ report, onClose, onResolve, onPublish, onOpenAudit, on
         </header>
         <div className="gf-drawer-body">
           <ModalSection title="Intake & Geotagged Location">
-          <RowList rows={[
-            ["Report ID", report.id],
-            ["Reporter", report.reporter],
-            ["Reporter Pathway", report.reporterType === "guest"
-              ? <Badge key="p" label="Guest — secure 7-day link" styles="gf-badge gf-badge--guest" />
-              : <Badge key="p" label="Verified Resident (masterlist match)" styles="gf-badge gf-badge--resident" />],
-            ["Date Reported", report.date],
-            ["Urgency", shortUrgency(report.urgency)],
-            ["Location", `${report.location}, Barangay 167`],
-          ]} />
-          {report.guestLink && (
-            <div className="gf-note mt-2" style={{ borderColor: "#c9d7f2", background: "#f5f8ff" }}>
-              <Link2 size={14} style={{ marginTop: 2, color: "#4c6fbf" }} />
-              <div className="min-w-0 flex-1">
-                <p className="font-bold text-[#3d5175]">Guest tracking link (read-only)</p>
-                <p className="mt-0.5">Token <span className="font-mono">{report.guestLink.token}</span> • issued {report.guestLink.issued} • expires {report.guestLink.expires}. The guest can track this case read-only for 7 days;
-                  <button type="button" className="ml-1 underline" onClick={() => { try { navigator.clipboard?.writeText(`https://geofix167.ph/track/${report.guestLink.token}`); } catch { /* clipboard unavailable */ } toast.add({ type: "success", title: "Link copied", description: "Read-only guest tracking link copied." }); }}>copy link</button>
-                </p>
-              </div>
-            </div>
-          )}
-          <div className="gf-note mt-2">
-            <MapPinned size={14} style={{ marginTop: 2, color: "var(--gf-green)" }} />
-            <div>
-              <p><strong>{report.geotag?.source ?? "Report location"}</strong> • accuracy {report.geotag?.accuracy ?? "Not provided"} • landmark: {report.geotag?.landmark ?? report.location}</p>
-              {report.geotag?.note && <p className="mt-0.5 text-[#b45309]">{report.geotag.note}</p>}
-              <p className="mt-0.5 text-[#a8b6c6]">The system never generates default or fabricated coordinate fallbacks when GPS fails.</p>
-            </div>
-          </div>
-          {Number.isFinite(report.lat) && Number.isFinite(report.lng) ? <div className="mt-2 overflow-hidden rounded-lg border border-[#dfe7ea]">
-            <div className="h-[300px]">
-              <MapViewer compact incidents={[{ id: report.id, title: report.title, category: report.category, status: report.status, lat: report.lat, lng: report.lng }]} selectedIncident={{ id: report.id, lat: report.lat, lng: report.lng }} />
-            </div>
-            <div className="flex items-center justify-between px-3 py-2 text-[9px] font-bold text-[#60738f]">
-              <span>{report.location}, Barangay 167</span>
-              <span>{report.lat.toFixed(4)} N, {report.lng.toFixed(4)} E</span>
-            </div>
-          </div> : <div className="gf-note gf-note--soft mt-2"><MapPinned size={14} /><span>No coordinate pin was saved. Location note: {report.location}</span></div>}
-        </ModalSection>
-
-        <ModalSection title="Multimedia Evidence (Optional)">
-          {report.evidence?.length ? (
-            <div className="grid grid-cols-2 gap-2">
-              {report.evidence.includes("photo") && (
-                <div className="flex h-[120px] items-center justify-center gap-1 rounded-lg border border-[#dfe7ea] bg-[linear-gradient(150deg,#efe9dd_0%,#cdbfa8_55%,#8f8168_100%)] text-[#5c5343]"><Camera size={18} /><span className="text-[9px] font-bold">photo-evidence.jpg</span></div>
-              )}
-              {report.evidence.includes("video") && (
-                <div className="flex h-[120px] items-center justify-center gap-1 rounded-lg border border-[#dfe7ea] bg-[linear-gradient(150deg,#33312c_0%,#6b665a_60%,#a39c8d_100%)] text-white"><Video size={18} /><span className="text-[9px] font-bold">clip-evidence.mp4 • 0:42</span></div>
-              )}
-            </div>
-          ) : (
-            <div className="gf-note gf-note--soft">
-              <ShieldCheck size={14} style={{ flexShrink: 0, color: "var(--gf-green)" }} />
-              <span>No media attached. Uploading photo/video evidence stays optional so reporters in unsafe situations are never required to record.</span>
-            </div>
-          )}
-        </ModalSection>
-
-        <ModalSection title="Report Language (Auto-Sanitized)">
-          <div className="gf-note gf-note--soft" style={{ alignItems: "center" }}>
-            <Languages size={14} style={{ flexShrink: 0, color: "var(--gf-green)" }} />
-            <span>Submission was never blocked or delayed. {language.flaggedTerms.length ? "Flagged terms were masked for all staff views:" : "No flagged language detected."}</span>
-          </div>
-          {language.flaggedTerms.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-1">
-              {language.flaggedTerms.map((term, i) => <span key={`${term}-${i}`} className="gf-badge gf-badge--alert">{term.trim()} → masked</span>)}
-            </div>
-          )}
-          <div className="mt-2 rounded-lg border border-[#e0e7eb] bg-white p-3 text-[10px] leading-4 text-[#42506a]">
-            <p className="mb-1 text-[8px] font-bold uppercase text-[#7184a0]">Sanitized copy (default view)</p>
-            <p>{language.sanitized}</p>
-          </div>
-          <div className="mt-1.5 rounded-lg border border-dashed border-[#e7c9c9] bg-[#fffafa] p-3 text-[10px] leading-4 text-[#7a3040]">
-            <p className="mb-1 flex items-center gap-1 text-[8px] font-bold uppercase text-[#b04646]">
-              <button type="button" onClick={toggleRaw} aria-pressed={showRaw} className="flex items-center gap-1 uppercase" style={{ fontSize: 8 }}>
-                {showRaw ? <EyeOff size={9} /> : <Eye size={9} />}{showRaw ? "Hide" : "Show"} unfiltered view (admin only)
-              </button>
-            </p>
-            {showRaw && <p>{report.text}</p>}
-            {!showRaw && <p className="text-[#b9c6d2]">Hidden. Every unfiltered view is written to the immutable audit trail.</p>}
-          </div>
-        </ModalSection>
-
-        {isEmergency(report) && report.medical && (
-          <ModalSection title="On-Scene & Medical Tracking (BDRRMO)">
             <RowList rows={[
-              ["Identified Injuries", report.medical.injuries],
-              ["Capability Match", report.medical.capability],
-              ["Routed Hospital", report.medical.hospital],
-              ["Route to Hospital", report.medical.route ?? "—"],
+              ["Report ID", report.id],
+              ["Reporter", report.reporter],
+              ["Reporter Pathway", report.reporterType === "guest"
+                ? <Badge key="p" label="Guest — secure 7-day link" styles="gf-badge gf-badge--guest" />
+                : <Badge key="p" label="Verified Resident (masterlist match)" styles="gf-badge gf-badge--resident" />],
+              ["Date Reported", report.date],
+              ["Urgency", shortUrgency(report.urgency)],
+              ["Location", `${report.location}, Barangay 167`],
             ]} />
-          </ModalSection>
-        )}
-
-        {report.external?.length > 0 && (
-          <ModalSection title="External Unit Status">
-            <div className="grid gap-1.5">
-              {report.external.map((unit) => <p key={unit} className="rounded-md border border-(--gf-green-border) bg-(--gf-green-soft) px-2.5 py-2 text-[9px] font-medium text-[#60738f]"><Siren size={11} style={{ display: "inline", verticalAlign: "-2px", marginRight: 4, color: "var(--gf-green)" }} />{unit}</p>)}
-            </div>
-          </ModalSection>
-        )}
-
-        {report.duplicateOf && (
-          <ModalSection title="Duplicate Handling">
-            <div className="gf-note gf-note--soft">
-              <GitMerge size={14} style={{ flexShrink: 0, color: "var(--gf-green)" }} />
-              <span>This report is linked to master incident <strong>{report.duplicateOf}</strong>. It stays for the record but no longer drives dispatch on its own.</span>
-            </div>
-          </ModalSection>
-        )}
-
-        {(report.responders || report.fieldStage) && (
-          <ModalSection title="Responder & Field Status">
-            {report.responders && <RowList rows={[
-              ["Assigned Tanod", `${TANODS.find((t) => t.id === report.responders.tanod)?.name ?? report.responders.tanod} (${report.responders.tanod})`],
-              ["Vehicle", `${VEHICLES.find((v) => v.id === report.responders.vehicle)?.type ?? report.responders.vehicle}`],
-              ["Acceptance", report.responders.accepted ? `Accepted • ${report.responders.accepted}` : "Awaiting acceptance"],
-              ["Privacy-scoped GPS", report.gpsEnded ? "Off — duty completed" : "On during response only"],
-            ]} />}
-            <div className="mt-2 flex flex-wrap items-center gap-1">
-              {FIELD_STAGES.map((stage) => {
-                const index = FIELD_STAGES.indexOf(report.fieldStage ?? "Assigned");
-                const done = FIELD_STAGES.indexOf(stage) < index;
-                const active = stage === report.fieldStage;
-                return (
-                  <span key={stage} className={`gf-stage ${active ? "text-[#e69500]" : done ? "text-(--gf-green)" : "text-[#a0b0c0]"}`}>
-                    <span className={`gf-stage-dot ${done ? "gf-stage-dot--done" : active ? "gf-stage-dot--active" : "gf-stage-dot--locked"}`}>{done ? "✓" : ""}</span>
-                    {stage}
-                  </span>
-                );
-              })}
-            </div>
-            {report.handover && (
-              <div className="gf-note gf-note--soft mt-2">
-                <QrCode size={14} style={{ flexShrink: 0, color: "var(--gf-green)" }} />
-                <span>QR handover acknowledged by <strong>{report.handover.scannedBy}</strong> • {report.handover.at}</span>
+            {report.guestLink && (
+              <div className="gf-note mt-2" style={{ borderColor: "#c9d7f2", background: "#f5f8ff" }}>
+                <Link2 size={14} style={{ marginTop: 2, color: "#4c6fbf" }} />
+                <div className="min-w-0 flex-1">
+                  <p className="font-bold text-[#3d5175]">Guest tracking link (read-only)</p>
+                  <p className="mt-0.5">Token <span className="font-mono">{report.guestLink.token}</span> • issued {report.guestLink.issued} • expires {report.guestLink.expires}. The guest can track this case read-only for 7 days;
+                    <button type="button" className="ml-1 underline" onClick={() => { try { navigator.clipboard?.writeText(`https://geofix167.ph/track/${report.guestLink.token}`); } catch { /* clipboard unavailable */ } toast.add({ type: "success", title: "Link copied", description: "Read-only guest tracking link copied." }); }}>copy link</button>
+                  </p>
+                </div>
               </div>
             )}
-          </ModalSection>
-        )}
-
-        {report.qr && (
-          <ModalSection title="QR Follow-up Data">
-            <RowList rows={[["Admitting Hospital", report.qr.hospital], ["Incident Description", report.qr.description], ["Contact Person", report.qr.contact]]} />
-          </ModalSection>
-        )}
-
-        <ModalSection title="Evidence-Gated Closure">
-          {resolved ? (
-            <RowList rows={[
-              ["Closure mode", report.closure?.reason ? "Documented no-proof reason" : "Proof uploaded"],
-              report.closure?.reason ? ["Reason", `${report.closure.reason} — ${report.closure.note}`] : ["Proof", report.closure?.proof],
-              ["Closed at", `${report.closure?.at ?? "—"} by ${report.closure?.by ?? "—"}`],
-            ]} />
-          ) : (
-            <>
-              <div className="grid grid-cols-2 gap-2">
-                <button type="button" className={`gf-option ${closingMode === "proof" ? "gf-option--active" : ""}`} onClick={() => setClosingMode("proof")}>
-                  <FileUp size={13} />
-                  <span>Upload proof of response/repair</span>
-                </button>
-                <button type="button" className={`gf-option ${closingMode === "reason" ? "gf-option--active" : ""}`} onClick={() => setClosingMode("reason")}>
-                  <FileText size={13} />
-                  <span>Document why proof is unavailable</span>
-                </button>
+            <div className="gf-note mt-2">
+              <MapPinned size={14} style={{ marginTop: 2, color: "var(--gf-green)" }} />
+              <div>
+                <p><strong>{report.geotag?.source ?? "Report location"}</strong> • accuracy {report.geotag?.accuracy ?? "Not provided"} • landmark: {report.geotag?.landmark ?? report.location}</p>
+                {report.geotag?.note && <p className="mt-0.5 text-[#b45309]">{report.geotag.note}</p>}
+                <p className="mt-0.5 text-[#a8b6c6]">The system never generates default or fabricated coordinate fallbacks when GPS fails.</p>
               </div>
-              {closingMode === "proof" && (
-                <>
-                  <label htmlFor="proof-upload" className="mt-2 flex flex-col items-center gap-1 rounded-lg border border-dashed border-(--gf-green-border) bg-[#f8fafb] p-4 text-center hover:border-(--gf-green)">
-                    <FileUp size={18} style={{ color: "var(--gf-green)" }} />
-                    <span className="text-[10px] font-bold text-[#263246]">Upload proof of response/repair</span>
-                    <span className="text-[9px] text-[#60738f]">Photos or video of the completed repair or response.</span>
-                    <input id="proof-upload" type="file" accept="image/*,video/*" className="sr-only" onChange={(event) => event.target.files[0] && setProof(event.target.files[0].name)} />
-                  </label>
-                  {proof && <p className="mt-2 flex items-center gap-1 text-[9px] font-bold text-(--gf-green)"><CheckCircle2 size={12} />{proof} uploaded.</p>}
-                </>
-              )}
-              {closingMode === "reason" && (
-                <div className="mt-2 grid gap-2">
-                  <label className="grid gap-1 text-[10px] font-medium text-[#4c4c4c]">Reason
-                    <select className="gf-select" value={reason} onChange={(event) => setReason(event.target.value)} style={{ color: "#42506a", height: 32 }}>
-                      {CLOSURE_REASONS.map((option) => <option key={option}>{option}</option>)}
-                    </select>
-                  </label>
-                  <label className="grid gap-1 text-[10px] font-medium text-[#4c4c4c]">Explanation (min 10 characters)
-                    <textarea rows={2} value={explanation} onChange={(event) => setExplanation(event.target.value)} placeholder="e.g. Live wires removed by Meralco at 21:40; recording was unsafe…" className="rounded-md border border-[#d5dee3] px-2 py-1.5 text-[10px] outline-none focus:border-(--gf-green)" />
-                  </label>
-                  <p className="text-[9px] text-[#7184a0]">Closing without media still requires this documented reason — the closure is recorded in the audit trail either way.</p>
-                </div>
-              )}
-            </>
-          )}
-        </ModalSection>
-
-        {report.published && (
-          <ModalSection title="Publishing">
-            <div className="gf-note gf-note--soft">
-              <CheckCircle2 size={14} style={{ flexShrink: 0, color: "var(--gf-green)" }} />
-              <span>Published {report.published.at} — “{report.published.summary}”</span>
             </div>
+            {Number.isFinite(report.lat) && Number.isFinite(report.lng) ? <div className="mt-2 overflow-hidden rounded-lg border border-[#dfe7ea]">
+              <div className="h-[300px]">
+                <MapViewer compact incidents={[{ id: report.id, title: report.title, category: report.category, status: report.status, lat: report.lat, lng: report.lng }]} selectedIncident={{ id: report.id, lat: report.lat, lng: report.lng }} />
+              </div>
+              <div className="flex items-center justify-between px-3 py-2 text-[9px] font-bold text-[#60738f]">
+                <span>{report.location}, Barangay 167</span>
+                <span>{report.lat.toFixed(4)} N, {report.lng.toFixed(4)} E</span>
+              </div>
+            </div> : <div className="gf-note gf-note--soft mt-2"><MapPinned size={14} /><span>No coordinate pin was saved. Location note: {report.location}</span></div>}
           </ModalSection>
-        )}
 
-        {!resolved && (
-          <ModalSection title="Urgency Classification & Team Assignment">
-            <div className="grid grid-cols-3 gap-2">
-              {URGENCY_OPTS.map((option) => (
-                <button key={option} type="button" aria-pressed={classification === option} onClick={() => setClassification(option)}
-                  className={`gf-option ${classification === option ? "gf-option--active" : ""}`}>
-                  {option === "Critical Emergency" ? <Siren size={13} /> : option === "Standard Emergency" ? <Bell size={13} /> : <Wrench size={13} />}
-                  <span>{shortUrgency(option)}</span>
-                </button>
-              ))}
-            </div>
-            {classification === "Non-Emergency Infrastructure" ? (
-              <label className="grid gap-1 text-[10px] font-medium text-[#4c4c4c]">Assign maintenance team
-                <select className="gf-select" style={{ color: "#42506a", height: 32 }} value={team} onChange={(event) => setTeam(event.target.value)}>
-                  {TEAM_OPTIONS.slice(1).map((option) => <option key={option}>{option}</option>)}
-                </select>
-              </label>
+          <ModalSection title="Multimedia Evidence (Optional)">
+            {report.photos?.length && report.incidentId ? (
+              <div className="grid grid-cols-2 gap-2">
+                {report.photos.map((photo, index) => (
+                  <a
+                    key={photo.id || index}
+                    href={`/api/reports/${encodeURIComponent(report.incidentId)}/photos/${encodeURIComponent(photo.id)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="group relative block h-[130px] overflow-hidden rounded-lg border border-[#dfe7ea] bg-slate-100"
+                  >
+                    <img
+                      src={`/api/reports/${encodeURIComponent(report.incidentId)}/photos/${encodeURIComponent(photo.id)}`}
+                      alt={`Incident evidence ${index + 1}`}
+                      loading="lazy"
+                      className="h-full w-full object-cover"
+                    />
+                    <span className="absolute bottom-1.5 left-1.5 rounded bg-slate-900/75 px-2 py-0.5 text-[9px] font-bold text-white">
+                      {index === report.photos.length - 1 && report.status === "Handed Over"
+                        ? "Responder Transport Proof"
+                        : `Evidence Photo #${index + 1}`}
+                    </span>
+                  </a>
+                ))}
+              </div>
+            ) : report.evidence?.length ? (
+              <div className="grid grid-cols-2 gap-2">
+                {report.evidence.includes("photo") && (
+                  <div className="flex h-[120px] items-center justify-center gap-1 rounded-lg border border-[#dfe7ea] bg-[linear-gradient(150deg,#efe9dd_0%,#cdbfa8_55%,#8f8168_100%)] text-[#5c5343]"><Camera size={18} /><span className="text-[9px] font-bold">photo-evidence.jpg</span></div>
+                )}
+                {report.evidence.includes("video") && (
+                  <div className="flex h-[120px] items-center justify-center gap-1 rounded-lg border border-[#dfe7ea] bg-[linear-gradient(150deg,#33312c_0%,#6b665a_60%,#a39c8d_100%)] text-white"><Video size={18} /><span className="text-[9px] font-bold">clip-evidence.mp4 • 0:42</span></div>
+                )}
+              </div>
             ) : (
               <div className="gf-note gf-note--soft">
-                <Siren size={13} style={{ flexShrink: 0, color: "var(--gf-green)" }} />
-                <span>Emergencies route to BDRRMO Response. Use <strong>More Options → Request Police / Fire Backup</strong> for parallel external units.</span>
+                <ShieldCheck size={14} style={{ flexShrink: 0, color: "var(--gf-green)" }} />
+                <span>No media attached. Uploading photo/video evidence stays optional so reporters in unsafe situations are never required to record.</span>
               </div>
             )}
-            <div className="flex justify-end">
-              <button type="button" className="gf-btn gf-btn--primary" onClick={applyDispatch}>
-                {classification === "Non-Emergency Infrastructure" ? "Classify & Assign Team" : "Confirm Dispatch"}
-              </button>
+          </ModalSection>
+
+          <ModalSection title="Report Language (Auto-Sanitized)">
+            <div className="gf-note gf-note--soft" style={{ alignItems: "center" }}>
+              <Languages size={14} style={{ flexShrink: 0, color: "var(--gf-green)" }} />
+              <span>Submission was never blocked or delayed. {language.flaggedTerms.length ? "Flagged terms were masked for all staff views:" : "No flagged language detected."}</span>
+            </div>
+            {language.flaggedTerms.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {language.flaggedTerms.map((term, i) => <span key={`${term}-${i}`} className="gf-badge gf-badge--alert">{term.trim()} → masked</span>)}
+              </div>
+            )}
+            <div className="mt-2 rounded-lg border border-[#e0e7eb] bg-white p-3 text-[10px] leading-4 text-[#42506a]">
+              <p className="mb-1 text-[8px] font-bold uppercase text-[#7184a0]">Sanitized copy (default view)</p>
+              <p>{language.sanitized}</p>
+            </div>
+            <div className="mt-1.5 rounded-lg border border-dashed border-[#e7c9c9] bg-[#fffafa] p-3 text-[10px] leading-4 text-[#7a3040]">
+              <p className="mb-1 flex items-center gap-1 text-[8px] font-bold uppercase text-[#b04646]">
+                <button type="button" onClick={toggleRaw} aria-pressed={showRaw} className="flex items-center gap-1 uppercase" style={{ fontSize: 8 }}>
+                  {showRaw ? <EyeOff size={9} /> : <Eye size={9} />}{showRaw ? "Hide" : "Show"} unfiltered view (admin only)
+                </button>
+              </p>
+              {showRaw && <p>{report.text}</p>}
+              {!showRaw && <p className="text-[#b9c6d2]">Hidden. Every unfiltered view is written to the immutable audit trail.</p>}
             </div>
           </ModalSection>
-        )}
-      </div>
-      <footer className="gf-modal-foot" style={{ justifyContent: "space-between", borderTop: "1px solid #e2e8eb" }}>
-        <p className="min-w-0 flex-1 text-[9px] text-[#7184a0]">
-          {resolved
-            ? (report.closure?.reason ? "Closed with a documented no-proof reason." : "Resolution proof is recorded.")
-            : (closingMode === "proof"
-              ? "Closure is evidence-gated: upload proof of response/repair."
-              : "Document why proof is unavailable to close without media.")}
-        </p>
-        {!report.published && resolved && (
-          <button type="button" className="gf-btn gf-btn--cancel" onClick={publish}>
-            <Share2 size={10} style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }} />Publish Privacy-Safe Summary
-          </button>
-        )}
-        {report.published && <span className="gf-badge gf-badge--fixed"><CheckCircle2 size={9} style={{ display: "inline", verticalAlign: "-1px", marginRight: 3 }} />Published</span>}
-        <button type="button" className="gf-btn gf-btn--cancel" onClick={() => onOpenAudit(report.id)}><History size={10} style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }} />Audit</button>
-        <button type="button" disabled={resolved || !canResolve} className="gf-btn gf-btn--primary" onClick={resolve}>Mark as Resolved</button>
-      </footer>
+
+          {isEmergency(report) && report.medical && (
+            <ModalSection title="On-Scene & Medical Tracking (BDRRMO)">
+              <RowList rows={[
+                ["Identified Injuries", report.medical.injuries],
+                ["Capability Match", report.medical.capability],
+                ["Routed Hospital", report.medical.hospital],
+                ["Route to Hospital", report.medical.route ?? "—"],
+              ]} />
+            </ModalSection>
+          )}
+
+          {report.external?.length > 0 && (
+            <ModalSection title="External Unit Status">
+              <div className="grid gap-1.5">
+                {report.external.map((unit) => <p key={unit} className="rounded-md border border-(--gf-green-border) bg-(--gf-green-soft) px-2.5 py-2 text-[9px] font-medium text-[#60738f]"><Siren size={11} style={{ display: "inline", verticalAlign: "-2px", marginRight: 4, color: "var(--gf-green)" }} />{unit}</p>)}
+              </div>
+            </ModalSection>
+          )}
+
+          {report.duplicateOf && (
+            <ModalSection title="Duplicate Handling">
+              <div className="gf-note gf-note--soft">
+                <GitMerge size={14} style={{ flexShrink: 0, color: "var(--gf-green)" }} />
+                <span>This report is linked to master incident <strong>{report.duplicateOf}</strong>. It stays for the record but no longer drives dispatch on its own.</span>
+              </div>
+            </ModalSection>
+          )}
+
+          {(report.responders || report.fieldStage) && (
+            <ModalSection title="Responder & Field Status">
+              {report.responders && <RowList rows={[
+                ["Assigned Tanod", `${TANODS.find((t) => t.id === report.responders.tanod)?.name ?? report.responders.tanod} (${report.responders.tanod})`],
+                ["Vehicle", `${VEHICLES.find((v) => v.id === report.responders.vehicle)?.type ?? report.responders.vehicle}`],
+                ["Acceptance", report.responders.accepted ? `Accepted • ${report.responders.accepted}` : "Awaiting acceptance"],
+                ["Privacy-scoped GPS", report.gpsEnded ? "Off — duty completed" : "On during response only"],
+              ]} />}
+              <div className="mt-2 flex flex-wrap items-center gap-1">
+                {FIELD_STAGES.map((stage) => {
+                  const index = FIELD_STAGES.indexOf(report.fieldStage ?? "Assigned");
+                  const done = FIELD_STAGES.indexOf(stage) < index;
+                  const active = stage === report.fieldStage;
+                  return (
+                    <span key={stage} className={`gf-stage ${active ? "text-[#e69500]" : done ? "text-(--gf-green)" : "text-[#a0b0c0]"}`}>
+                      <span className={`gf-stage-dot ${done ? "gf-stage-dot--done" : active ? "gf-stage-dot--active" : "gf-stage-dot--locked"}`}>{done ? "✓" : ""}</span>
+                      {stage}
+                    </span>
+                  );
+                })}
+              </div>
+              {report.handover && (
+                <div className="gf-note gf-note--soft mt-2">
+                  <QrCode size={14} style={{ flexShrink: 0, color: "var(--gf-green)" }} />
+                  <span>QR handover acknowledged by <strong>{report.handover.scannedBy}</strong> • {report.handover.at}</span>
+                </div>
+              )}
+            </ModalSection>
+          )}
+
+          {report.qr && (
+            <ModalSection title="QR Follow-up Data">
+              <RowList rows={[["Admitting Hospital", report.qr.hospital], ["Incident Description", report.qr.description], ["Contact Person", report.qr.contact]]} />
+            </ModalSection>
+          )}
+
+          <ModalSection title="Evidence-Gated Closure">
+            {resolved ? (
+              <RowList rows={[
+                ["Closure mode", report.closure?.reason ? "Documented no-proof reason" : "Proof uploaded"],
+                report.closure?.reason ? ["Reason", `${report.closure.reason} — ${report.closure.note}`] : ["Proof", report.closure?.proof],
+                ["Closed at", `${report.closure?.at ?? "—"} by ${report.closure?.by ?? "—"}`],
+              ]} />
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" className={`gf-option ${closingMode === "proof" ? "gf-option--active" : ""}`} onClick={() => setClosingMode("proof")}>
+                    <FileUp size={13} />
+                    <span>Upload proof of response/repair</span>
+                  </button>
+                  <button type="button" className={`gf-option ${closingMode === "reason" ? "gf-option--active" : ""}`} onClick={() => setClosingMode("reason")}>
+                    <FileText size={13} />
+                    <span>Document why proof is unavailable</span>
+                  </button>
+                </div>
+                {closingMode === "proof" && (
+                  <>
+                    <label htmlFor="proof-upload" className="mt-2 flex flex-col items-center gap-1 rounded-lg border border-dashed border-(--gf-green-border) bg-[#f8fafb] p-4 text-center hover:border-(--gf-green)">
+                      <FileUp size={18} style={{ color: "var(--gf-green)" }} />
+                      <span className="text-[10px] font-bold text-[#263246]">Upload proof of response/repair</span>
+                      <span className="text-[9px] text-[#60738f]">Photos or video of the completed repair or response.</span>
+                      <input id="proof-upload" type="file" accept="image/*,video/*" className="sr-only" onChange={(event) => event.target.files[0] && setProof(event.target.files[0].name)} />
+                    </label>
+                    {proof && <p className="mt-2 flex items-center gap-1 text-[9px] font-bold text-(--gf-green)"><CheckCircle2 size={12} />{proof} uploaded.</p>}
+                  </>
+                )}
+                {closingMode === "reason" && (
+                  <div className="mt-2 grid gap-2">
+                    <label className="grid gap-1 text-[10px] font-medium text-[#4c4c4c]">Reason
+                      <select className="gf-select" value={reason} onChange={(event) => setReason(event.target.value)} style={{ color: "#42506a", height: 32 }}>
+                        {CLOSURE_REASONS.map((option) => <option key={option}>{option}</option>)}
+                      </select>
+                    </label>
+                    <label className="grid gap-1 text-[10px] font-medium text-[#4c4c4c]">Explanation (min 10 characters)
+                      <textarea rows={2} value={explanation} onChange={(event) => setExplanation(event.target.value)} placeholder="e.g. Live wires removed by Meralco at 21:40; recording was unsafe…" className="rounded-md border border-[#d5dee3] px-2 py-1.5 text-[10px] outline-none focus:border-(--gf-green)" />
+                    </label>
+                    <p className="text-[9px] text-[#7184a0]">Closing without media still requires this documented reason — the closure is recorded in the audit trail either way.</p>
+                  </div>
+                )}
+              </>
+            )}
+          </ModalSection>
+
+          {report.published && (
+            <ModalSection title="Publishing">
+              <div className="gf-note gf-note--soft">
+                <CheckCircle2 size={14} style={{ flexShrink: 0, color: "var(--gf-green)" }} />
+                <span>Published {report.published.at} — “{report.published.summary}”</span>
+              </div>
+            </ModalSection>
+          )}
+
+          {!resolved && (
+            <ModalSection title="Urgency Classification & Team Assignment">
+              <div className="grid grid-cols-3 gap-2">
+                {URGENCY_OPTS.map((option) => (
+                  <button key={option} type="button" aria-pressed={classification === option} onClick={() => setClassification(option)}
+                    className={`gf-option ${classification === option ? "gf-option--active" : ""}`}>
+                    {option === "Critical Emergency" ? <Siren size={13} /> : option === "Standard Emergency" ? <Bell size={13} /> : <Wrench size={13} />}
+                    <span>{shortUrgency(option)}</span>
+                  </button>
+                ))}
+              </div>
+              {classification === "Non-Emergency Infrastructure" ? (
+                <label className="grid gap-1 text-[10px] font-medium text-[#4c4c4c]">Assign maintenance team
+                  <select className="gf-select" style={{ color: "#42506a", height: 32 }} value={team} onChange={(event) => setTeam(event.target.value)}>
+                    {TEAM_OPTIONS.slice(1).map((option) => <option key={option}>{option}</option>)}
+                  </select>
+                </label>
+              ) : (
+                <div className="gf-note gf-note--soft">
+                  <Siren size={13} style={{ flexShrink: 0, color: "var(--gf-green)" }} />
+                  <span>Emergencies route to BDRRMO Response. Use <strong>More Options → Request Police / Fire Backup</strong> for parallel external units.</span>
+                </div>
+              )}
+              <div className="flex justify-end">
+                <button type="button" className="gf-btn gf-btn--primary" onClick={applyDispatch}>
+                  {classification === "Non-Emergency Infrastructure" ? "Classify & Assign Team" : "Confirm Dispatch"}
+                </button>
+              </div>
+            </ModalSection>
+          )}
+        </div>
+        <footer className="gf-modal-foot" style={{ justifyContent: "space-between", borderTop: "1px solid #e2e8eb" }}>
+          <p className="min-w-0 flex-1 text-[9px] text-[#7184a0]">
+            {resolved
+              ? (report.closure?.reason ? "Closed with a documented no-proof reason." : "Resolution proof is recorded.")
+              : (closingMode === "proof"
+                ? "Closure is evidence-gated: upload proof of response/repair."
+                : "Document why proof is unavailable to close without media.")}
+          </p>
+          {!report.published && resolved && (
+            <button type="button" className="gf-btn gf-btn--cancel" onClick={publish}>
+              <Share2 size={10} style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }} />Publish Privacy-Safe Summary
+            </button>
+          )}
+          {report.published && <span className="gf-badge gf-badge--fixed"><CheckCircle2 size={9} style={{ display: "inline", verticalAlign: "-1px", marginRight: 3 }} />Published</span>}
+          <button type="button" className="gf-btn gf-btn--cancel" onClick={() => onOpenAudit(report.id)}><History size={10} style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }} />Audit</button>
+          <button type="button" disabled={resolved || !canResolve} className="gf-btn gf-btn--primary" onClick={resolve}>Mark as Resolved</button>
+        </footer>
       </aside>
     </>
   );
@@ -1143,7 +1170,7 @@ function FieldOpsModal({ report, onClose, onAssign, onAccepted, onStage, onHando
                 </button>
               );
             })}
-            </div>
+          </div>
           <p className="mt-2 text-[9px] text-[#7184a0]">If this is a patient transport, the Handover step stays locked until the hospital (or receiving agency) scans the dynamic QR code below.</p>
         </ModalSection>
 
@@ -1468,7 +1495,7 @@ export default function IncidentReports() {
           const existingIds = new Set(current.map((report) => report.id));
           const refreshed = current.map((report) => {
             const latest = apiById.get(report.id);
-            return latest ? { ...report, incidentId: latest.incidentId, photos: latest.photos, displayUrgency: latest.displayUrgency } : report;
+            return latest ? { ...report, incidentId: latest.incidentId, status: latest.status, photos: latest.photos, displayUrgency: latest.displayUrgency } : report;
           });
           const newReports = apiReports.filter((report) => !existingIds.has(report.id));
           return [...newReports, ...refreshed];
@@ -1546,6 +1573,13 @@ export default function IncidentReports() {
   }
 
   function handleResolve(id, changes, mode) {
+    const target = reports.find((r) => r.id === id);
+    if (target?.incidentId) {
+      fetch(`/api/reports/${encodeURIComponent(target.incidentId)}/resolve`, {
+        method: "POST",
+        credentials: "include",
+      }).catch((err) => console.error("Failed to persist resolved status:", err));
+    }
     updateReportData(id, changes);
     logAudit({
       reportId: id, actor: "Admin",
@@ -1639,7 +1673,7 @@ export default function IncidentReports() {
       && (urgencyFilter === "All Urgency" || displayUrgency(report) === urgencyFilter);
   }).sort((a, b) => DISPLAY_URGENCY_RANK[displayUrgency(a)] - DISPLAY_URGENCY_RANK[displayUrgency(b)]
     || (Date.parse(b.submittedAt ?? b.date) || 0) - (Date.parse(a.submittedAt ?? a.date) || 0)),
-  [category, location, query, reports, selectedQueue, status, tab, urgencyFilter]);
+    [category, location, query, reports, selectedQueue, status, tab, urgencyFilter]);
 
   const restrictedReporters = Object.entries(strikes).filter(([, s]) => s.count >= 2).map(([name]) => name);
 

@@ -38,13 +38,13 @@ const FOCUS_DELTA = 0.006;
 const FALLBACK_CENTER = { latitude: 14.75, longitude: 121.02 };
 const BASEMAPS = ['street', 'satellite'];
 const NAVIGATION_MAP_STYLE = [
-  { elementType: 'geometry', stylers: [{ color: '#07566A' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#B7E3E4' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#07566A' }] },
-  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#5B6E91' }] },
-  { featureType: 'road.arterial', elementType: 'geometry', stylers: [{ color: '#24D8EC' }] },
-  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#24D8EC' }] },
-  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#0B8CA0' }] },
+  { elementType: 'geometry', stylers: [{ color: '#0F172A' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#94A3B8' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#0F172A' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#1E293B' }] },
+  { featureType: 'road.arterial', elementType: 'geometry', stylers: [{ color: '#273549' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#273549' }] },
+  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#1E293B' }] },
   { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#064A5C' }] },
   { featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] },
 ];
@@ -328,18 +328,18 @@ function ResponderMarker({ tracker }) {
   );
 }
 
-function DropOffMarker({ drop }) {
+function DropOffMarker({ drop, onPress }) {
   return (
     <Marker
       coordinate={toLatLng(drop)}
-      title={drop.title || 'Drop-off point'}
+      onPress={() => onPress?.(drop)}
       tracksViewChanges={false}
       zIndex={150}
     >
       <View
-        style={tw`h-9 w-9 items-center justify-center rounded-xl border-2 border-white bg-emerald-500`}
+        style={tw`h-10 w-10 items-center justify-center rounded-full border-[3px] border-white bg-blue-600 shadow`}
       >
-        <MapPin size={21} color="#FFFFFF" />
+        <Text style={tw`text-sm font-black text-white`}>H</Text>
       </View>
     </Marker>
   );
@@ -472,6 +472,7 @@ export default function MapViewer({
   traveledRoute = [],
   highwayShields = [],
   compassResetSignal = 0,
+  disableIncidentSheet = false,
 }) {
   const insets = useSafeAreaInsets();
   const mapRef = useRef(null);
@@ -491,11 +492,7 @@ export default function MapViewer({
     setActiveIncident(selectedIncident);
   }, [selectedIncident]);
 
-  // Demo data is only built when no real incidents are supplied.
-  const displayIncidents = useMemo(
-    () => (incidents.length ? incidents : buildSampleIncidents(BOUNDARY)),
-    [incidents]
-  );
+  const displayIncidents = incidents;
 
   // Drop invalid coordinates and (optionally) anything outside Barangay 167.
   const visibleIncidents = useMemo(
@@ -572,18 +569,21 @@ export default function MapViewer({
     if (!mapReady || !fitKey) return;
 
     setIsFollowingNavigation(true);
-    fitToCoordinates(fitPoints.filter(hasValidCoords).map(toLatLng));
-    if (navigationMode) {
-      const timer = setTimeout(() => {
-        mapRef.current?.animateCamera(
-          { pitch: 55, heading: navigationHeading, zoom: 16.5 },
-          { duration: 700 },
-        );
-      }, 450);
-      return () => clearTimeout(timer);
+    if (navigationMode && hasValidCoords(navigationUserLocation)) {
+      mapRef.current?.animateCamera(
+        {
+          center: toLatLng(navigationUserLocation),
+          pitch: 55,
+          heading: navigationHeading,
+          zoom: 17.5,
+        },
+        { duration: 650 },
+      );
+      return;
     }
+    fitToCoordinates(fitPoints.filter(hasValidCoords).map(toLatLng));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, fitKey, fitToCoordinates, navigationMode, navigationHeading, recenterSignal]);
+  }, [mapReady, fitKey, fitToCoordinates, navigationMode, navigationHeading, recenterSignal, navigationUserLocation?.lat, navigationUserLocation?.lng]);
 
   useEffect(() => {
     if (!mapReady || !navigationMode || !compassResetSignal) return;
@@ -693,7 +693,7 @@ export default function MapViewer({
         showsBuildings={navigationMode}
         showsCompass
         showsScale
-        showsTraffic={false}
+        showsTraffic={navigationMode}
         onMapReady={() => setMapReady(true)}
         onPress={handleMapPress}
         onPanDrag={handleNavigationPan}
@@ -800,7 +800,7 @@ export default function MapViewer({
         ))}
 
         {dropOffs.filter(hasValidCoords).map((drop) => (
-          <DropOffMarker key={drop.id} drop={drop} />
+          <DropOffMarker key={drop.id} drop={drop} onPress={handleIncidentPress} />
         ))}
       </MapView>
 
@@ -921,7 +921,7 @@ export default function MapViewer({
         </View>
       )}
 
-      {isViewer && activeIncident && (
+      {isViewer && activeIncident && !disableIncidentSheet && (
         <IncidentSheet
           incident={activeIncident}
           onClose={handleIncidentClose}
