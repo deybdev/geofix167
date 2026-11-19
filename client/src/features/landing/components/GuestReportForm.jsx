@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, Camera, FileText, ImagePlus, LocateFixed, Locate, RotateCcw, Send, Trash2, UserRound, X } from "lucide-react";
+import { AlertTriangle, Camera, FileText, LocateFixed, Locate, RotateCcw, Send, Trash2, UserRound, X } from "lucide-react";
 import L from "leaflet";
 import { Circle, GeoJSON, MapContainer, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
@@ -18,9 +18,6 @@ const CLASSIFICATION_COLORS = {
   sudden: { select: "border-red-300 bg-red-50 text-red-800 focus:border-red-500", option: "bg-red-50 text-red-800" },
   maintenance: { select: "border-[#9fb6a4] bg-[#e5efe6] text-[#174b37] focus:border-[#47745a]", option: "bg-[#e5efe6] text-[#174b37]" },
 };
-const isHighCategory = (type, item) => type === "sudden"
-  || reportCatalog.guestUrgency.maintenanceHighCategories.includes(item);
-
 async function compressEvidenceImage(file) {
   if (!file.type.startsWith("image/")) throw new Error("Choose an image file for photo evidence.");
   const bitmap = await createImageBitmap(file);
@@ -160,6 +157,7 @@ export default function GuestReportForm({
   const [category, setCategory] = useState(initialClassification.defaultCategory);
   const [title, setTitle] = useState("");
   const [reporterName, setReporterName] = useState("");
+  const [formStep, setFormStep] = useState(1);
   const [locationNote, setLocationNote] = useState("");
   const [showLocationNote, setShowLocationNote] = useState(false);
   const [description, setDescription] = useState("");
@@ -170,7 +168,6 @@ export default function GuestReportForm({
   const [cameraBusy, setCameraBusy] = useState(false);
   const cameraStreamRef = useRef(null);
   const videoRef = useRef(null);
-  const photoInputRef = useRef(null);
   const replacePhotoIndexRef = useRef(null);
   const [pin, setPin] = useState(initialPin);
   const pinRef = useRef(initialPin);
@@ -188,7 +185,6 @@ export default function GuestReportForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const classification = reportCatalog.classifications.find((item) => item.value === reportType);
   const categories = reportCatalog.categories[reportType] ?? [];
-  const categoryIsHigh = isHighCategory(reportType, category);
   const urgencyCode = reportType === "sudden"
     ? reportCatalog.guestUrgency.sudden
     : reportCatalog.guestUrgency.maintenanceHighCategories.includes(category)
@@ -245,7 +241,7 @@ export default function GuestReportForm({
     replacePhotoIndexRef.current = replacementIndex;
     setCameraError("");
     if (!navigator.mediaDevices?.getUserMedia) {
-      setCameraError("Camera access is unavailable. Choose an image from your device instead.");
+      setCameraError("This browser cannot access a camera. Use a camera-enabled browser on localhost or HTTPS.");
       return;
     }
     setCameraBusy(true);
@@ -257,8 +253,8 @@ export default function GuestReportForm({
       cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
       cameraStreamRef.current = null;
       setCameraError(error?.name === "NotFoundError" || error?.name === "DevicesNotFoundError"
-        ? "No camera was found. Choose an image from your device instead."
-        : "Camera access was denied or unavailable. Choose an image from your device instead.");
+        ? "No camera was found. Connect or enable a camera to continue."
+        : "Camera permission was denied or unavailable. Allow it in browser settings, then retry.");
     } finally {
       setCameraBusy(false);
     }
@@ -292,22 +288,6 @@ export default function GuestReportForm({
       setCameraBusy(false);
     }
   }, [acceptEvidencePhoto, stopCamera]);
-
-  const handlePhotoFiles = useCallback(async (event) => {
-    const chosenFiles = [...(event.target.files ?? [])];
-    event.target.value = "";
-    const replacementIndex = replacePhotoIndexRef.current;
-    replacePhotoIndexRef.current = null;
-    try {
-      const candidates = replacementIndex == null ? chosenFiles.slice(0, Math.max(0, 3 - photosRef.current.length)) : chosenFiles.slice(0, 1);
-      for (let index = 0; index < candidates.length; index += 1) {
-        await acceptEvidencePhoto(candidates[index], replacementIndex == null ? null : replacementIndex);
-      }
-      if (chosenFiles.length > candidates.length) setCameraError("Only three photos can be attached to one report.");
-    } catch (error) {
-      setCameraError(error instanceof Error ? error.message : "This photo could not be prepared.");
-    }
-  }, [acceptEvidencePhoto]);
 
   const removePhoto = (id) => {
     const current = photosRef.current;
@@ -421,14 +401,32 @@ export default function GuestReportForm({
     setCategory(selected?.defaultCategory ?? (reportCatalog.categories[type] ?? [])[0] ?? "");
   };
 
+  const handleNext = () => {
+    if (!title.trim() || !reporterName.trim() || (!highUrgency && !description.trim())) {
+      toast.add({ title: "Required details missing", description: highUrgency ? "Add an incident title and your name." : "Add an incident title, your name, and a description.", type: "error" });
+      return;
+    }
+    if (!pin && !locationNote.trim()) {
+      toast.add({ title: "Location required", description: "Wait for your location or pan the map to place a pin before continuing.", type: "error" });
+      return;
+    }
+    if (needsAccuracyConfirmation && !confirmPoorAccuracy) {
+      toast.add({ title: "Confirm the pin location", description: "Move the pin to improve accuracy or confirm that its current location is correct.", type: "error" });
+      return;
+    }
+
+    setFormStep(2);
+    void startCamera();
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     if (!title.trim() || !reporterName.trim() || (!highUrgency && !description.trim())) {
       toast.add({ title: "Required details missing", description: highUrgency ? "Add an incident title and your name." : "Add an incident title, your name, and a description.", type: "error" });
       return;
     }
-    if (highUrgency && photosRef.current.length === 0) {
-      toast.add({ title: "Photo evidence required", description: "Attach at least one photo for a High urgency report.", type: "error" });
+    if (photosRef.current.length === 0) {
+      toast.add({ title: "Camera photo required", description: "Capture at least one photo with your camera before submitting this report.", type: "error" });
       return;
     }
     if (!pin && !locationNote.trim()) {
@@ -527,6 +525,12 @@ export default function GuestReportForm({
         </div>
 
         <form onSubmit={handleSubmit} className={`${embedded ? "mt-4 space-y-3" : "mt-5 space-y-4"}`}>
+          <div className="flex items-center gap-2" aria-label={`Step ${formStep} of 2`}>
+            <span className={`h-1.5 flex-1 rounded-full ${formStep === 1 ? "bg-[#2E8B57]" : "bg-emerald-200"}`} />
+            <span className={`h-1.5 flex-1 rounded-full ${formStep === 2 ? "bg-[#2E8B57]" : "bg-slate-200"}`} />
+            <span className="ml-1 text-[10px] font-semibold text-slate-500">Step {formStep} of 2</span>
+          </div>
+          {formStep === 1 ? <>
           <div>
             <label htmlFor={`${idPrefix}-classification`} className="mb-1.5 block text-xs font-bold text-slate-700">Incident Classification</label>
             <select id={`${idPrefix}-classification`} value={reportType} onChange={(event) => handleTypeChange(event.target.value)} className={`w-full rounded-lg border px-3 py-2 text-xs font-semibold outline-none ${CLASSIFICATION_COLORS[reportType]?.select ?? "border-slate-200 bg-white text-slate-800 focus:border-[#2E8B57]"}`}>
@@ -540,7 +544,7 @@ export default function GuestReportForm({
               value={category}
               onChange={setCategory}
               label="Incident category"
-              options={categories.map((item) => ({ value: item, label: item, tag: isHighCategory(reportType, item) ? "High" : "Medium", tone: isHighCategory(reportType, item) ? "red" : "neutral" }))}
+              options={categories.map((item) => ({ value: item, label: item }))}
             />
           </div>
 
@@ -601,21 +605,21 @@ export default function GuestReportForm({
           </div>
 
           <div>
-            <label htmlFor={`${idPrefix}-description`} className={`mb-1.5 block text-xs font-bold ${highUrgency ? "text-red-700" : "text-slate-700"}`}>Incident Description{highUrgency ? " (optional)" : ""}</label>
-            {highUrgency && <p className="mb-1 text-[10px] text-red-700">High urgency: photo evidence is required. A description can help responders, but is optional.</p>}
-            {!highUrgency && <p className="mb-1 text-[10px] text-slate-500">Medium urgency: please describe the issue.</p>}
-            <textarea id={`${idPrefix}-description`} rows={3} value={description} onChange={(event) => setDescription(event.target.value)} maxLength={10000} placeholder="Provide exact details of the situation, visible risks, or landmarks..." required={!highUrgency} className={`w-full resize-none rounded-lg border px-3 py-2 text-xs outline-none focus:ring-2 ${highUrgency ? "border-red-200 bg-red-50/50 text-slate-800 focus:border-red-400 focus:ring-red-100" : "border-slate-200 bg-white text-slate-800 focus:border-[#2E8B57] focus:ring-emerald-100"}`} />
+            <label htmlFor={`${idPrefix}-description`} className="mb-1.5 block text-xs font-bold text-slate-700">Incident Description</label>
+            <p className="mb-1 text-[10px] text-slate-500">Add details to help barangay responders understand the incident.</p>
+            <textarea id={`${idPrefix}-description`} rows={3} value={description} onChange={(event) => setDescription(event.target.value)} maxLength={10000} placeholder="Provide exact details of the situation, visible risks, or landmarks..." required={!highUrgency} className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#2E8B57] focus:ring-2 focus:ring-emerald-100" />
           </div>
-
+          <div className="flex flex-col gap-2 pt-1">
+            <button type="button" onClick={handleNext} disabled={cameraBusy || cameraOpen} className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#2E8B57] px-4 py-2.5 text-xs font-bold text-white shadow-md transition hover:bg-[#247447] active:scale-[0.99] disabled:opacity-50">Next: Camera evidence <Camera size={15} /></button>
+            <Link to={PATHS.resident} onClick={onClose} className="text-center text-xs font-semibold text-slate-500 hover:text-[#2E8B57]">Registered resident? Sign in to attach camera photo &amp; video evidence</Link>
+          </div>
+          </> : <>
           <section className="rounded-lg border border-slate-200 bg-slate-50/70 p-3" aria-label="Photo evidence">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h4 className="flex items-center gap-1.5 text-xs font-bold text-slate-800"><Camera size={14} /> Photo evidence</h4>
-              <span className={`rounded-full px-2 py-1 text-[9px] font-bold ${highUrgency ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-800"}`}>
-                {highUrgency ? "Required for High urgency" : "Optional for Medium urgency"}
-              </span>
+              <span className="rounded-full bg-red-50 px-2 py-1 text-[9px] font-bold text-red-700">Required</span>
             </div>
-            <p className="mt-1 text-[10px] text-slate-500">Take a photo as evidence. Your browser will ask for camera access. Up to 3 photos, each under 2 MiB.</p>
-            <input ref={photoInputRef} type="file" accept="image/*" capture="environment" multiple onChange={handlePhotoFiles} className="sr-only" aria-label="Choose photo evidence" />
+            <p className="mt-1 text-[10px] text-slate-500">GeoFix 167 needs camera access to capture report evidence. Capture at least one photo; you can attach up to 3.</p>
             {cameraOpen ? (
               <div className="mt-3 space-y-2">
                 <video ref={videoRef} autoPlay playsInline muted className="max-h-64 w-full rounded-lg bg-slate-900 object-contain" aria-label="Camera preview" />
@@ -626,11 +630,11 @@ export default function GuestReportForm({
               </div>
             ) : (
               <div className="mt-3 flex flex-wrap gap-2">
-                <button type="button" disabled={cameraBusy || photos.length >= 3} onClick={() => startCamera()} className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-[#b7ccbd] bg-white px-3 text-xs font-semibold text-[#216b43] hover:bg-[#eff6f0] disabled:opacity-50"><Camera size={14} />{cameraBusy ? "Opening camera..." : "Take photo"}</button>
-                <button type="button" disabled={cameraBusy || (photos.length >= 3 && replacePhotoIndexRef.current == null)} onClick={() => photoInputRef.current?.click()} className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50"><ImagePlus size={14} />Choose photo</button>
+                <button type="button" disabled={cameraBusy || photos.length >= 3} onClick={() => startCamera()} className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-[#b7ccbd] bg-white px-3 text-xs font-semibold text-[#216b43] hover:bg-[#eff6f0] disabled:opacity-50"><Camera size={14} />{cameraBusy ? "Opening camera..." : photos.length ? "Take another photo" : "Open camera"}</button>
               </div>
             )}
             {cameraError && <p role="status" className="mt-2 text-[10px] font-medium text-[#9f241b]">{cameraError}</p>}
+            {cameraError && <p className="mt-1 text-[10px] text-slate-500">Allow camera access in your browser settings, then retry. A camera photo is required to submit.</p>}
             {photos.length > 0 && <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
               {photos.map((photo, index) => <div key={photo.id} className="overflow-hidden rounded-lg border border-slate-200 bg-white">
                 <img src={photo.previewUrl} alt={`Photo evidence ${index + 1}`} className="h-24 w-full object-cover" />
@@ -643,20 +647,16 @@ export default function GuestReportForm({
                 </div>
               </div>)}
             </div>}
-            {highUrgency && photos.length === 0 && <p className="mt-2 text-[10px] font-semibold text-red-700">Add at least one photo before submitting this High urgency report.</p>}
+            {photos.length === 0 && <p className="mt-2 text-[10px] font-semibold text-red-700">Capture at least one camera photo to submit this report.</p>}
           </section>
-
-          <div className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2">
-            <span className="text-xs font-bold text-slate-700">Urgency determined from report details</span>
-            <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${urgency === "High" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-800"}`}>{urgency}</span>
-          </div>
-
-          <div className="flex flex-col gap-2 pt-2">
-            <button type="submit" disabled={isSubmitting || cameraOpen || cameraBusy || (highUrgency && photos.length === 0) || (!pin && !locationNote.trim()) || (needsAccuracyConfirmation && !confirmPoorAccuracy)} className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#2E8B57] py-2.5 text-xs font-bold text-white shadow-md transition hover:bg-[#247447] active:scale-[0.99] disabled:opacity-50">
+          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row">
+            <button type="button" disabled={cameraBusy || isSubmitting} onClick={() => { stopCamera(); setFormStep(1); }} className="min-h-10 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50">Back</button>
+            <button type="submit" disabled={isSubmitting || cameraOpen || cameraBusy || photos.length === 0 || (!pin && !locationNote.trim()) || (needsAccuracyConfirmation && !confirmPoorAccuracy)} className="flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-[#2E8B57] py-2.5 text-xs font-bold text-white shadow-md transition hover:bg-[#247447] active:scale-[0.99] disabled:opacity-50">
               <Send size={15} />{isSubmitting ? "Submitting report..." : "Submit Incident Report"}
             </button>
-            <Link to={PATHS.resident} onClick={onClose} className="text-center text-xs font-semibold text-slate-500 hover:text-[#2E8B57]">Registered resident? Sign in to attach camera photo &amp; video evidence</Link>
           </div>
+          <Link to={PATHS.resident} onClick={onClose} className="block text-center text-xs font-semibold text-slate-500 hover:text-[#2E8B57]">Registered resident? Sign in to attach camera photo &amp; video evidence</Link>
+          </>}
         </form>
       </div>
     </div>
