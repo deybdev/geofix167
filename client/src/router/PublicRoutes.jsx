@@ -18,10 +18,12 @@ import TestPage from "../pages/Test";
 import AdminLogin from "../features/auth/AdminLogin";
 import GuestRoute from "./GuestRoute";
 import MainLayout from "../layouts/MainLayout";
+import PublicTrackingPage from "../pages/PublicTrackingPage";
 
 export const publicRoutes = (
   <>
     <Route path="/" element={<Navigate to={PATHS.home} replace />} />
+    <Route path="/track/:token" element={<PublicTrackingPage />} />
     <Route element={<MainLayout />}>
       <Route element={<GuestRoute />}>
         <Route path={PATHS.home} element={<HomePage />} />

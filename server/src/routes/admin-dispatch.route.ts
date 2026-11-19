@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middleware/auth";
 import type { AppEnv } from "../types/env";
+import { dispatchIncidentToResponder } from "../services/dispatch.service";
 
 const route = new Hono<AppEnv>();
 const adminOnly = [requireAuth, requireRole("admin")];
@@ -28,7 +29,7 @@ route.get("/reports", async (c) => {
     JOIN incident_statuses s ON s.incident_status_id = r.incident_status_id
     LEFT JOIN users u ON u.user_id = r.reported_by_user_id
     LEFT JOIN guest_sessions gs ON gs.guest_session_id = r.guest_session_id
-    WHERE s.code IN ('SUBMITTED', 'UNDER_REVIEW', 'VERIFIED')
+    WHERE s.code IN ('SUBMITTED', 'UNDER_REVIEW', 'VERIFIED', 'FORWARDED_TO_BDRRMO')
     ORDER BY r.submitted_at DESC
   `).all<Record<string, unknown> & { id: string }>();
   const reports = result.results ?? [];
@@ -86,10 +87,16 @@ route.post("/reports/:reportId/verify", async (c) => {
   if (!id.success || !body.success) return c.json({ error: "Invalid verification request.", details: body.success ? undefined : body.error.flatten() }, 400);
   const db = c.env.geofix167_db;
   const statusCode = body.data.decision;
-  const statusId = statusCode === "VERIFIED" ? 4 : 11;
-  const note = body.data.reason || "Report verified by administrator.";
+  const report = await db.prepare("SELECT is_emergency FROM incident_reports WHERE incident_id = ?")
+    .bind(id.data).first<{ is_emergency: number }>();
+  if (!report) return c.json({ error: "Report not found." }, 404);
+  const forwardedEmergency = statusCode === "VERIFIED" && report.is_emergency === 1;
+  const statusId = statusCode === "REJECTED" ? 11 : forwardedEmergency ? 5 : 4;
+  const note = body.data.reason || (forwardedEmergency
+    ? "Emergency report verified and forwarded to BDRRMO."
+    : "Report verified by administrator.");
   const eventId = crypto.randomUUID();
-  const result = await db.batch([
+  const statements = [
     db.prepare(`INSERT INTO incident_status_events
       (incident_status_event_id, incident_id, from_incident_status_id, to_incident_status_id, changed_by_user_id, note)
       SELECT ?, r.incident_id, r.incident_status_id, ?, ?, ? FROM incident_reports r
@@ -99,9 +106,21 @@ route.post("/reports/:reportId/verify", async (c) => {
     db.prepare(`UPDATE incident_reports SET incident_status_id = ?, updated_at = datetime('now')
       WHERE incident_id = ? AND incident_status_id IN (1, 2)`)
       .bind(statusId, id.data),
-  ]);
+  ];
+  if (statusCode === "REJECTED") {
+    statements.push(db.prepare(`UPDATE tracking_links SET expires_at = datetime('now'),
+      revoked_at = COALESCE(revoked_at, datetime('now'))
+      WHERE report_id = ? AND EXISTS (SELECT 1 FROM incident_reports WHERE incident_id = ? AND incident_status_id = 11)`)
+      .bind(id.data, id.data));
+    statements.push(db.prepare(`DELETE FROM responder_locations WHERE assignment_id IN (
+      SELECT tanod_assignment_id FROM tanod_assignments WHERE incident_id = ?
+      UNION SELECT responder_dispatch_id FROM responder_dispatches WHERE incident_id = ?
+    ) AND EXISTS (SELECT 1 FROM incident_reports WHERE incident_id = ? AND incident_status_id = 11)`)
+      .bind(id.data, id.data, id.data));
+  }
+  const result = await db.batch(statements);
   if (!result[1]?.meta.changes) return c.json({ error: "This report is no longer pending verification." }, 409);
-  return c.json({ ok: true, status: statusCode });
+  return c.json({ ok: true, status: forwardedEmergency ? "FORWARDED_TO_BDRRMO" : statusCode });
 });
 
 route.post("/reports/:reportId/dispatch", async (c) => {
@@ -109,49 +128,26 @@ route.post("/reports/:reportId/dispatch", async (c) => {
   const body = dispatchSchema.safeParse(await c.req.json().catch(() => null));
   if (!id.success || !body.success) return c.json({ error: "A valid report ID and responder unit are required." }, 400);
   const db = c.env.geofix167_db;
-  const assignmentId = crypto.randomUUID();
-  const assignmentEventId = crypto.randomUUID();
-  const incidentEventId = crypto.randomUUID();
-  const statements = [
-    db.prepare(`INSERT INTO tanod_assignments
-      (tanod_assignment_id, incident_id, tanod_user_id, responder_resource_id, assignment_status_id, assigned_by_user_id, notes)
-      SELECT ?, r.incident_id, rr.responder_user_id, rr.responder_resource_id, 1, ?, 'Admin dispatch'
+  const dispatch = await dispatchIncidentToResponder(db, {
+    incidentId: id.data,
+    responderResourceId: body.data.unit_id,
+    dispatchedByUserId: c.get("user").id,
+    eligibleStatusCodes: ["VERIFIED"],
+  });
+  if (!dispatch) {
+    const report = await db.prepare(`SELECT s.code AS status, r.is_emergency
       FROM incident_reports r JOIN incident_statuses s ON s.incident_status_id = r.incident_status_id
-      JOIN responder_resources rr ON rr.responder_resource_id = ?
-      WHERE r.incident_id = ? AND s.code = 'VERIFIED'
-        AND rr.availability_status IN ('AVAILABLE', 'BUSY') AND rr.responder_user_id IS NOT NULL`)
-      .bind(assignmentId, c.get("user").id, body.data.unit_id, id.data),
-    db.prepare(`INSERT INTO incident_status_events
-      (incident_status_event_id, incident_id, from_incident_status_id, to_incident_status_id, changed_by_user_id, note)
-      SELECT ?, a.incident_id, r.incident_status_id, 13, ?, 'Responder dispatched by administrator'
-      FROM tanod_assignments a JOIN incident_reports r ON r.incident_id = a.incident_id
-      WHERE a.tanod_assignment_id = ?`).bind(incidentEventId, c.get("user").id, assignmentId),
-    db.prepare(`UPDATE incident_reports SET incident_status_id = 13, updated_at = datetime('now')
-      WHERE incident_id = ? AND EXISTS (SELECT 1 FROM tanod_assignments WHERE tanod_assignment_id = ?)`)
-      .bind(id.data, assignmentId),
-    db.prepare(`UPDATE responder_resources SET availability_status = 'BUSY', updated_at = datetime('now')
-      WHERE responder_resource_id = ? AND availability_status = 'AVAILABLE'
-        AND EXISTS (SELECT 1 FROM tanod_assignments WHERE tanod_assignment_id = ?)`)
-      .bind(body.data.unit_id, assignmentId),
-    db.prepare(`INSERT INTO tanod_assignment_events
-      (tanod_assignment_event_id, tanod_assignment_id, assignment_status_id, changed_by_user_id, note)
-      SELECT ?, ?, 1, ?, 'Dispatched by administrator'
-      WHERE EXISTS (SELECT 1 FROM tanod_assignments WHERE tanod_assignment_id = ?)`)
-      .bind(assignmentEventId, assignmentId, c.get("user").id, assignmentId),
-  ];
-  const result = await db.batch(statements);
-  if (!result[0]?.meta.changes) {
-    const report = await db.prepare(`SELECT s.code AS status FROM incident_reports r
-      JOIN incident_statuses s ON s.incident_status_id = r.incident_status_id WHERE r.incident_id = ?`)
-      .bind(id.data).first<{ status: string }>();
+      WHERE r.incident_id = ?`)
+      .bind(id.data).first<{ status: string; is_emergency: number }>();
     const unit = await db.prepare("SELECT availability_status FROM responder_resources WHERE responder_resource_id = ?")
       .bind(body.data.unit_id).first<{ availability_status: string }>();
     if (!report) return c.json({ error: "Report not found." }, 404);
     if (!unit) return c.json({ error: "Responder unit not found." }, 404);
+    if (report.is_emergency === 1) return c.json({ error: "Sudden incident reports are forwarded to BDRRMO and cannot be dispatched to Tanod." }, 409);
     if (!["AVAILABLE", "BUSY"].includes(unit.availability_status)) return c.json({ error: "That unit is offline or out of service." }, 409);
     return c.json({ error: "Only verified reports can be dispatched." }, 409);
   }
-  return c.json({ ok: true, assignment_id: assignmentId, status: "DISPATCHED" }, 201);
+  return c.json({ ok: true, assignment_id: dispatch.assignmentId, status: "DISPATCHED" }, 201);
 });
 
 route.post("/reports/:reportId/request-drrmo", async (c) => {
@@ -167,7 +163,7 @@ route.post("/reports/:reportId/request-drrmo", async (c) => {
       (external_support_request_id, incident_id, requested_organization_id, support_request_status_id, requested_by_user_id, request_reason)
       SELECT ?, r.incident_id, 'org_caloocan_city_drrmo', 1, ?, ?
       FROM incident_reports r JOIN incident_statuses s ON s.incident_status_id = r.incident_status_id
-      WHERE r.incident_id = ? AND s.code IN ('SUBMITTED', 'VERIFIED')`)
+      WHERE r.incident_id = ? AND r.is_emergency = 0 AND s.code IN ('SUBMITTED', 'VERIFIED')`)
       .bind(supportId, c.get("user").id, body.data.note || "All Barangay 167 units are deployed.", id.data),
     db.prepare(`INSERT INTO support_request_events
       (support_request_event_id, external_support_request_id, support_request_status_id, changed_by_user_id, note)
@@ -186,8 +182,10 @@ route.post("/reports/:reportId/request-drrmo", async (c) => {
       .bind(id.data, supportId),
   ]);
   if (!result[0]?.meta.changes) {
-    const exists = await db.prepare("SELECT incident_id FROM incident_reports WHERE incident_id = ?").bind(id.data).first();
+    const exists = await db.prepare("SELECT incident_id, is_emergency FROM incident_reports WHERE incident_id = ?")
+      .bind(id.data).first<{ incident_id: string; is_emergency: number }>();
     if (!exists) return c.json({ error: "Report not found." }, 404);
+    if (exists.is_emergency === 1) return c.json({ error: "Sudden incident reports are forwarded to BDRRMO and cannot request maintenance overflow support." }, 409);
     return c.json({ error: "Only pending or verified reports can request DRRMO support." }, 409);
   }
   return c.json({ ok: true, request_id: supportId, status: "REQUESTED" }, 201);

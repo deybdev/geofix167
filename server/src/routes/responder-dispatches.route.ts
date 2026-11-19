@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { requireAuth, requireRole } from "../middleware/auth";
 import type { AppEnv, UserRole } from "../types/env";
+import { ensureIncidentReportSnapshot } from "../services/incidentReportSnapshot.service";
 
 const route = new Hono<AppEnv>();
 const responderRoles: UserRole[] = ["bdrrmo", "police", "fire", "tanod"];
@@ -18,7 +19,52 @@ const dispatchSchema = z.object({
   urgency: z.enum(["Critical", "High", "Medium", "Low"]),
   vehicle_name: z.string().trim().max(100).optional(),
 });
-const statusSchema = z.enum(["ACCEPTED", "EN_ROUTE", "ON_SCENE", "COMPLETED"]);
+const statusSchema = z.enum(["ACCEPTED", "DECLINED", "EN_ROUTE", "ON_SCENE", "COMPLETED"]);
+
+async function recordTrackingStatus(db: AppEnv["Bindings"]["geofix167_db"], assignmentId: string, userId: string,
+  status: "ACCEPTED" | "DECLINED" | "EN_ROUTE" | "ON_SCENE" | "COMPLETED") {
+  if (status === "DECLINED") {
+    await db.prepare("DELETE FROM responder_locations WHERE assignment_id = ? AND responder_id = ?")
+      .bind(assignmentId, userId).run();
+    return;
+  }
+  const incidentStatusId = { ACCEPTED: 6, EN_ROUTE: 7, ON_SCENE: 8, COMPLETED: 10 }[status];
+  await db.batch([
+    db.prepare(`INSERT INTO incident_status_events
+      (incident_status_event_id, incident_id, from_incident_status_id, to_incident_status_id, changed_by_user_id, note)
+      SELECT ?, r.incident_id, r.incident_status_id, ?, ?, 'Responder updated live tracking status'
+      FROM incident_reports r
+      WHERE r.incident_id = (SELECT incident_id FROM tanod_assignments WHERE tanod_assignment_id = ?
+        UNION SELECT incident_id FROM responder_dispatches WHERE responder_dispatch_id = ?)
+        AND r.incident_status_id IN (5, 6, 7, 8, 13)`)
+      .bind(crypto.randomUUID(), incidentStatusId, userId, assignmentId, assignmentId),
+    db.prepare(`UPDATE incident_reports SET incident_status_id = ?, updated_at = datetime('now'),
+      closed_at = CASE WHEN ? = 10 THEN datetime('now') ELSE closed_at END,
+      closed_by_user_id = CASE WHEN ? = 10 THEN ? ELSE closed_by_user_id END
+      WHERE incident_id = (SELECT incident_id FROM tanod_assignments WHERE tanod_assignment_id = ?
+        UNION SELECT incident_id FROM responder_dispatches WHERE responder_dispatch_id = ?)
+        AND incident_status_id IN (5, 6, 7, 8, 13) AND changes() = 1`)
+      .bind(incidentStatusId, incidentStatusId, incidentStatusId, userId, assignmentId, assignmentId),
+  ]);
+  if (status === "COMPLETED") {
+    const incident = await db.prepare(`SELECT incident_id FROM tanod_assignments WHERE tanod_assignment_id = ?
+      UNION SELECT incident_id FROM responder_dispatches WHERE responder_dispatch_id = ? LIMIT 1`)
+      .bind(assignmentId, assignmentId).first<{ incident_id: string }>();
+    if (incident) await ensureIncidentReportSnapshot(db, incident.incident_id, userId, "Responder marked incident completed.");
+    await db.batch([
+      db.prepare(`UPDATE tracking_links SET expires_at = datetime('now'), revoked_at = COALESCE(revoked_at, datetime('now'))
+        WHERE report_id = (SELECT incident_id FROM tanod_assignments WHERE tanod_assignment_id = ?
+          UNION SELECT incident_id FROM responder_dispatches WHERE responder_dispatch_id = ?)`)
+        .bind(assignmentId, assignmentId),
+      db.prepare(`DELETE FROM responder_locations WHERE assignment_id IN (
+        SELECT tanod_assignment_id FROM tanod_assignments WHERE incident_id = (SELECT incident_id FROM tanod_assignments WHERE tanod_assignment_id = ?
+          UNION SELECT incident_id FROM responder_dispatches WHERE responder_dispatch_id = ?)
+        UNION SELECT responder_dispatch_id FROM responder_dispatches WHERE incident_id = (SELECT incident_id FROM tanod_assignments WHERE tanod_assignment_id = ?
+          UNION SELECT incident_id FROM responder_dispatches WHERE responder_dispatch_id = ?)
+      )`).bind(assignmentId, assignmentId, assignmentId, assignmentId),
+    ]);
+  }
+}
 
 route.use("*", requireAuth, requireRole(...responderRoles));
 
@@ -143,12 +189,13 @@ route.get("/", async (c) => {
         'tanod' AS target_role, COALESCE(r.priority_code, 'High') AS urgency,
         rr.display_name AS vehicle_name,
         CASE
-          WHEN ta.assignment_status_id = 5 OR r.incident_status_id = 10 THEN 'COMPLETED'
+          WHEN ta.assignment_status_id = 6 OR r.incident_status_id = 10 THEN 'COMPLETED'
           WHEN r.incident_status_id = 9 THEN 'PENDING'
           WHEN ta.assignment_status_id = 1 THEN 'DISPATCHED'
           WHEN ta.assignment_status_id = 2 THEN 'ACCEPTED'
-          WHEN ta.assignment_status_id = 3 THEN 'EN_ROUTE'
-          WHEN ta.assignment_status_id = 4 THEN 'ON_SCENE'
+          WHEN ta.assignment_status_id = 3 THEN 'DECLINED'
+          WHEN ta.assignment_status_id = 4 THEN 'EN_ROUTE'
+          WHEN ta.assignment_status_id = 5 THEN 'ON_SCENE'
           ELSE 'DISPATCHED'
         END AS status,
         ta.assigned_at AS dispatched_at,
@@ -192,9 +239,10 @@ route.patch("/:dispatchId/status", async (c) => {
   if (!result.meta.changes && c.get("user").role === "tanod") {
     const statusMap: Record<string, number> = {
       ACCEPTED: 2,
-      EN_ROUTE: 3,
-      ON_SCENE: 4,
-      COMPLETED: 5,
+      DECLINED: 3,
+      EN_ROUTE: 4,
+      ON_SCENE: 5,
+      COMPLETED: 6,
     };
     const tanodUpdate = await c.env.geofix167_db.prepare(`
       UPDATE tanod_assignments
@@ -204,11 +252,17 @@ route.patch("/:dispatchId/status", async (c) => {
       WHERE tanod_assignment_id = ? AND tanod_user_id = ?
     `).bind(statusMap[status.data], status.data, status.data, dispatchId, c.get("user").id).run();
     if (tanodUpdate.meta.changes) {
+      await c.env.geofix167_db.prepare(`INSERT INTO tanod_assignment_events
+        (tanod_assignment_event_id, tanod_assignment_id, assignment_status_id, changed_by_user_id, note)
+        VALUES (?, ?, ?, ?, ?)`)
+        .bind(crypto.randomUUID(), dispatchId, statusMap[status.data], c.get("user").id, `Responder status: ${status.data}`).run();
+      await recordTrackingStatus(c.env.geofix167_db, dispatchId, c.get("user").id, status.data);
       return c.json({ ok: true, status: status.data });
     }
   }
 
   if (!result.meta.changes) return c.json({ error: "Dispatch not found." }, 404);
+  await recordTrackingStatus(c.env.geofix167_db, dispatchId, c.get("user").id, status.data);
   return c.json({ ok: true, status: status.data });
 });
 

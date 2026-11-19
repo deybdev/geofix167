@@ -14,6 +14,7 @@ import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native'
 import tw from 'twrnc';
 
 import { getResponderDispatches } from '../../services/responderDispatchService';
+import { getMapLocationPermissionParams } from '../../services/locationPermissionService';
 import { useAuth } from '../../context/AuthContext';
 
 function formatTimestamp(value) {
@@ -62,6 +63,11 @@ export default function Assignments() {
     if (statusFilter === 'IN_PROGRESS') return ['ACCEPTED', 'EN_ROUTE', 'ON_SCENE', 'PENDING'].includes(a.status);
     return true;
   });
+
+  async function openAssignmentMap(assignment) {
+    const locationParams = await getMapLocationPermissionParams();
+    navigation.navigate('Map', { assignment, ...locationParams });
+  }
 
   return (
     <ScrollView
@@ -230,14 +236,14 @@ export default function Assignments() {
                 </View>
               ) : (
                 <Pressable
-                  onPress={() => navigation.navigate('Map', { assignment })}
+                  onPress={() => void openAssignmentMap(assignment)}
                   style={({ pressed }) => [
                     tw`mt-4 flex-row items-center justify-center gap-2 rounded-xl bg-[#1F7A4D] py-3`,
                     { opacity: pressed ? 0.85 : 1 },
                   ]}
                 >
                   <Navigation size={15} color="#FFFFFF" />
-                  <Text style={tw`text-xs font-extrabold text-white`}>View in Maps</Text>
+                  <Text style={tw`text-xs font-extrabold text-white`}>View in map</Text>
                 </Pressable>
               )}
             </View>

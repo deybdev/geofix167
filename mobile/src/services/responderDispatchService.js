@@ -16,6 +16,18 @@ export async function updateResponderDispatchStatus(id, status) {
   return data;
 }
 
+export async function postResponderLocation(assignmentId, coords) {
+  const { data } = await api.post('/responder/location', {
+    assignment_id: assignmentId,
+    lat: coords.latitude,
+    lng: coords.longitude,
+    accuracy: coords.accuracy ?? null,
+    heading: coords.heading == null || coords.heading < 0 ? null : coords.heading,
+  });
+  if (!data.ok) throw new Error('Responder location was not accepted.');
+  return data;
+}
+
 export async function createResponderDispatch(dispatch) {
   const { data } = await api.post('/responder/dispatches', dispatch);
   if (!data.ok) throw new Error('The dispatch could not be saved.');

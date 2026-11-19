@@ -14,6 +14,8 @@ import notificationRoutes from "./routes/notification.route";
 import announcementRoutes, { publicAnnouncementRoutes } from "./routes/announcement.route";
 import responderMessagesRoutes from "./routes/responder-messages.route";
 import responderDispatchesRoutes from "./routes/responder-dispatches.route";
+import trackingRoutes from "./routes/tracking.route";
+import responderLocationRoutes from "./routes/responder-location.route";
 
 const app = new Hono<AppEnv>();
 
@@ -41,6 +43,8 @@ app.route("/api/auth", authRoutes);
 app.route("/api/communication", communicationRoutes);
 app.route("/api/responder/messages", responderMessagesRoutes);
 app.route("/api/responder/dispatches", responderDispatchesRoutes);
+app.route("/api/responder/location", responderLocationRoutes);
+app.route("/api/track", trackingRoutes);
 
 // Incident report routes:
 // POST /api/reports
