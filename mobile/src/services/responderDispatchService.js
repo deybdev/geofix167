@@ -21,3 +21,26 @@ export async function createResponderDispatch(dispatch) {
   if (!data.ok) throw new Error('The dispatch could not be saved.');
   return data;
 }
+
+export async function getGuestEmergencies() {
+  const { data } = await api.get('/responder/dispatches/guest-emergencies');
+  if (!Array.isArray(data.emergencies)) {
+    throw new Error('The server returned an invalid guest emergency list.');
+  }
+  return data.emergencies;
+}
+
+export async function generateHospitalQrHandover(dispatchId, payload = {}) {
+  const { data } = await api.post(`/responder/dispatches/${dispatchId}/qr-handover`, payload);
+  if (!data.ok || !data.token) {
+    throw new Error('Could not generate hospital QR handover.');
+  }
+  return data;
+}
+
+export async function getNearestHospitals(lat, lng) {
+  const { data } = await api.get('/responder/dispatches/hospitals', {
+    params: lat != null && lng != null ? { lat, lng } : undefined,
+  });
+  return Array.isArray(data.hospitals) ? data.hospitals : [];
+}

@@ -21,7 +21,7 @@ INSERT INTO roles VALUES(1,'admin'),(2,'resident'),(3,'tanod');
 INSERT INTO account_statuses VALUES(1,'ACTIVE');
 INSERT INTO users VALUES('admin','Admin','User','09123123123','hash',1,1),('resident','Resident','User','09246246246','hash',2,1),
 ('usr_demo_responder_001','Renus','Manipon','09369369369','hash',3,1);`);
-for (const file of ['0005_guest_incidents.sql', '0006_review_alerts.sql', '0007_dispatch_support.sql', '0012_community_audit.sql', '0015_admin_dispatch.sql', '0018_guest_report_intake.sql', '0019_resident_report_notifications.sql']) {
+for (const file of ['0005_guest_incidents.sql', '0006_review_alerts.sql', '0007_dispatch_support.sql', '0012_community_audit.sql', '0015_admin_dispatch.sql', '0018_guest_report_intake.sql', '0019_resident_report_notifications.sql', '0020_guest_report_location_metadata.sql', '0021_guest_report_urgency.sql', '0022_normalize_maintenance_categories.sql']) {
   sql.exec(readFileSync(resolve(serverRoot, `src/migrations/${file}`), 'utf8'));
 }
 const sha256 = async (value) => Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))).toString('hex');
@@ -65,12 +65,12 @@ assert.equal(seededUnits.length, 3, 'demo responder and extra demo units are see
 assert.ok(seededUnits.every((unit) => unit.availability_status === 'AVAILABLE'));
 
 const reportIds = [];
-for (let index = 0; index < 4; index += 1) {
+for (let index = 0; index < 5; index += 1) {
   const response = await request('/reports', 'POST', {
-    reporter_type: 'GUEST', guest_alias: 'Test Guest', title: 'Road report', classification: 'maintenance', incident_category: 'Road Damage', priority_level: 'HIGH',
+    reporter_type: 'GUEST', guest_alias: 'Test Guest', title: 'Drainage report', classification: 'maintenance', incident_category: 'Drainage / Flooding', priority_level: 'MEDIUM',
     description: `Dispatch integration report ${index}`, latitude: 14.73, longitude: 121.01,
   });
-  assert.equal(response.status, 201);
+  assert.equal(response.status, 201, response.status === 201 ? undefined : await response.text());
   reportIds.push((await response.json()).report.incident_id);
 }
 
@@ -114,7 +114,20 @@ const busyUnits = (await (await request('/admin/dispatch/units', 'GET', undefine
 assert.ok(busyUnits.every((unit) => unit.availability_status === 'BUSY'));
 // Isolate unit availability from report eligibility: this report is VERIFIED.
 assert.equal((await request(`/admin/dispatch/reports/${reportIds[3]}/verify`, 'POST', { decision: 'VERIFIED' }, 'admin')).status, 200);
-await assertRejectedDispatch(reportIds[3], seededUnits[0].id, 'admin', 409, 'That unit is no longer available.');
+for (const offlineStatus of ['UNAVAILABLE', 'OUT_OF_SERVICE']) {
+  sql.prepare('UPDATE responder_resources SET availability_status = ? WHERE responder_resource_id = ?').run(offlineStatus, seededUnits[0].id);
+  await assertRejectedDispatch(reportIds[3], seededUnits[0].id, 'admin', 409, 'That unit is offline or out of service.');
+}
+sql.prepare("UPDATE responder_resources SET availability_status = 'BUSY' WHERE responder_resource_id = ?").run(seededUnits[0].id);
+assert.equal((await request(`/admin/dispatch/reports/${reportIds[4]}/verify`, 'POST', { decision: 'VERIFIED' }, 'admin')).status, 200);
+const additionalDispatch = await request(`/admin/dispatch/reports/${reportIds[4]}/dispatch`, 'POST', { unit_id: seededUnits[0].id }, 'admin');
+assert.equal(additionalDispatch.status, 201, 'deployed responders can receive another assignment');
+const additionalAssignment = await additionalDispatch.json();
+assert.equal(sql.prepare('SELECT assignment_status_id FROM tanod_assignments WHERE tanod_assignment_id = ?').get(additionalAssignment.assignment_id).assignment_status_id, 1,
+  'additional dispatch awaits responder acceptance');
+assert.equal(sql.prepare('SELECT count(*) AS count FROM tanod_assignments WHERE responder_resource_id = ?').get(seededUnits[0].id).count, 2,
+  'dispatch preserves the existing assignment');
+await assertRejectedDispatch(reportIds[4], seededUnits[0].id, 'admin', 409, 'Only verified reports can be dispatched.');
 
 const help = await request(`/admin/dispatch/reports/${reportIds[3]}/request-drrmo`, 'POST', { note: 'No units available' }, 'admin');
 assert.equal(help.status, 201);

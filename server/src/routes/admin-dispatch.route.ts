@@ -107,7 +107,7 @@ route.post("/reports/:reportId/verify", async (c) => {
 route.post("/reports/:reportId/dispatch", async (c) => {
   const id = idSchema.safeParse(c.req.param("reportId"));
   const body = dispatchSchema.safeParse(await c.req.json().catch(() => null));
-  if (!id.success || !body.success) return c.json({ error: "A valid report ID and available unit are required." }, 400);
+  if (!id.success || !body.success) return c.json({ error: "A valid report ID and responder unit are required." }, 400);
   const db = c.env.geofix167_db;
   const assignmentId = crypto.randomUUID();
   const assignmentEventId = crypto.randomUUID();
@@ -119,7 +119,7 @@ route.post("/reports/:reportId/dispatch", async (c) => {
       FROM incident_reports r JOIN incident_statuses s ON s.incident_status_id = r.incident_status_id
       JOIN responder_resources rr ON rr.responder_resource_id = ?
       WHERE r.incident_id = ? AND s.code = 'VERIFIED'
-        AND rr.availability_status = 'AVAILABLE' AND rr.responder_user_id IS NOT NULL`)
+        AND rr.availability_status IN ('AVAILABLE', 'BUSY') AND rr.responder_user_id IS NOT NULL`)
       .bind(assignmentId, c.get("user").id, body.data.unit_id, id.data),
     db.prepare(`INSERT INTO incident_status_events
       (incident_status_event_id, incident_id, from_incident_status_id, to_incident_status_id, changed_by_user_id, note)
@@ -148,7 +148,7 @@ route.post("/reports/:reportId/dispatch", async (c) => {
       .bind(body.data.unit_id).first<{ availability_status: string }>();
     if (!report) return c.json({ error: "Report not found." }, 404);
     if (!unit) return c.json({ error: "Responder unit not found." }, 404);
-    if (unit.availability_status !== "AVAILABLE") return c.json({ error: "That unit is no longer available." }, 409);
+    if (!["AVAILABLE", "BUSY"].includes(unit.availability_status)) return c.json({ error: "That unit is offline or out of service." }, 409);
     return c.json({ error: "Only verified reports can be dispatched." }, 409);
   }
   return c.json({ ok: true, assignment_id: assignmentId, status: "DISPATCHED" }, 201);
