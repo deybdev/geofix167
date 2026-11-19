@@ -44,6 +44,7 @@ export const PATHS = {
   adminResidents: "/admin/residents",
   adminReportsAnalytics: "/admin/reports-analytics",
   adminSettings: "/admin/settings",
+  adminRegistrations: "/admin/registrations",
   adminMapView: "/admin/map-view",
 
   // Resident routes

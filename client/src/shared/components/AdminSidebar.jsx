@@ -1,126 +1,17 @@
-import {
-  BarChart3,
-  BookOpen,
-  CheckSquare,
-  ChevronDown,
-  ClipboardList,
-  Radio,
-  Grid2X2,
-  Megaphone,
-  Menu,
-  Settings,
-  ShieldCheck,
-  Users,
-} from "lucide-react";
-import { useEffect, useState } from "react";
+import { ChevronDown, Menu } from "lucide-react";
+import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { ADMIN_NAVIGATION } from "../../router/adminNavigation";
 import { PATHS } from "../../router/paths";
-
-const navigation = [
-  { label: "Dashboard", icon: Grid2X2, path: PATHS.admin, section: "MAIN MENU" },
-  {
-    label: "Incident Reports",
-    icon: ClipboardList,
-    path: PATHS.adminIncidentReports,
-    children: [
-      { label: "Pending Triage Queue", queue: "pending-triage" },
-      { label: "Active Emergencies (BDRRMO)", queue: "active-emergencies" },
-      { label: "External Agency Requests", queue: "external-agencies" },
-      { label: "Infrastructure Reports", queue: "infrastructure" },
-      { label: "Monitor Dispatch & Tracking", queue: "dispatch-tracking" },
-    ],
-  },
-  { label: "Dispatch Responders", icon: Radio, path: PATHS.adminDispatch },
-  { label: "BDRRMO Dispatch", icon: Radio, path: PATHS.adminBdrrmoDispatch },
-  {
-    label: "Maintenance Tasks",
-    icon: ShieldCheck,
-    path: PATHS.adminMaintenanceTasks,
-    children: [
-      "Non-Emergency Intake",
-      "Active Work Orders",
-      "Awaiting Verification",
-      "Completed & Logged",
-    ],
-  },
-  {
-    label: "Resolution & Verification",
-    icon: CheckSquare,
-    path: PATHS.adminResolutionVerification,
-    children: [
-      "Evidence Review",
-      "QR Handover Reconciliation",
-      "False-Report Controls",
-    ],
-  },
-  {
-    label: "Announcements & Broadcasts",
-    icon: Megaphone,
-    path: PATHS.adminAnnouncements,
-    children: [
-      "Create Advisory / Notice",
-      "Geo-Fenced Broadcasts",
-      "Active Broadcast Log",
-      "Public Feed Curation",
-    ],
-  },
-  {
-    label: "Accomplishment Log",
-    icon: BookOpen,
-    path: PATHS.adminAccomplishmentLog,
-    children: [
-      "Public Ledger Preview",
-      "Curation Queue",
-      "Audit & Retention Trail",
-    ],
-  },
-  {
-    label: "Residents & Access",
-    icon: Users,
-    path: PATHS.adminResidents,
-    children: [
-      "Resident Directory",
-      "Pending Verifications",
-      "Account Recovery",
-    ],
-  },
-  { label: "Registrations", icon: ShieldCheck, path: "/admin/registrations" },
-  {
-    label: "Reports & Analytics",
-    icon: BarChart3,
-    path: PATHS.adminReportsAnalytics,
-    children: [
-      "Incident Heatmaps & Trends",
-      "Response-Time & SLA Metrics",
-      "Resource Utilization",
-      "Export Center",
-    ],
-  },
-  {
-    label: "Settings & Configuration",
-    icon: Settings,
-    path: PATHS.adminSettings,
-    section: "UTILITIES",
-    children: [
-      "Categories & Zones",
-      "Agency Contacts",
-      "Hospital Capability Matrix",
-      "Language Filters",
-    ],
-  },
-];
 
 export default function AdminSidebar({ open = false, onClose, onToggle }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const activeGroup = navigation.find(
+  const activeGroup = ADMIN_NAVIGATION.find(
     ({ path }) => path && path !== PATHS.admin && location.pathname.startsWith(path),
   )?.label;
-  const [expandedGroup, setExpandedGroup] = useState(activeGroup);
-
-  useEffect(() => {
-    if (activeGroup) setExpandedGroup(activeGroup);
-  }, [activeGroup]);
+  const [expansion, setExpansion] = useState({ pathname: location.pathname, label: activeGroup });
+  const expandedGroup = expansion.pathname === location.pathname ? expansion.label : activeGroup;
 
   const navigateTo = (path) => {
     navigate(path);
@@ -166,7 +57,7 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
           ><Menu size={19} /></button>}
         </div>
         <nav className="max-h-[calc(100dvh-142px)] space-y-1 overflow-y-auto pr-0.5">
-          {navigation.map(({ label, icon: Icon, path, children, section }) => {
+          {ADMIN_NAVIGATION.map(({ label, icon: Icon, path, children, section, comingSoon }) => {
             const active = path && (path === PATHS.admin ? location.pathname === path : location.pathname.startsWith(path));
             const expanded = expandedGroup === label;
             return (
@@ -178,10 +69,10 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
                 )}
                 <button
                   type="button"
-                  title={open ? undefined : label}
+                  title={comingSoon ? `${label} · Coming soon` : open ? undefined : label}
                   onClick={() => {
                     if (children) {
-                      setExpandedGroup(expanded ? null : label);
+                      setExpansion({ pathname: location.pathname, label: expanded ? null : label });
                       if (path) navigate(path);
                     } else if (path) {
                       navigateTo(path);
@@ -197,18 +88,16 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
                   }`}
                 >
                   <Icon size={14} strokeWidth={1.8} />
-                  <span className={`min-w-0 flex-1 ${open ? "" : "md:hidden"}`}>{label}</span>
-                  {children && open && (
-                    <ChevronDown
-                      size={13}
-                      className={`shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`}
-                    />
-                  )}
+                  <span className={`min-w-0 flex-1 truncate ${open ? "" : "md:hidden"}`}>{label}</span>
                   {!open && (
                     <span className="pointer-events-none absolute left-[calc(100%+10px)] z-50 hidden whitespace-nowrap rounded-md bg-slate-900 px-2.5 py-1.5 text-[10px] text-white shadow-lg group-hover:md:block">
-                      {label}
+                      {comingSoon ? `${label} · Coming soon` : label}
                     </span>
                   )}
+                  {open && <span aria-hidden="true" className="ml-auto flex w-[68px] shrink-0 items-center justify-end gap-1.5">
+                    {comingSoon && <span className="rounded-full bg-amber-50 px-1.5 py-1 text-center text-[7px] font-semibold leading-none text-amber-700">Coming soon</span>}
+                    {children && <ChevronDown size={13} className={`shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`} />}
+                  </span>}
                 </button>
                 {children && expanded && open && (
                   <div className="ml-5 border-l border-(--gf-green-border) py-1 pl-2">
