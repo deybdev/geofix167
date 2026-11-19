@@ -61,7 +61,7 @@ const AdminLayout = () => {
         <header className="flex h-[54px] items-center justify-between border-b border-[#e4e9ec] bg-white px-5 md:px-6">
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <button type="button" onClick={() => setSidebarOpen(true)} aria-label="Open admin navigation" aria-expanded={sidebarOpen} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 md:hidden"><Menu size={17} /></button>
-            <h1 className="truncate text-[15px] font-bold text-primary">{pageTitles[location.pathname] || "Barangay 167 Operations Dashboard"}</h1>
+            <h1 className="truncate text-[15px] font-bold text-primary">{location.pathname.endsWith("/report") ? "Printable Incident Report" : pageTitles[location.pathname] || "Barangay 167 Operations Dashboard"}</h1>
             <span className="rounded bg-[#fff0c1] px-2 py-1 text-[8px] font-semibold text-[#d68d00]">System Admin</span>
           </div>
           <div className="flex items-center gap-3">

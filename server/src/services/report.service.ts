@@ -11,6 +11,7 @@ import { filterLanguage } from "./languageFilter.service";
 import reportCatalog from "../shared/reportCatalog.json";
 import { reverseGeocodeCoordinates } from "./reverseGeocode.service";
 import { prepareGuestPhotos, removePreparedGuestPhotos, type GuestPhotoInsert } from "./attachment.service";
+import { ensureIncidentReportSnapshot } from "./incidentReportSnapshot.service";
 import { ReportError } from "./report.error";
 export { ReportError } from "./report.error";
 
@@ -270,6 +271,10 @@ export async function updateReportStatus(db: Database, id: string,
   if (!await updateIncidentReportStatus(db, id, report.incident_status_id, input.status_id,
     status.is_terminal === 1, user.id, input.note)) {
     throw new ReportError("Report status changed. Reload and try again.", 409);
+  }
+  if (input.status_id === 10) {
+    const snapshot = await ensureIncidentReportSnapshot(db, id, user.id, input.note);
+    if (!snapshot) throw new ReportError("The incident was closed, but its report snapshot could not be generated.", 500);
   }
   return findIncidentReportById(db, id);
 }

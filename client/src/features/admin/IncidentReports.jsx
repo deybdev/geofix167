@@ -3,12 +3,12 @@ import {
   Ambulance, Ban, Bell, Camera, CheckCircle2, Clock, ChevronLeft, ChevronRight,
   Download, Eye, EyeOff, FileText, FileUp, Flame, Flag, GitMerge,
   History, Languages, Link2, Lock, MapPinned, MoreVertical,
-  QrCode, Radio, RotateCcw, ScanLine, Search, Share2, ShieldCheck, Siren,
+  Printer, QrCode, Radio, RotateCcw, ScanLine, Search, Share2, ShieldCheck, Siren,
   TriangleAlert, Video, Wrench, UserCheck, X,
 } from "lucide-react";
 import { toast } from "../../shared/components/ui/toast";
 import MapViewer from "../../shared/components/MapViewer";
-import { useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import reportCatalog from "../../../../server/src/shared/reportCatalog.json";
 import {
   Badge, ModalSection, ModalShell, QRMatrix, RowList, SelectFilter, fmtClock, hash32, stamp,
@@ -402,6 +402,7 @@ function IncidentDrawer({ report, onClose, onResolve, onPublish, onOpenAudit, on
   const [reason, setReason] = useState(CLOSURE_REASONS[0]);
   const [explanation, setExplanation] = useState("");
   const [showRaw, setShowRaw] = useState(false);
+  const [savingResolution, setSavingResolution] = useState(false);
   const resolved = report.status === "Verified Fixed";
   const language = useMemo(() => languageScan(report.text ?? ""), [report.text]);
   const hasPhotoEvidence = Boolean(report.photos?.length && report.incidentId);
@@ -413,7 +414,7 @@ function IncidentDrawer({ report, onClose, onResolve, onPublish, onOpenAudit, on
     if (next) logAudit({ reportId: report.id, actor: "Admin", action: "Unfiltered text view", detail: "Admin viewed the original un-sanitized report text." });
   }
 
-  function resolve() {
+  async function resolve() {
     if (!canResolve || resolved) return;
     const changes = { status: "Verified Fixed" };
     if (closingMode === "proof") {
@@ -421,8 +422,13 @@ function IncidentDrawer({ report, onClose, onResolve, onPublish, onOpenAudit, on
     } else {
       changes.closure = { reason, note: explanation.trim(), at: stamp(true), by: "Admin" };
     }
-    onResolve(report.id, changes, closingMode === "proof" ? "proof" : "no-proof");
-    onClose();
+    setSavingResolution(true);
+    try {
+      const saved = await onResolve(report.id, changes, closingMode === "proof" ? "proof" : "no-proof");
+      if (saved) onClose();
+    } finally {
+      setSavingResolution(false);
+    }
   }
 
   function publish() {
@@ -730,7 +736,7 @@ function IncidentDrawer({ report, onClose, onResolve, onPublish, onOpenAudit, on
           )}
           {report.published && <span className="gf-badge gf-badge--fixed"><CheckCircle2 size={9} style={{ display: "inline", verticalAlign: "-1px", marginRight: 3 }} />Published</span>}
           <button type="button" className="gf-btn gf-btn--cancel" onClick={() => onOpenAudit(report.id)}><History size={10} style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }} />Audit</button>
-          <button type="button" disabled={resolved || !canResolve} className="gf-btn gf-btn--primary" onClick={resolve}>Mark as Resolved</button>
+          <button type="button" disabled={resolved || !canResolve || savingResolution} className="gf-btn gf-btn--primary" onClick={resolve}>{savingResolution ? "Saving report…" : "Mark as Resolved"}</button>
         </footer>
       </aside>
     </>
@@ -1345,6 +1351,11 @@ function SuccessModal({ report, onClose }) {
             ["Publishing", report.published ? `Published ${report.published.at}` : "Not yet published to the public dashboard"],
           ]} />
         </div>
+        {report.incidentId && (
+          <Link to={`/admin/incident-reports/${encodeURIComponent(report.incidentId)}/report`} className="mt-5 inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-800">
+            <Printer size={13} /> View printable incident report
+          </Link>
+        )}
       </div>
     </ModalShell>
   );
@@ -1394,7 +1405,7 @@ function TriageTimerCell({ report, now }) {
 
 /* ---------------------- Consolidated action dropdown --------------------- */
 
-function ActionCell({ report, escalated, menuOpen, onToggleMenu, onCloseMenu, onOpenDrawer, onBackup, onFlag, onMerge, onAudit, onFieldOps }) {
+function ActionCell({ report, escalated, menuOpen, onToggleMenu, onCloseMenu, onOpenDrawer, onBackup, onFlag, onMerge, onAudit, onFieldOps, onPrintable }) {
   const pending = report.status === "Reported" || report.status === "BDRRMO Takeover";
   const menu = [
     { key: "backup", label: "Request Police / Fire Backup", icon: Siren, run: onBackup, disabled: report.status === "Verified Fixed" },
@@ -1402,6 +1413,9 @@ function ActionCell({ report, escalated, menuOpen, onToggleMenu, onCloseMenu, on
     { key: "merge", label: "Merge with Duplicate", icon: GitMerge, run: onMerge, disabled: report.status === "Duplicate" },
     { key: "audit", label: "View Audit Trail", icon: History, run: onAudit },
     { key: "field", label: "Field Ops — Responder Assignment", icon: Radio, run: onFieldOps, disabled: report.status === "Verified Fixed" },
+    ...(report.status === "Verified Fixed" && report.incidentId
+      ? [{ key: "print", label: "View Printable Incident Report", icon: Printer, run: onPrintable }]
+      : []),
   ];
   return (
     <td className="relative px-2 py-3">
@@ -1440,6 +1454,7 @@ const seededAudit = () => [
 ];
 
 export default function IncidentReports() {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const selectedQueue = searchParams.get("queue") || "";
   const queueTab = {
@@ -1572,13 +1587,25 @@ export default function IncidentReports() {
     if (isEmergency({ ...reports.find((r) => r.id === id), ...changes })) acknowledgeSla(id);
   }
 
-  function handleResolve(id, changes, mode) {
+  async function handleResolve(id, changes, mode) {
     const target = reports.find((r) => r.id === id);
     if (target?.incidentId) {
-      fetch(`/api/reports/${encodeURIComponent(target.incidentId)}/resolve`, {
-        method: "POST",
-        credentials: "include",
-      }).catch((err) => console.error("Failed to persist resolved status:", err));
+      try {
+        const response = await fetch(`/api/reports/${encodeURIComponent(target.incidentId)}/resolve`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            closure_mode: mode,
+            resolution_notes: changes.closure?.note || (mode === "proof" ? "Resolved with response or repair proof." : ""),
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || "Could not save the incident closure.");
+      } catch (error) {
+        toast.add({ type: "error", title: "Could not resolve incident", description: error instanceof Error ? error.message : "Please try again." });
+        return false;
+      }
     }
     updateReportData(id, changes);
     logAudit({
@@ -1589,6 +1616,7 @@ export default function IncidentReports() {
     });
     setSavedReport({ ...reports.find((r) => r.id === id), ...changes });
     toast.add({ type: "success", title: "Incident closed", description: mode === "proof" ? "Proof recorded and the incident is marked resolved." : "No-proof closure recorded with a documented reason." });
+    return true;
   }
 
   function handlePublish(id) {
@@ -1799,7 +1827,8 @@ export default function IncidentReports() {
                           onFlag={(target) => setFlagReport(target)}
                           onMerge={(target) => setDupReport(target)}
                           onAudit={(target) => setAudit({ open: true, reportId: target.id })}
-                          onFieldOps={(target) => { acknowledgeSla(target.id); setFieldReport(target); }} />
+                          onFieldOps={(target) => { acknowledgeSla(target.id); setFieldReport(target); }}
+                          onPrintable={(target) => navigate(`/admin/incident-reports/${encodeURIComponent(target.incidentId)}/report`)} />
                       </tr>
                     );
                   })}

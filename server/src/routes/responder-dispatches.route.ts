@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { requireAuth, requireRole } from "../middleware/auth";
 import type { AppEnv, UserRole } from "../types/env";
+import { ensureIncidentReportSnapshot } from "../services/incidentReportSnapshot.service";
 
 const route = new Hono<AppEnv>();
 const responderRoles: UserRole[] = ["bdrrmo", "police", "fire", "tanod"];
@@ -35,17 +36,21 @@ async function recordTrackingStatus(db: AppEnv["Bindings"]["geofix167_db"], assi
       FROM incident_reports r
       WHERE r.incident_id = (SELECT incident_id FROM tanod_assignments WHERE tanod_assignment_id = ?
         UNION SELECT incident_id FROM responder_dispatches WHERE responder_dispatch_id = ?)
-        AND r.incident_status_id IN (5, 6, 7, 8, 13)
-        AND EXISTS (SELECT 1 FROM tracking_links t WHERE t.report_id = r.incident_id
-          AND t.revoked_at IS NULL AND datetime(t.expires_at) > datetime('now'))`)
+        AND r.incident_status_id IN (5, 6, 7, 8, 13)`)
       .bind(crypto.randomUUID(), incidentStatusId, userId, assignmentId, assignmentId),
-    db.prepare(`UPDATE incident_reports SET incident_status_id = ?, updated_at = datetime('now')
+    db.prepare(`UPDATE incident_reports SET incident_status_id = ?, updated_at = datetime('now'),
+      closed_at = CASE WHEN ? = 10 THEN datetime('now') ELSE closed_at END,
+      closed_by_user_id = CASE WHEN ? = 10 THEN ? ELSE closed_by_user_id END
       WHERE incident_id = (SELECT incident_id FROM tanod_assignments WHERE tanod_assignment_id = ?
         UNION SELECT incident_id FROM responder_dispatches WHERE responder_dispatch_id = ?)
         AND incident_status_id IN (5, 6, 7, 8, 13) AND changes() = 1`)
-      .bind(incidentStatusId, assignmentId, assignmentId),
+      .bind(incidentStatusId, incidentStatusId, incidentStatusId, userId, assignmentId, assignmentId),
   ]);
   if (status === "COMPLETED") {
+    const incident = await db.prepare(`SELECT incident_id FROM tanod_assignments WHERE tanod_assignment_id = ?
+      UNION SELECT incident_id FROM responder_dispatches WHERE responder_dispatch_id = ? LIMIT 1`)
+      .bind(assignmentId, assignmentId).first<{ incident_id: string }>();
+    if (incident) await ensureIncidentReportSnapshot(db, incident.incident_id, userId, "Responder marked incident completed.");
     await db.batch([
       db.prepare(`UPDATE tracking_links SET expires_at = datetime('now'), revoked_at = COALESCE(revoked_at, datetime('now'))
         WHERE report_id = (SELECT incident_id FROM tanod_assignments WHERE tanod_assignment_id = ?

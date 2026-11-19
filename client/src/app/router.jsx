@@ -36,6 +36,7 @@ import ResolutionVerification from "../features/admin/ResolutionVerification";
 import AccomplishmentLog from "../features/admin/AccomplishmentLog";
 import Residents from "../features/admin/Residents";
 import ReportsAnalytics from "../features/admin/ReportsAnalytics";
+import IncidentReportPrint from "../features/admin/IncidentReportPrint";
 import AdminSettings from "../features/admin/Settings";
 import ResponderDashboard from "../features/responder/ResponderDashboard";
 
@@ -84,6 +85,7 @@ export default function AppRouter() {
             <Route path="/admin" element={<AdminLayout />}>
               <Route index element={<AdminDashboard />} />
               <Route path="incident-reports" element={<IncidentReports />} />
+              <Route path="incident-reports/:id/report" element={<IncidentReportPrint />} />
               <Route path="maintenance-tasks" element={<MaintenanceTasks />} />
               <Route path="resolution-verification" element={<ResolutionVerification />} />
               <Route path="accomplishment-log" element={<AccomplishmentLog />} />
