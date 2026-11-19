@@ -37,6 +37,7 @@ export const PATHS = {
   adminAnnouncements: "/admin/announcements",
   adminIncidentReports: "/admin/incident-reports",
   adminDispatch: "/admin/dispatch",
+  adminBdrrmoDispatch: "/admin/bdrrmo",
   adminMaintenanceTasks: "/admin/maintenance-tasks",
   adminResolutionVerification: "/admin/resolution-verification",
   adminAccomplishmentLog: "/admin/accomplishment-log",

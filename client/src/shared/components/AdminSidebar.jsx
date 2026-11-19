@@ -31,6 +31,7 @@ const navigation = [
     ],
   },
   { label: "Dispatch Responders", icon: Radio, path: PATHS.adminDispatch },
+  { label: "BDRRMO Dispatch", icon: Radio, path: PATHS.adminBdrrmoDispatch },
   {
     label: "Maintenance Tasks",
     icon: ShieldCheck,

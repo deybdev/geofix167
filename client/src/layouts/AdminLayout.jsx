@@ -12,6 +12,7 @@ const pageTitles = {
   [PATHS.adminAnnouncements]: "Announcements",
   [PATHS.adminIncidentReports]: "Incident Reports",
   [PATHS.adminDispatch]: "Dispatch Responders",
+  [PATHS.adminBdrrmoDispatch]: "BDRRMO Dispatch",
   [PATHS.adminMaintenanceTasks]: "Maintenance Tasks",
   [PATHS.adminResolutionVerification]: "Resolution Verification",
   [PATHS.adminAccomplishmentLog]: "Accomplishment Log",

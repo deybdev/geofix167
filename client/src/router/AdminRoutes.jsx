@@ -15,6 +15,7 @@ import ReportsAnalytics from "../features/admin/ReportsAnalytics";
 import AdminSettings from "../features/admin/Settings";
 import AdminDispatch from "../features/admin/AdminDispatch";
 import RegistrationReview from "../features/admin/RegistrationReview";
+import ComingSoon from "../shared/components/ComingSoon";
 
 export const adminRoutes = (
   <Route
@@ -30,6 +31,7 @@ export const adminRoutes = (
       <Route path="announcements" element={<Announcements />} />
       <Route path="incident-reports" element={<IncidentReports />} />
       <Route path="dispatch" element={<AdminDispatch />} />
+      <Route path="bdrrmo" element={<ComingSoon title="BDRRMO Dispatch" description="Verified emergency reports will be dispatched from here." />} />
       <Route path="maintenance-tasks" element={<MaintenanceTasks />} />
       <Route path="resolution-verification" element={<ResolutionVerification />} />
       <Route path="accomplishment-log" element={<AccomplishmentLog />} />
