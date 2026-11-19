@@ -15,11 +15,28 @@ CREATE TABLE users(user_id TEXT PRIMARY KEY, first_name TEXT, last_name TEXT, mo
 CREATE TABLE user_sessions_and_devices(user_id TEXT, token_hash TEXT, expires_at TEXT, revoked_at TEXT);
 INSERT INTO roles VALUES(1,'resident'),(2,'admin'); INSERT INTO account_statuses VALUES(1,'ACTIVE');
 INSERT INTO users VALUES('a','A','Resident','1',1,1,NULL),('b','B','Resident','2',1,1,NULL),('admin','Staff','Admin','3',2,1,NULL);`);
-for (const file of ['0005_guest_incidents.sql','0006_review_alerts.sql','0007_dispatch_support.sql','0012_community_audit.sql','0015_admin_dispatch.sql','0018_guest_report_intake.sql', '0019_resident_report_notifications.sql']) sql.exec(readFileSync(join(repoRoot,'server/src/migrations',file),'utf8'));
+for (const file of ['0005_guest_incidents.sql','0006_review_alerts.sql','0007_dispatch_support.sql','0012_community_audit.sql','0015_admin_dispatch.sql','0017_report_attachments.sql','0018_guest_report_intake.sql', '0019_resident_report_notifications.sql','0020_guest_report_location_metadata.sql','0021_guest_report_urgency.sql','0022_normalize_maintenance_categories.sql']) sql.exec(readFileSync(join(repoRoot,'server/src/migrations',file),'utf8'));
 const hash = async s => Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s))).toString('hex');
 for (const id of ['a','b','admin']) sql.prepare('INSERT INTO user_sessions_and_devices(user_id,token_hash,expires_at) VALUES(?,?,?)').run(id,await hash(id),'2099-01-01');
 const db = {prepare(query) { const stmt = sql.prepare(query); let args=[]; return { bind(...v){args=v;return this}, async first(){return stmt.get(...args) ?? null}, async all(){return {results:stmt.all(...args)}}, async run(){return {meta:{changes:Number(stmt.run(...args).changes)}}} }; }, async batch(statements){sql.exec('BEGIN');try {const results=[];for(const stmt of statements) results.push(await stmt.run());sql.exec('COMMIT');return results}catch(e){sql.exec('ROLLBACK');throw e}}};
-const request = async (path, method='GET', body, cookie, token) => app.request('/api/reports'+(path === '/' ? '' : path),{method, headers:{'Content-Type':'application/json',...(cookie?{Cookie:`geofix_session=${cookie}`} : {}),...(token?{'X-Guest-Token':token}:{})},...(body?{body:JSON.stringify(body)}:{})},{geofix167_db:db,FRONTEND_ORIGIN:'http://localhost:5173'});
+const uploads = new Map();
+const uploadBucket = {
+  async put(key, value) { uploads.set(key, value); },
+  async delete(key) { uploads.delete(key); },
+};
+const env = {geofix167_db:db,geofix167_uploads:uploadBucket,FRONTEND_ORIGIN:'http://localhost:5173'};
+const request = async (path, method='GET', body, cookie, token) => {
+  const multipart = body instanceof FormData;
+  const headers = {...(multipart ? {} : body ? {'Content-Type':'application/json'} : {}),...(cookie?{Cookie:`geofix_session=${cookie}`} : {}),...(token?{'X-Guest-Token':token}:{})};
+  return app.request('/api/reports'+(path === '/' ? '' : path),{method, headers,...(body?{body:multipart?body:JSON.stringify(body)}:{})},env);
+};
+const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aOc8AAAAASUVORK5CYII=', 'base64');
+const guestForm = (report, includePhoto=true) => {
+  const form = new FormData();
+  form.append('report', JSON.stringify(report));
+  if (includePhoto) form.append('photos', new File([png], 'incident.png', {type:'image/png'}));
+  return form;
+};
 const payload={reporter_type:'RESIDENT',incident_category:'Flood',description:'Saved report',reverse_geocoded_address:'Address',landmark_description:'Landmark'};
 const guestPayload={reporter_type:'GUEST',guest_alias:'Guest Reporter',title:'Flood report',classification:'sudden',is_emergency:1,incident_category:'Incident / Emergency',priority_level:'HIGH',description:'Saved report',reverse_geocoded_address:'Address',landmark_description:'Landmark'};
 let res=await request('/','POST',payload,'a');assert.equal(res.status,201);const resident=(await res.json()).report;
@@ -33,14 +50,14 @@ assert.equal((await request('/'+resident.incident_id,'GET',undefined,'admin')).s
 res=await request('/','GET',undefined,'a');assert.equal((await res.json()).reports.length,1);
 res=await request('/','GET',undefined,'b');assert.equal((await res.json()).reports.length,0);
 assert.equal((await request('/')).status,401);
-res=await request('/','POST',guestPayload);assert.equal(res.status,201);const guest=(await res.json()).report;
+res=await request('/','POST',guestForm(guestPayload));assert.equal(res.status,201);const guest=(await res.json()).report;
 assert.ok(guest.guest_access_token);assert.equal(guest.reported_by_user_id,null);
 assert.equal((await request('/'+guest.incident_id,'GET',undefined,undefined,'wrong')).status,404);
 res=await request('/'+guest.incident_id,'GET',undefined,undefined,guest.guest_access_token);assert.equal(res.status,200);const tracked=(await res.json()).report;assert.equal(tracked.location_description,'Address');assert.equal(tracked.guest_access_token,undefined);
 const suddenIntake={...guestPayload,title:'Guest sudden report',guest_alias:'Sudden Reporter',latitude:14.7307,longitude:121.0138,accuracy_meters:7,within_barangay_boundary:1,reverse_geocoded_address:'Roxas Boulevard'};
-const maintenanceIntake={...guestPayload,title:'Guest maintenance report',guest_alias:'Maintenance Reporter',classification:'maintenance',is_emergency:0,incident_category:'Road Damage',priority_level:'MEDIUM',latitude:14.7292,longitude:121.0161,accuracy_meters:28,within_barangay_boundary:0,reverse_geocoded_address:'Bonifacio Street'};
-const suddenResponse=await request('/','POST',suddenIntake);assert.equal(suddenResponse.status,201);const suddenReport=(await suddenResponse.json()).report;
-const maintenanceResponse=await request('/','POST',maintenanceIntake);assert.equal(maintenanceResponse.status,201);const maintenanceReport=(await maintenanceResponse.json()).report;
+const maintenanceIntake={...guestPayload,title:'Guest maintenance report',guest_alias:'Maintenance Reporter',classification:'maintenance',is_emergency:0,incident_category:'Drainage / Flooding',priority_level:'MEDIUM',latitude:14.7292,longitude:121.0161,accuracy_meters:28,within_barangay_boundary:0,reverse_geocoded_address:'Bonifacio Street'};
+const suddenResponse=await request('/','POST',guestForm({...suddenIntake,description:''}));assert.equal(suddenResponse.status,201);const suddenReport=(await suddenResponse.json()).report;
+const maintenanceResponse=await request('/','POST',guestForm(maintenanceIntake));assert.equal(maintenanceResponse.status,201);const maintenanceReport=(await maintenanceResponse.json()).report;
 assert.match(suddenReport.reference_number,/^GF-\d{3}$/);assert.equal(suddenReport.title,suddenIntake.title);assert.equal(suddenReport.classification,'sudden');assert.equal(suddenReport.priority_code,'P2');assert.equal(suddenReport.assigned_team,'BDRRMO Response');assert.equal(suddenReport.reporter_name,suddenIntake.guest_alias);assert.equal(suddenReport.latitude,suddenIntake.latitude);assert.equal(suddenReport.longitude,suddenIntake.longitude);assert.equal(suddenReport.accuracy_meters,7);assert.equal(suddenReport.location_description,'Roxas Boulevard');assert.equal(suddenReport.status_label,'Submitted');
 assert.equal(maintenanceReport.classification,'maintenance');assert.equal(maintenanceReport.priority_code,'P3');assert.equal(maintenanceReport.assigned_team,'Maintenance Team A');assert.equal(maintenanceReport.within_barangay_boundary,0);
 const adminIntakes=await request('/','GET',undefined,'admin');assert.equal(adminIntakes.status,200);const adminRows=(await adminIntakes.json()).reports;
@@ -48,6 +65,8 @@ for(const expected of [suddenReport,maintenanceReport]) { const row=adminRows.fi
 assert.equal((await request('/','POST',{...suddenIntake,title:''})).status,400);
 assert.equal((await request('/','POST',{...suddenIntake,incident_category:'Made Up Category'})).status,400);
 assert.equal((await request('/','POST',{...suddenIntake,priority_level:'URGENT'})).status,400);
+assert.equal((await request('/','POST',guestForm({...maintenanceIntake,description:''}))).status,400);
+assert.equal((await request('/','POST',guestForm(suddenIntake,false))).status,400);
 console.log('PASS guest intake: both classifications, admin fields, coordinates, boundary flag and server validation');
 sql.prepare('UPDATE guest_sessions SET ended_at = ? WHERE guest_session_id = ?').run('2026-01-01',guest.guest_session_id);
 assert.equal((await request('/'+guest.incident_id,'GET',undefined,undefined,guest.guest_access_token)).status,404);
@@ -61,7 +80,8 @@ console.log('PASS reporting HTTP integration: identity, ownership, guest credent
 const patch = (id, body, cookie, token, status=false) => request('/'+id+(status?'/status':''),'PATCH',body,cookie,token);
 const transition = (id,status,cookie='admin') => patch(id,{status_id:status},cookie,undefined,true);
 const create = async (body=payload,cookie='a',token) => {
-  const response=await request('/','POST',body,cookie,token);
+  const requestBody = body?.reporter_type === 'GUEST' ? guestForm(body) : body;
+  const response=await request('/','POST',requestBody,cookie,token);
   assert.ok([200,201].includes(response.status), await response.clone().text());
   return {status:response.status,...await response.json()};
 };

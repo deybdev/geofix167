@@ -91,8 +91,8 @@ export async function submitIncidentReport(
         ? reportCatalog.guestUrgency.sudden
         : reportCatalog.guestUrgency.maintenanceDefault)
     : null;
-  if (guestSubmission && guestUrgency === reportCatalog.guestUrgency.sudden && photos.length === 0) {
-    throw new ReportError("Attach at least one photo to submit a High urgency report.", 400);
+  if (guestSubmission && photos.length === 0) {
+    throw new ReportError("Attach at least one photo to submit a guest report.", 400);
   }
   if (photos.length && (!guestSubmission || !uploads)) throw new ReportError("Guest evidence photos are not available for this report.", 400);
   const priority = guestSubmission

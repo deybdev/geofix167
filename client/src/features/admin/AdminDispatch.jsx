@@ -34,6 +34,7 @@ const urgencyLabel = (report) => {
   if (priority === "P4") return "Low";
   return report.is_emergency ? "High" : "Medium";
 };
+const isEmergencyReport = (report) => report?.is_emergency === 1 || report?.is_emergency === true || report?.is_emergency === "1";
 const urgencyRank = { High: 0, Medium: 1, Low: 2 };
 const urgencyClasses = {
   High: "border-red-200 bg-red-50 text-red-700",
@@ -305,7 +306,7 @@ export default function AdminDispatch() {
                       </> : <div className="flex min-h-20 items-center justify-center gap-2 rounded-lg border border-dashed border-slate-200 bg-slate-50 text-xs text-slate-500"><ImageIcon size={15} />No photo submitted</div>}
                     </section>
 
-                    <section aria-label="Description" className="rounded-xl border border-slate-200 bg-white p-3.5"><h4 className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">Incident description</h4><p className={`whitespace-pre-wrap text-xs leading-relaxed ${selectedReport.description || selectedReport.description_original ? "text-slate-700" : "text-slate-500"}`}>{String(selectedReport.description || selectedReport.description_original || "").trim() || "No description. See photo evidence."}</p></section>
+                    <section aria-label="Description" className="rounded-xl border border-slate-200 bg-white p-3.5"><h4 className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">Incident description</h4><p className={`whitespace-pre-wrap text-xs leading-relaxed ${selectedReport.description || selectedReport.description_original ? "text-slate-700" : "text-slate-500"}`}>{String(selectedReport.description || selectedReport.description_original || "").trim() || (isEmergencyReport(selectedReport) ? "Description is optional for emergencies. Review based on the photo evidence." : "No description. See photo evidence.")}</p></section>
 
                     <section aria-label="Location" className="rounded-xl border border-slate-200 bg-white p-3.5"><h4 className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">Location</h4><p className="flex items-start gap-1.5 text-xs text-slate-600"><MapPin size={13} className="mt-0.5 shrink-0 text-emerald-700" />{selectedReport.location || "Location not provided"}{hasCoordinates && <span className="text-slate-400">· {Number(selectedReport.latitude).toFixed(5)}, {Number(selectedReport.longitude).toFixed(5)}</span>}</p>
                       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">

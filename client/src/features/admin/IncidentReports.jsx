@@ -311,7 +311,7 @@ function mapApiReport(item, fetchedAt) {
       ...(accuracy != null && accuracy > 100 ? { note: "GPS accuracy is over 100 m; the reporter was prompted to adjust the pin." } : {}),
     },
     ...(outsideBoundary ? { outsideBarangayBoundary: true } : {}),
-    text: String(item.sanitized_description ?? item.description_sanitized ?? item.description_original ?? "").trim() || "No description. See photo evidence.",
+    text: String(item.sanitized_description ?? item.description_sanitized ?? item.description_original ?? "").trim(),
     ...(classification.isEmergency && status === "Reported" ? { sla: { start: triageStartedAt } } : {}),
   };
 }
@@ -534,7 +534,7 @@ function IncidentDrawer({ report, onClose, onResolve, onPublish, onOpenAudit, on
             ) : (
               <div className="gf-note gf-note--soft">
                 <ShieldCheck size={14} style={{ flexShrink: 0, color: "var(--gf-green)" }} />
-                <span>No media attached. Uploading photo/video evidence stays optional so reporters in unsafe situations are never required to record.</span>
+                <span>{report.reporterType === "guest" ? "No photo evidence is attached. Guest reports need at least one photo before submission." : "No media is attached. Residents may add photo or video evidence when useful."}</span>
               </div>
             )}
           </ModalSection>
@@ -551,7 +551,7 @@ function IncidentDrawer({ report, onClose, onResolve, onPublish, onOpenAudit, on
             )}
             <div className="mt-2 rounded-lg border border-[#e0e7eb] bg-white p-3 text-[10px] leading-4 text-[#42506a]">
               <p className="mb-1 text-[8px] font-bold uppercase text-[#7184a0]">Sanitized copy (default view)</p>
-              <p>{language.sanitized}</p>
+              <p>{report.text ? language.sanitized : report.accident ? <span className="text-[#7184a0]">Description is optional for emergencies. Review based on the photo evidence.</span> : <span className="text-[#7184a0]">No description. See photo evidence.</span>}</p>
             </div>
             <div className="mt-1.5 rounded-lg border border-dashed border-[#e7c9c9] bg-[#fffafa] p-3 text-[10px] leading-4 text-[#7a3040]">
               <p className="mb-1 flex items-center gap-1 text-[8px] font-bold uppercase text-[#b04646]">
@@ -559,7 +559,7 @@ function IncidentDrawer({ report, onClose, onResolve, onPublish, onOpenAudit, on
                   {showRaw ? <EyeOff size={9} /> : <Eye size={9} />}{showRaw ? "Hide" : "Show"} unfiltered view (admin only)
                 </button>
               </p>
-              {showRaw && <p>{report.text}</p>}
+              {showRaw && <p>{report.text || (report.accident ? "Description is optional for emergencies. Review based on the photo evidence." : "No description. See photo evidence.")}</p>}
               {!showRaw && <p className="text-[#b9c6d2]">Hidden. Every unfiltered view is written to the immutable audit trail.</p>}
             </div>
           </ModalSection>
