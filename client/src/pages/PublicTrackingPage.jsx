@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { CircleMarker, MapContainer, TileLayer, useMap } from "react-leaflet";
-import { Check, Clock3, Copy, Share2, ShieldAlert } from "lucide-react";
+import { ArrowLeft, Check, Clock3, Copy, Share2, ShieldAlert } from "lucide-react";
 import L from "leaflet";
+import { PATHS } from "../router/paths";
 import "leaflet/dist/leaflet.css";
 
 const EXPIRED_MESSAGE = "This incident has been resolved. This tracking link has expired.";
@@ -117,6 +118,9 @@ export default function PublicTrackingPage() {
           <h1 className="mt-4 text-xl font-extrabold">{isClosed ? "Tracking complete" : "Tracking unavailable"}</h1>
           <p className="mt-2 text-sm leading-6 text-slate-600">{problem}</p>
           {!isClosed && <button type="button" onClick={() => { setProblem(""); void loadStatus(); }} className="mt-5 rounded-xl bg-[#1f7a4d] px-5 py-2.5 text-sm font-bold text-white">Try again</button>}
+          <Link to={PATHS.home} className="mx-auto mt-5 inline-flex min-h-10 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-bold text-emerald-800 transition hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600">
+            <ArrowLeft size={15} /> Back to GeoFix home
+          </Link>
           <p className="mt-6 text-xs text-slate-400">GeoFix 167 · Barangay 167, Caloocan City</p>
         </section>
       </main>
@@ -140,9 +144,14 @@ export default function PublicTrackingPage() {
             <p className="text-[10px] font-bold uppercase tracking-[.18em] text-emerald-700">GeoFix 167 · Live incident updates</p>
             <h1 className="mt-1 text-xl font-extrabold">Responder tracking</h1>
           </div>
-          <button type="button" onClick={shareLink} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-bold text-emerald-800 hover:bg-emerald-100">
-            {copied ? <Check size={16} /> : navigator.share ? <Share2 size={16} /> : <Copy size={16} />}{copied ? "Copied" : navigator.share ? "Share" : "Copy link"}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link to={PATHS.home} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600">
+              <ArrowLeft size={15} /> Back to GeoFix home
+            </Link>
+            <button type="button" onClick={shareLink} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-bold text-emerald-800 hover:bg-emerald-100">
+              {copied ? <Check size={16} /> : navigator.share ? <Share2 size={16} /> : <Copy size={16} />}{copied ? "Copied" : navigator.share ? "Share" : "Copy link"}
+            </button>
+          </div>
         </header>
 
         <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

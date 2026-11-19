@@ -43,7 +43,7 @@ export const adminRoutes = (
       <Route path="resolution-verification" element={<ResolutionVerification />} />
       <Route path="accomplishment-log" element={adminModule("accomplishment-log", AccomplishmentLog)} />
       <Route path="residents" element={adminModule("residents", Residents)} />
-      <Route path="registrations" element={<RegistrationReview />} />
+      <Route path="registrations" element={adminModule("registrations", RegistrationReview)} />
       <Route path="reports-analytics" element={adminModule("reports-analytics", ReportsAnalytics)} />
       <Route path="settings" element={adminModule("settings", AdminSettings)} />
     </Route>

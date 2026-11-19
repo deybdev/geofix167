@@ -76,7 +76,14 @@ export const ADMIN_NAVIGATION = [
     comingSoon: true,
     comingSoonDescription: "Resident directory and access management will be available when its admin API is ready.",
   },
-  { key: "registrations", label: "Registrations", icon: ShieldCheck, path: PATHS.adminRegistrations },
+  {
+    key: "registrations",
+    label: "Registrations",
+    icon: ShieldCheck,
+    path: PATHS.adminRegistrations,
+    comingSoon: true,
+    comingSoonDescription: "Registration review will be available when its workflow is ready for administrators.",
+  },
   {
     key: "reports-analytics",
     label: "Reports & Analytics",

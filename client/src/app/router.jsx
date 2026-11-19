@@ -104,7 +104,7 @@ export default function AppRouter() {
               <Route path="announcements" element={<Announcements />} />
               <Route path="accomplishment-log" element={adminPage("accomplishment-log", AccomplishmentLog)} />
               <Route path="residents" element={adminPage("residents", Residents)} />
-              <Route path="registrations" element={<RegistrationReview />} />
+              <Route path="registrations" element={adminPage("registrations", RegistrationReview)} />
               <Route path="reports-analytics" element={adminPage("reports-analytics", ReportsAnalytics)} />
               <Route path="settings" element={adminPage("settings", AdminSettings)} />
             </Route>
