@@ -1,68 +1,95 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import {
-  BarChart3, CheckCircle2, ChevronRight, Clock, Flame, Siren, Wrench,
+  Activity, BarChart3, CheckCircle2, ChevronRight, Clock, Flame, Siren, Wrench,
 } from "lucide-react";
 import { PATHS } from "../../router/paths";
+import AdminReportActions from "../../shared/components/AdminReportActions";
 import MapViewer from "../../shared/components/MapViewer";
 import { BY_STATUS, GEO_INCIDENTS, KPI_DATA } from "./analytics/mockData";
 
 const KPI = KPI_DATA.month;
 const statusCount = (label) => BY_STATUS.find((status) => status.label === label)?.value ?? 0;
 
-const metrics = [
-  ["TOTAL REPORTS", KPI.totalReports, "All reports this month", BarChart3, "bg-[#e7f4ed] text-[#2e8b57]"],
-  ["PENDING", KPI.pendingReports, "Awaiting dispatch or action", Clock, "bg-[#fff8e6] text-[#f59e0b]"],
-  ["DISPATCHED", statusCount("Dispatched"), "Units assigned, rolling out", Siren, "bg-[#eff6ff] text-[#3b82f6]"],
-  ["IN PROGRESS", statusCount("In Progress"), "Being handled in the field", Wrench, "bg-[#f5f0ff] text-[#8b5cf6]"],
-  ["RESOLVED", KPI.resolvedReports, "Fixed and verified this month", CheckCircle2, "bg-[#e7f4ed] text-[#2e8b57]"],
-];
-
 const reports = [
-  ["GF-001", "Pothole on Rizal Street", "Road Damage", "Rizal Street", "Marvin Navarrete", "April 22, 2026", "Reported", "reported"],
-  ["GF-002", "Broken Streetlight Pole", "Electrical", "Quezon Avenue", "John Kyle Paroni", "April 21, 2026", "In Progress", "progress"],
-  ["GF-003", "Clogged Drainage Canal", "Sanitation", "Magsaysay Boulevard", "Efren Cahilig", "April 20, 2026", "Verified Fixed", "fixed"],
-  ["GF-006", "Accident (DEMO)", "Incident / Emergency", "Rizal Street", "Demo Guest", "Demo record", "Dispatch Pending", "reported"],
+  { id: "GF-001", incident: "Pothole on Rizal Street", category: "Road Damage", location: "Rizal Street", reporter: "Marvin Navarrete", date: "April 22, 2026", status: "Reported", tone: "reported" },
+  { id: "GF-002", incident: "Broken Streetlight Pole", category: "Electrical", location: "Quezon Avenue", reporter: "John Kyle Paroni", date: "April 21, 2026", status: "In Progress", tone: "progress" },
+  { id: "GF-003", incident: "Clogged Drainage Canal", category: "Sanitation", location: "Magsaysay Boulevard", reporter: "Efren Cahilig", date: "April 20, 2026", status: "Verified Fixed", tone: "fixed" },
+  { id: "GF-006", incident: "Accident (DEMO)", category: "Incident / Emergency", location: "Rizal Street", reporter: "Demo Guest", date: "Demo record", status: "Dispatch Pending", tone: "reported" },
 ];
 
-const URGENT_BG = { fire: "bg-[#fdecea]", incident: "bg-[#fdecea]", infrastructure: "bg-[#fff1c6]" };
-const URGENT_TEXT = { fire: "text-[#dc2626]", incident: "text-[#dc2626]", infrastructure: "text-[#f59e0b]" };
+const metrics = [
+  { label: "Reports this month", value: KPI.totalReports, hint: "All emergency and service reports", icon: BarChart3, tone: "bg-(--gf-green-tint) text-(--gf-green)", path: PATHS.adminIncidentReports },
+  { label: "Awaiting action", value: KPI.pendingReports, hint: "Needs triage, dispatch, or assignment", icon: Clock, tone: "bg-amber-50 text-amber-600", path: `${PATHS.adminIncidentReports}?queue=pending-triage` },
+  { label: "Active workload", value: statusCount("Dispatched") + statusCount("In Progress"), hint: "Assigned or handled in the field", icon: Wrench, tone: "bg-blue-50 text-blue-600", path: PATHS.adminMaintenanceTasks },
+  { label: "Resolution rate", value: `${KPI.resolutionRate}%`, hint: `${KPI.resolvedReports} verified resolutions`, icon: CheckCircle2, tone: "bg-emerald-50 text-emerald-700", path: PATHS.adminResolutionVerification },
+];
+
+const operatingMetrics = [
+  ["Dispatched", statusCount("Dispatched"), Siren, "text-blue-600", PATHS.adminDispatch],
+  ["In progress", statusCount("In Progress"), Activity, "text-violet-600", PATHS.adminMaintenanceTasks],
+  ["Active emergencies", KPI.activeEmergencies, Flame, "text-red-600", `${PATHS.adminIncidentReports}?queue=active-emergencies`],
+  ["Average response", `${KPI.avgResponseTime} min`, Clock, "text-amber-600", PATHS.adminReportsAnalytics],
+];
 
 const urgentReports = GEO_INCIDENTS
   .filter((incident) => incident.status !== "Resolved" && incident.status !== "Verified Fixed")
-  .slice(0, 5)
-  .map((incident) => [
-    `${incident.id} — ${incident.category === "infrastructure" ? "Infrastructure" : "Incident / Emergency"}`,
-    incident.title,
-    URGENT_BG[incident.category] ?? "bg-[#fff1c6]",
-    URGENT_TEXT[incident.category] ?? "text-[#f59e0b]",
-  ]);
-
-const mapIncidents = GEO_INCIDENTS;
+  .slice(0, 5);
 
 export default function AdminDashboard() {
   const [heatmap, setHeatmap] = useState(false);
 
-  return (
-    <div className="space-y-4">
-          <section className="grid grid-cols-2 gap-3 xl:grid-cols-5">
-            {metrics.map(([label, value, description, Icon, iconBg]) => <div key={label} className="rounded-lg border border-[#e2e8eb] bg-white p-4 shadow-[0_2px_8px_rgba(27,52,70,0.03)]"><div className="flex items-center justify-between gap-2"><p className="text-[10px] font-bold leading-tight text-slate-500">{label}</p><div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${iconBg}`}><Icon size={14} /></div></div><div className="mt-2 text-[23px] font-bold text-[#2e8b57]">{value}</div><div className="text-[9px] text-slate-400">{description}</div></div>)}
-          </section>
+  return <div className="space-y-4 admin-print-surface">
+    <section className="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-(--gf-green)">Operations overview</p>
+        <h2 className="mt-1 text-lg font-bold text-(--gf-ink)">Barangay 167 command center</h2>
+        <p className="mt-1 text-xs text-(--gf-slate)">Triage demand, field workload, response speed, and verified outcomes for this month.</p>
+      </div>
+      <AdminReportActions filename="geofix167-admin-overview" title="GeoFix 167 Admin Overview" rows={reports} label="Export Excel" presentationPath={PATHS.adminReportDeck} />
+    </section>
 
-          <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_270px]">
-            <div className="rounded-lg border border-[#e2e8eb] bg-white p-3">
-              <div className="mb-2 flex items-center justify-between"><h2 className="text-[12px] font-bold text-[#2e8b57]">Live Incident &amp; Infrastructure Cluster</h2><div className="flex items-center gap-2"><button type="button" onClick={() => setHeatmap((on) => !on)} className={`flex items-center gap-1 rounded border px-2 py-1 text-[9px] font-semibold ${heatmap ? "border-[#2e8b57] bg-[#2e8b57] text-white" : "border-[#d9e8df] text-[#2e8b57]"}`}><Flame size={11} /> {heatmap ? "Show Pins" : "Heatmap"}</button><button className="flex items-center gap-1 rounded border border-[#d9e8df] px-2 py-1 text-[9px] font-semibold text-[#2e8b57]">Go to Map View <ChevronRight size={11} /></button></div></div>
-              <MapViewer incidents={mapIncidents} compact heatmap={heatmap} expandPath={PATHS.adminMapView} />
-            </div>
-            <div className="rounded-lg border border-[#e2e8eb] bg-white p-3">
-              <h2 className="mb-2 text-[12px] font-bold text-[#2e8b57]">Urgent Reports &amp; Dispatch</h2>
-              <div className="space-y-2">{urgentReports.map(([title, detail, bg, color], index) => <div key={title} className={`flex gap-2 rounded-md p-2 ${bg}`}><span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-white text-[9px] font-bold ${color}`}>{index + 1}</span><div className="min-w-0 text-[9px]"><strong className="block truncate text-[#2e8b57]">{title}</strong><span className="text-slate-500">{detail}</span></div></div>)}</div>
-            </div>
-          </section>
+    <section aria-label="Administrative KPI summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {metrics.map(({ label, value, hint, icon: Icon, tone, path }) => <Link to={path} key={label} className="gf-card admin-metric-card p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div><p className="text-[11px] font-bold uppercase tracking-wide text-(--gf-slate)">{label}</p><p className="mt-2 text-2xl font-bold leading-none text-(--gf-ink)">{value}</p></div>
+          <span className={`grid h-9 w-9 place-items-center rounded-lg ${tone}`}><Icon size={17} /></span>
+        </div>
+        <p className="mt-2 text-[11px] text-(--gf-slate-2)">{hint}</p>
+        <ChevronRight className="admin-metric-card__arrow" size={16} />
+      </Link>)}
+    </section>
 
-          <section className="rounded-lg border border-[#e2e8eb] bg-white p-3">
-            <h2 className="mb-2 text-[12px] font-bold text-[#2e8b57]">Recent Incident &amp; Infrastructure Reports</h2>
-            <div className="overflow-x-auto"><table className="w-full min-w-[700px] border-collapse text-left text-[9px]"><thead><tr className="rounded bg-[#f5f8fa] text-slate-500"><th className="rounded-l px-3 py-2">Report ID</th><th className="px-3 py-2">Incident Report</th><th className="px-3 py-2">Category</th><th className="px-3 py-2">Location</th><th className="px-3 py-2">Reporter</th><th className="px-3 py-2">Date Submitted</th><th className="rounded-r px-3 py-2">Status</th></tr></thead><tbody>{reports.map(([id, incident, category, location, reporter, date, status, type]) => <tr key={id} className="border-b border-[#e7ecef] last:border-0"><td className="px-3 py-3 font-bold text-[#2e8b57]">{id}</td><td className="px-3 py-3 font-medium">{incident}</td><td className="px-3 py-3 text-slate-500">{category}</td><td className="px-3 py-3 text-slate-500">{location}</td><td className="px-3 py-3">{reporter}</td><td className="px-3 py-3 text-slate-500">{date}</td><td className="px-3 py-3"><span className={`rounded px-2 py-1 text-[8px] font-semibold ${type === "fixed" ? "bg-[#d9f7e4] text-[#2e8b57]" : type === "progress" ? "bg-[#dcefe5] text-[#2e8b57]" : "bg-[#fff1c6] text-[#e69500]"}`}>{status}</span></td></tr>)}</tbody></table></div>
-          </section>
-    </div>
-  );
+    <section aria-label="Live operations status" className="grid gap-px overflow-hidden rounded-lg border border-(--gf-border) bg-(--gf-border) sm:grid-cols-2 xl:grid-cols-4">
+      {operatingMetrics.map(([label, value, Icon, color, path]) => <Link to={path} key={label} className="admin-operating-metric flex items-center gap-3 bg-white px-4 py-3">
+        <Icon size={16} className={color} />
+        <div><p className="text-sm font-bold text-(--gf-ink)">{value}</p><p className="text-[11px] text-(--gf-slate)">{label}</p></div>
+      </Link>)}
+    </section>
+
+    <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+      <article className="gf-card p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div><h3 className="text-sm font-bold text-(--gf-ink)">Live incident cluster</h3><p className="text-[11px] text-(--gf-slate)">Emergency and infrastructure activity within Barangay 167.</p></div>
+          <div className="flex items-center gap-2 print:hidden">
+            <button type="button" onClick={() => setHeatmap((on) => !on)} className={`gf-btn gf-btn--chip ${heatmap ? "bg-(--gf-green)! text-white!" : ""}`}><Flame size={12} />{heatmap ? "Show pins" : "Heatmap"}</button>
+            <Link to={PATHS.adminMapView} className="gf-btn gf-btn--chip">Open map <ChevronRight size={12} /></Link>
+          </div>
+        </div>
+        <MapViewer incidents={GEO_INCIDENTS} compact heatmap={heatmap} expandPath={PATHS.adminMapView} />
+      </article>
+      <article className="gf-card p-4">
+        <div className="mb-3"><h3 className="text-sm font-bold text-(--gf-ink)">Priority queue</h3><p className="text-[11px] text-(--gf-slate)">Open records needing operational attention.</p></div>
+        <div className="space-y-2">{urgentReports.map((incident, index) => <div key={incident.id} className="flex gap-3 rounded-lg border border-(--gf-border) p-3">
+          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-red-50 text-[11px] font-bold text-red-600">{index + 1}</span>
+          <div className="min-w-0"><p className="truncate text-xs font-bold text-(--gf-ink)">{incident.id} · {incident.title}</p><p className="mt-0.5 text-[11px] text-(--gf-slate)">{incident.status}</p></div>
+        </div>)}</div>
+      </article>
+    </section>
+
+    <section className="gf-card p-4">
+      <div className="mb-3 flex items-center justify-between gap-3"><div><h3 className="text-sm font-bold text-(--gf-ink)">Recent reports</h3><p className="text-[11px] text-(--gf-slate)">Latest administrative records across operations.</p></div><Link to={PATHS.adminIncidentReports} className="gf-btn gf-btn--chip print:hidden">View all <ChevronRight size={12} /></Link></div>
+      <div className="overflow-x-auto"><table className="gf-table min-w-[760px]"><thead><tr><th>Report ID</th><th>Incident</th><th>Category</th><th>Location</th><th>Reporter</th><th>Date submitted</th><th>Status</th></tr></thead><tbody>{reports.map((report) => <tr key={report.id}><td className="font-bold text-(--gf-green)">{report.id}</td><td className="font-semibold text-(--gf-ink)">{report.incident}</td><td>{report.category}</td><td>{report.location}</td><td>{report.reporter}</td><td>{report.date}</td><td><span className={`gf-badge ${report.tone === "fixed" ? "gf-badge--fixed" : report.tone === "progress" ? "gf-badge--progress" : "gf-badge--reported"}`}>{report.status}</span></td></tr>)}</tbody></table></div>
+    </section>
+  </div>;
 }

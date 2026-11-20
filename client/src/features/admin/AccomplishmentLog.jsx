@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  CalendarDays, CheckCircle, ClipboardList, Download, EyeOff, FileText, History,
-  Lock, MapPin, Megaphone, Printer, Search, Siren, Unlock, Wrench, X,
+  CalendarDays, CheckCircle, ClipboardList, EyeOff, FileText, History,
+  Lock, MapPin, Megaphone, Search, Siren, Unlock, Wrench, X,
 } from "lucide-react";
 import { toast } from "../../shared/components/ui/toast";
 import { stamp } from "../../shared/components/GovernanceUi";
+import AdminReportActions from "../../shared/components/AdminReportActions";
 
 /* ------------------------------------------------------------------------ */
 /* Privacy helpers — the public ledger never shows raw personal content.    */
@@ -466,6 +467,7 @@ export default function AccomplishmentLog() {
   }
 
   const tabCounts = { ledger: published.length, curation: queue.length, audit: audit.length };
+  const exportRows = tab === "ledger" ? published : tab === "curation" ? queue : audit;
 
   return (
     <div className="space-y-4">
@@ -479,12 +481,7 @@ export default function AccomplishmentLog() {
           <p className="mt-0.5 text-xs text-slate-500">Public transparency ledger — curate resolved tickets before they reach the community.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => toast.add({ type: "success", title: "Export ready", description: "Public ledger CSV generated (privacy-safe rows only)." })} className={btnSecondary}>
-            <Download size={12} />Export CSV
-          </button>
-          <button type="button" onClick={() => toast.add({ type: "success", title: "Export ready", description: "Official ledger PDF generated for the barangay board." })} className={btnSecondary}>
-            <Printer size={12} />Export PDF
-          </button>
+          <AdminReportActions filename={`geofix167-accomplishments-${tab}`} rows={exportRows} />
         </div>
       </section>
 

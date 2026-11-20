@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Bell, Menu, Search } from "lucide-react";
+import { Menu } from "lucide-react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../shared/hooks/useAuth";
 import { PATHS } from "../router/paths";
 import AdminSidebar from "../shared/components/AdminSidebar";
+import AdminNotifications from "../shared/components/AdminNotifications";
 import ConfirmationDialog from "../shared/components/ConfirmationDialog";
 import { toast } from "../shared/components/ui/toast";
 
@@ -50,7 +51,7 @@ const AdminLayout = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#f7f9fa] text-[#263246]">
+    <div className="admin-shell min-h-screen bg-[#f7f9fa] text-[#263246]">
       <AdminSidebar
         open={sidebarOpen}
         onToggle={() => setSidebarOpen((open) => !open)}
@@ -64,14 +65,7 @@ const AdminLayout = () => {
             <span className="rounded bg-[#fff0c1] px-2 py-1 text-[8px] font-semibold text-[#d68d00]">System Admin</span>
           </div>
           <div className="flex items-center gap-3">
-            <label className="hidden h-7 w-[194px] items-center gap-2 rounded-md border border-[#dfe5e8] px-2 text-[10px] text-slate-400 sm:flex">
-              <Search size={14} />
-              <input aria-label="Search report or location" placeholder="Search report or location..." className="w-full outline-none placeholder:text-slate-400" />
-            </label>
-            <button type="button" className="relative rounded-full border border-[#dfe5e8] p-1.5 text-(--gf-green)" aria-label="Notifications">
-              <Bell size={14} />
-              <span className="absolute right-0 top-0 h-1.5 w-1.5 rounded-full bg-[#f59e0b]" />
-            </button>
+            <AdminNotifications />
             <div className="hidden items-center gap-2 sm:flex">
               <div className="flex h-6 w-6 items-center justify-center rounded-full bg-(--gf-green) text-[8px] font-bold text-white">AM</div>
               <div className="text-[9px]"><strong className="block">Admin Moreno</strong><span className="text-slate-400">Brgy 167 Lead Officer</span></div>

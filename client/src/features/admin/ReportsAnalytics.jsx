@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
 import {
   Activity, AlertTriangle, BarChart3, CheckCircle2, ClipboardList, Clock,
-  Download, MapPin, Printer, RotateCcw, ShieldAlert, TrendingDown,
+MapPin, RotateCcw, ShieldAlert, TrendingDown,
   TrendingUp, Wrench, Zap,
 } from "lucide-react";
-import { toast } from "../../shared/components/ui/toast";
+import AdminReportActions from "../../shared/components/AdminReportActions";
 import { PATHS } from "../../router/paths";
 import MapViewer from "../../shared/components/MapViewer";
 import reportCatalog from "../../../../server/src/shared/reportCatalog.json";
@@ -42,30 +42,6 @@ function delta(curr, prev) {
 function fmtDelta(d, unit = "") {
   const sign = d.up ? "+" : "−";
   return `${sign}${Math.abs(d.diff)}${unit} (${d.pct}%) vs prev`;
-}
-
-function exportCSV(period, kpi) {
-  const rows = [
-    ["Metric", "Value", "Period"],
-    ["Total Reports", kpi.totalReports, period],
-    ["Pending Reports", kpi.pendingReports, period],
-    ["Resolved Reports", kpi.resolvedReports, period],
-    ["Active Emergencies", kpi.activeEmergencies, period],
-    ["Avg Response Time (min)", kpi.avgResponseTime, period],
-    ["Resolution Rate (%)", kpi.resolutionRate, period],
-  ];
-  const csv = rows.map((r) => r.join(",")).join("\n");
-  const blob = new Blob([csv], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = `geofix167-analytics-${period}.csv`; a.click();
-  URL.revokeObjectURL(url);
-  toast.add({ title: "Export ready", description: `Analytics report for ${period} exported as CSV.`, type: "success" });
-}
-
-function printReport(period) {
-  window.print();
-  void period;
 }
 
 // ── Sub-components ───────────────────────────────────────────────────────────
@@ -227,6 +203,16 @@ export default function ReportsAnalytics() {
   }
 
   const periodLabel = PERIODS.find((p) => p.key === period)?.label ?? period;
+  const reportRows = [
+    { section: "Summary", metric: "Total reports", value: kpi.totalReports, period: periodLabel },
+    { section: "Summary", metric: "Pending reports", value: kpi.pendingReports, period: periodLabel },
+    { section: "Summary", metric: "Resolved reports", value: kpi.resolvedReports, period: periodLabel },
+    { section: "Summary", metric: "Active emergencies", value: kpi.activeEmergencies, period: periodLabel },
+    { section: "Performance", metric: "Average response time (minutes)", value: kpi.avgResponseTime, period: periodLabel },
+    { section: "Performance", metric: "Resolution rate (%)", value: kpi.resolutionRate, period: periodLabel },
+    ...filteredByCategory.map((item) => ({ section: "Category", metric: item.label, value: item.value, period: periodLabel })),
+    ...filteredByStatus.map((item) => ({ section: "Status", metric: item.label, value: item.value, period: periodLabel })),
+  ];
 
   return (
     <div className="space-y-3 print:space-y-4">
@@ -245,14 +231,7 @@ export default function ReportsAnalytics() {
           </p>
         </div>
         <div className="flex items-center gap-2 print:hidden">
-          <button type="button" onClick={() => exportCSV(period, kpi)}
-            className="flex items-center gap-1 rounded-md border border-[#d9e8df] px-2.5 py-2 text-[9px] font-semibold text-[#2e8b57] hover:bg-[#f3faf6]">
-            <Download size={11} /> Export CSV
-          </button>
-          <button type="button" onClick={() => printReport(period)}
-            className="flex items-center gap-1 rounded-md border border-[#d9e8df] px-2.5 py-2 text-[9px] font-semibold text-[#2e8b57] hover:bg-[#f3faf6]">
-            <Printer size={11} /> Print
-          </button>
+          <AdminReportActions filename={`geofix167-analytics-${period}`} title={`GeoFix 167 Analytics — ${periodLabel}`} rows={reportRows} label="Export Excel" presentationPath={PATHS.adminReportDeck} />
         </div>
       </section>
 

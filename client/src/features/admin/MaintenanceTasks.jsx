@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Camera, CheckCircle2, Clock, Download, FileText, FileUp, History, Link2,
+  Camera, CheckCircle2, Clock, FileText, FileUp, History, Link2,
   Lock, MapPinned, Plus, RotateCcw, Search, Share2, ShieldCheck, TriangleAlert, UserCheck,
   Video, Wrench, X,
 } from "lucide-react";
 import { toast } from "../../shared/components/ui/toast";
 import MapViewer from "../../shared/components/MapViewer";
 import { ModalShell, SelectFilter, stamp } from "../../shared/components/GovernanceUi";
+import AdminReportActions from "../../shared/components/AdminReportActions";
 import reportCatalog from "../../../../server/src/shared/reportCatalog.json";
 
 /* ----------------------------------------------------------------------- */
@@ -1163,8 +1164,7 @@ export default function MaintenanceTasks() {
                 <button type="button" onClick={resetFilters} className="flex items-center gap-1 px-2 text-[9px] text-[#60738f] hover:text-(--gf-green)"><RotateCcw size={11} /> Reset</button>
                 <div className="ml-auto flex flex-wrap items-center gap-1.5">
                   <button type="button" onClick={() => setAudit({ open: true, taskId: "All tasks" })} className="gf-btn gf-btn--chip"><History size={11} />Audit Trail</button>
-                  <button type="button" onClick={() => toast.add({ title: "Export ready", description: "CSV of the filtered maintenance records is prepared.", type: "success" })} className="gf-btn gf-btn--chip"><Download size={11} /> Export CSV</button>
-                  <button type="button" onClick={() => toast.add({ title: "Export ready", description: "PDF export of the filtered maintenance records is prepared for archiving.", type: "success" })} className="gf-btn gf-btn--chip"><Download size={11} /> Export PDF</button>
+                  <AdminReportActions filename={`geofix167-maintenance-${tab}`} rows={filtered} />
                   <button type="button" onClick={() => setCreateOpen(true)} className="gf-btn gf-btn--primary"><Plus size={11} style={{ display: "inline", verticalAlign: "-2px", marginRight: 3 }} />Create Work Order</button>
                 </div>
               </div>

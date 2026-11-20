@@ -42,6 +42,7 @@ export const PATHS = {
   adminAccomplishmentLog: "/admin/accomplishment-log",
   adminResidents: "/admin/residents",
   adminReportsAnalytics: "/admin/reports-analytics",
+  adminReportDeck: "/admin/reports-analytics/presentation",
   adminSettings: "/admin/settings",
   adminMapView: "/admin/map-view",
 

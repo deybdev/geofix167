@@ -2,7 +2,6 @@ import {
   BarChart3,
   BookOpen,
   CheckSquare,
-  ChevronDown,
   ClipboardList,
   Radio,
   Grid2X2,
@@ -12,115 +11,25 @@ import {
   ShieldCheck,
   Users,
 } from "lucide-react";
-import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { PATHS } from "../../router/paths";
 
 const navigation = [
-  { label: "Dashboard", icon: Grid2X2, path: PATHS.admin, section: "MAIN MENU" },
-  {
-    label: "Incident Reports",
-    icon: ClipboardList,
-    path: PATHS.adminIncidentReports,
-    children: [
-      { label: "Pending Triage Queue", queue: "pending-triage" },
-      { label: "Active Emergencies (BDRRMO)", queue: "active-emergencies" },
-      { label: "External Agency Requests", queue: "external-agencies" },
-      { label: "Infrastructure Reports", queue: "infrastructure" },
-      { label: "Monitor Dispatch & Tracking", queue: "dispatch-tracking" },
-    ],
-  },
-  { label: "Dispatch Responders", icon: Radio, path: PATHS.adminDispatch },
-  {
-    label: "Maintenance Tasks",
-    icon: ShieldCheck,
-    path: PATHS.adminMaintenanceTasks,
-    children: [
-      "Non-Emergency Intake",
-      "Active Work Orders",
-      "Awaiting Verification",
-      "Completed & Logged",
-    ],
-  },
-  {
-    label: "Resolution & Verification",
-    icon: CheckSquare,
-    path: PATHS.adminResolutionVerification,
-    children: [
-      "Evidence Review",
-      "QR Handover Reconciliation",
-      "False-Report Controls",
-    ],
-  },
-  {
-    label: "Announcements & Broadcasts",
-    icon: Megaphone,
-    path: PATHS.adminAnnouncements,
-    children: [
-      "Create Advisory / Notice",
-      "Geo-Fenced Broadcasts",
-      "Active Broadcast Log",
-      "Public Feed Curation",
-    ],
-  },
-  {
-    label: "Accomplishment Log",
-    icon: BookOpen,
-    path: PATHS.adminAccomplishmentLog,
-    children: [
-      "Public Ledger Preview",
-      "Curation Queue",
-      "Audit & Retention Trail",
-    ],
-  },
-  {
-    label: "Residents & Access",
-    icon: Users,
-    path: PATHS.adminResidents,
-    children: [
-      "Resident Directory",
-      "Pending Verifications",
-      "Account Recovery",
-    ],
-  },
-  { label: "Registrations", icon: ShieldCheck, path: "/admin/registrations" },
-  {
-    label: "Reports & Analytics",
-    icon: BarChart3,
-    path: PATHS.adminReportsAnalytics,
-    children: [
-      "Incident Heatmaps & Trends",
-      "Response-Time & SLA Metrics",
-      "Resource Utilization",
-      "Export Center",
-    ],
-  },
-  {
-    label: "Settings & Configuration",
-    icon: Settings,
-    path: PATHS.adminSettings,
-    section: "UTILITIES",
-    children: [
-      "Categories & Zones",
-      "Agency Contacts",
-      "Hospital Capability Matrix",
-      "Language Filters",
-    ],
-  },
+  { label: "Dashboard", icon: Grid2X2, path: PATHS.admin, section: "OVERVIEW" },
+  { label: "Incident Reports", icon: ClipboardList, path: PATHS.adminIncidentReports, section: "OPERATIONS" },
+  { label: "Dispatch", icon: Radio, path: PATHS.adminDispatch },
+  { label: "Maintenance", icon: ShieldCheck, path: PATHS.adminMaintenanceTasks },
+  { label: "Verification", icon: CheckSquare, path: PATHS.adminResolutionVerification },
+  { label: "Residents & Access", icon: Users, path: PATHS.adminResidents, section: "COMMUNITY" },
+  { label: "Announcements", icon: Megaphone, path: PATHS.adminAnnouncements },
+  { label: "Analytics & Reports", icon: BarChart3, path: PATHS.adminReportsAnalytics, section: "INSIGHTS" },
+  { label: "Accomplishments", icon: BookOpen, path: PATHS.adminAccomplishmentLog },
+  { label: "Settings", icon: Settings, path: PATHS.adminSettings, section: "SYSTEM" },
 ];
 
 export default function AdminSidebar({ open = false, onClose, onToggle }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const activeGroup = navigation.find(
-    ({ path }) => path && path !== PATHS.admin && location.pathname.startsWith(path),
-  )?.label;
-  const [expandedGroup, setExpandedGroup] = useState(activeGroup);
-
-  useEffect(() => {
-    if (activeGroup) setExpandedGroup(activeGroup);
-  }, [activeGroup]);
-
   const navigateTo = (path) => {
     navigate(path);
     if (window.matchMedia("(max-width: 767px)").matches) onClose?.();
@@ -151,9 +60,9 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
             aria-label="Open menu"
           ><Menu size={19} /></button>}
           <div className={`flex items-center gap-2 ${open ? "" : "flex-col"}`}>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-[4px] border-(--gf-green) text-[10px] font-bold text-(--gf-green)" aria-label="GeoFix 167">G</div>
-            <div className={`min-w-0 text-[11px] font-bold leading-tight text-(--gf-green) ${open ? "" : "md:hidden"}`}>
-              GeoFix <span className="block text-[8px]">Barangay 167</span>
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-[4px] border-(--gf-green) text-[11px] font-bold text-(--gf-green)" aria-label="GeoFix 167">G</div>
+            <div className={`min-w-0 text-xs font-bold leading-tight text-(--gf-green) ${open ? "" : "md:hidden"}`}>
+              GeoFix <span className="block text-[11px] font-medium">Barangay 167</span>
             </div>
           </div>
           {open && <button
@@ -165,29 +74,20 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
           ><Menu size={19} /></button>}
         </div>
         <nav className="max-h-[calc(100dvh-142px)] space-y-1 overflow-y-auto pr-0.5">
-          {navigation.map(({ label, icon: Icon, path, children, section }) => {
+          {navigation.map(({ label, icon: Icon, path, section }) => {
             const active = path && (path === PATHS.admin ? location.pathname === path : location.pathname.startsWith(path));
-            const expanded = expandedGroup === label;
             return (
               <div key={label}>
                 {section && open && (
-                  <div className="mb-2 mt-4 px-3 text-[9px] font-semibold tracking-[0.08em] text-slate-400 first:mt-0">
+                  <div className="mb-2 mt-4 px-3 text-[11px] font-semibold tracking-[0.08em] text-slate-400 first:mt-0">
                     {section}
                   </div>
                 )}
                 <button
                   type="button"
                   title={open ? undefined : label}
-                  onClick={() => {
-                    if (children) {
-                      setExpandedGroup(expanded ? null : label);
-                      if (path) navigate(path);
-                    } else if (path) {
-                      navigateTo(path);
-                    }
-                  }}
-                  aria-expanded={children ? expanded : undefined}
-                  className={`group relative flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[10px] font-medium transition-colors ${
+                  onClick={() => navigateTo(path)}
+                  className={`group relative flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-xs font-medium transition-colors ${
                     open ? "" : "md:justify-center md:px-0"
                   } ${
                     active
@@ -195,49 +95,25 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
                       : "text-[#263246] hover:bg-(--gf-green-soft)"
                   }`}
                 >
-                  <Icon size={14} strokeWidth={1.8} />
+                  <Icon size={16} strokeWidth={1.8} />
                   <span className={`min-w-0 flex-1 ${open ? "" : "md:hidden"}`}>{label}</span>
-                  {children && open && (
-                    <ChevronDown
-                      size={13}
-                      className={`shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`}
-                    />
-                  )}
                   {!open && (
-                    <span className="pointer-events-none absolute left-[calc(100%+10px)] z-50 hidden whitespace-nowrap rounded-md bg-slate-900 px-2.5 py-1.5 text-[10px] text-white shadow-lg group-hover:md:block">
+                    <span className="pointer-events-none absolute left-[calc(100%+10px)] z-50 hidden whitespace-nowrap rounded-md bg-slate-900 px-2.5 py-1.5 text-[11px] text-white shadow-lg group-hover:md:block">
                       {label}
                     </span>
                   )}
                 </button>
-                {children && expanded && open && (
-                  <div className="ml-5 border-l border-(--gf-green-border) py-1 pl-2">
-                    {children.map((child) => {
-                      const childLabel = typeof child === "string" ? child : child.label;
-                      const childPath = typeof child === "string" ? path : `${path}?queue=${child.queue}`;
-                      return (
-                      <button
-                        key={childLabel}
-                        type="button"
-                        onClick={() => navigateTo(childPath)}
-                        className="block w-full rounded px-2 py-1.5 text-left text-[9px] leading-tight text-slate-500 hover:bg-(--gf-green-soft) hover:text-(--gf-green)"
-                      >
-                        {childLabel}
-                      </button>
-                      );
-                    })}
-                  </div>
-                )}
               </div>
             );
           })}
         </nav>
         <div className={`absolute bottom-4 flex items-center gap-2 rounded-xl border border-[#e5eaed] bg-[#f8fafb] p-2 ${open ? "left-3 right-3" : "left-2 right-2 md:justify-center"}`}>
-          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-(--gf-green) text-[9px] font-bold text-white">
+          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-(--gf-green) text-[11px] font-bold text-white">
             BA
           </div>
-          <div className={`min-w-0 text-[9px] ${open ? "" : "md:hidden"}`}>
+          <div className={`min-w-0 text-[11px] ${open ? "" : "md:hidden"}`}>
             <strong className="block truncate">Barangay Administrator</strong>
-            <span className="text-[8px] text-slate-400">
+            <span className="text-[11px] text-slate-400">
               Authorized Account
             </span>
           </div>

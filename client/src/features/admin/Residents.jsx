@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
-  AlertTriangle, Ban, Download, FileImage, FileText, IdCard, KeyRound,
+  AlertTriangle, Ban, FileImage, FileText, IdCard, KeyRound,
   MapPin, Phone, RotateCcw, Search, ShieldAlert, ShieldCheck, UserCheck, UserX, Users, X,
 } from "lucide-react";
 import { toast } from "../../shared/components/ui/toast";
+import AdminReportActions from "../../shared/components/AdminReportActions";
 
 /* ------------------------------------------------------------------------ */
 /* Shared styled primitives (standard Tailwind recipes)                     */
@@ -676,9 +678,10 @@ export default function Residents() {
           </h1>
           <p className="mt-0.5 text-xs text-slate-500">Verified masterlist, manual identity review, and mobile-number recovery for Barangay 167.</p>
         </div>
-        <button type="button" onClick={() => toast.add({ type: "success", title: "Export ready", description: "Resident directory CSV generated (privacy-safe columns only)." })} className={btnSecondary}>
-          <Download size={12} />Export Directory
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link to="/admin/registrations" className={btnSecondary}><IdCard size={12} />Registration review</Link>
+          <AdminReportActions filename={`geofix167-residents-${tab}`} rows={tab === "directory" ? directoryRows : tab === "pending" ? pendingRows : recoveryRows} label="Export directory" />
+        </div>
       </section>
 
       <section aria-label="Residents KPI summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

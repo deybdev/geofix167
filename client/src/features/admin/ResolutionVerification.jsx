@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  AlertTriangle, Ban, CheckCircle2, Download, EyeOff, FileCheck, FileImage, FileVideo,
-  History, Lock, Printer, QrCode, Scale, ScanLine, Search, ShieldCheck, UserCheck, X, XCircle,
+  AlertTriangle, Ban, CheckCircle2, EyeOff, FileCheck, FileImage, FileVideo,
+  History, Lock, QrCode, Scale, ScanLine, Search, ShieldCheck, UserCheck, X, XCircle,
 } from "lucide-react";
 import { toast } from "../../shared/components/ui/toast";
 import { stamp } from "../../shared/components/GovernanceUi";
+import AdminReportActions from "../../shared/components/AdminReportActions";
 
 const NOW = () => Date.now();
 
@@ -813,6 +814,7 @@ export default function ResolutionVerification() {
   const reconcileTarget = drawer?.mode === "reconcile" ? handoverRows.find((r) => r.code === drawer.id) : null;
 
   const tabCounts = { evidence: reviewItems.length, handover: handoverRows.filter((r) => r.status !== "Accepted").length, integrity: integrity.filter((i) => i.status === "Open").length };
+  const exportRows = tab === "evidence" ? reviewItems : tab === "handover" ? handoverRows : integrityRows;
 
   /* — obligations (closure gate) — */
   function toggleObligation(id, label) {
@@ -915,12 +917,7 @@ export default function ResolutionVerification() {
           <p className="mt-0.5 text-xs text-slate-500">BDRRMO / Admin review workspace — evidence-gated closure, QR reconciliation, and integrity controls.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => toast.add({ type: "success", title: "Export ready", description: "Verification CSV export generated for the current tab." })} className={btnSecondary}>
-            <Download size={12} />Export CSV
-          </button>
-          <button type="button" onClick={() => toast.add({ type: "success", title: "Export ready", description: "PDF verification packet generated for printing." })} className={btnSecondary}>
-            <Printer size={12} />Export PDF
-          </button>
+          <AdminReportActions filename={`geofix167-verification-${tab}`} rows={exportRows} />
         </div>
       </section>
 

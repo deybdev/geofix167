@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Ambulance, Ban, Bell, Camera, CheckCircle2, Clock, ChevronLeft, ChevronRight,
-  Download, Eye, EyeOff, FileText, FileUp, Flame, Flag, GitMerge,
+  Eye, EyeOff, FileText, FileUp, Flame, Flag, GitMerge,
   History, Languages, Link2, Lock, MapPinned, MoreVertical,
   QrCode, Radio, RotateCcw, ScanLine, Search, Share2, ShieldCheck, Siren,
   TriangleAlert, Video, Wrench, UserCheck, X,
@@ -11,8 +11,9 @@ import MapViewer from "../../shared/components/MapViewer";
 import { useSearchParams } from "react-router-dom";
 import reportCatalog from "../../../../server/src/shared/reportCatalog.json";
 import {
-  Badge, ModalSection, ModalShell, QRMatrix, RowList, SelectFilter, fmtClock, hash32, stamp,
+Badge, ModalSection, ModalShell, QRMatrix, RowList, SelectFilter, fmtClock, hash32, stamp,
 } from "../../shared/components/GovernanceUi";
+import AdminReportActions from "../../shared/components/AdminReportActions";
 
 /* ----------------------------------------------------------------------- */
 /* Seed data                                                                */
@@ -124,11 +125,6 @@ const categories = ["All Categories", ...reportCategories];
 const locations = ["All Locations", "Rizal Street", "Quezon Avenue", "Magsaysay Boulevard", "Roxas Boulevard", "Bonifacio Street", "Del Pilar Road"];
 
 const URGENCY_OPTS = Object.values(reportCatalog.adminUrgencies);
-const URGENCY_STYLES = {
-  [reportCatalog.adminUrgencies.critical]: "gf-badge gf-badge--critical",
-  [reportCatalog.adminUrgencies.standard]: "gf-badge gf-badge--emergency",
-  [reportCatalog.adminUrgencies.maintenance]: "gf-badge gf-badge--nonemergency",
-};
 const DISPLAY_URGENCY_STYLES = {
   High: "gf-badge gf-badge--critical",
   Medium: "gf-badge gf-badge--warn",
@@ -312,21 +308,6 @@ function mapApiReport(item, fetchedAt) {
     text: String(item.sanitized_description ?? item.description_sanitized ?? item.description_original ?? "").trim() || "No description. See photo evidence.",
     ...(classification.isEmergency && status === "Reported" ? { sla: { start: triageStartedAt } } : {}),
   };
-}
-
-function downloadReportsCsv(reports) {
-  const columns = ["ID", "Incident Details", "Category", "Urgency", "Location", "Reporter", "Date Reported", "Assigned Team", "Status", "Photo Count"];
-  const rows = reports.map((report) => [
-    report.id, report.title, report.category, displayUrgency(report), report.location, report.reporter,
-    report.date, report.team, report.status, report.photos?.length ?? 0,
-  ]);
-  const csv = [columns, ...rows].map((row) => row.map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`).join(",")).join("\r\n");
-  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "geofix-incident-reports.csv";
-  link.click();
-  URL.revokeObjectURL(url);
 }
 
 /* Privacy-safe accomplishment summary: strips exact addresses, coordinates,
@@ -1331,14 +1312,11 @@ function SlaBanner({ report, now }) {
   const reminded = elapsed >= REMINDER_MS;
   return (
     <div className="gf-sla-banner">
-      <Siren size={15} style={{ color: "var(--gf-red)" }} />
-      <strong className="text-[10px] text-[#263246]">Emergency verification timer — {report.id}</strong>
-      <span className="gf-timer gf-timer--armed text-[14px]" style={{ color: "var(--gf-red)" }}>{fmtClock(remaining)} to BDRRMO takeover</span>
-      <span className={`gf-badge ${reminded ? "gf-badge--alert" : "gf-badge--reported"}`}>{reminded ? "30s reminder issued" : "Admin reminder at 30s"}</span>
-      <span className="text-[9px] text-[#7a3040]">Unverified at 60s → automatic BDRRMO takeover of dispatch.</span>
-      <span className="ml-auto h-1.5 max-w-[180px] flex-1 overflow-hidden rounded-full bg-white/70">
-        <span className="block h-full rounded-full" style={{ width: `${Math.min(100, (elapsed / TAKEOVER_MS) * 100)}%`, background: "var(--gf-red)" }} />
-      </span>
+      <span className="gf-sla-banner__icon"><Siren size={17} /></span>
+      <div className="gf-sla-banner__copy"><strong>Emergency verification · {report.id}</strong><span>Unverified at 60 seconds triggers automatic BDRRMO dispatch takeover.</span></div>
+      <div className="gf-sla-banner__countdown"><span className="gf-timer gf-timer--armed">{fmtClock(remaining)}</span><small>to takeover</small></div>
+      <span className={`gf-badge ${reminded ? "gf-badge--alert" : "gf-badge--reported"}`}>{reminded ? "Reminder issued" : "Reminder at 30s"}</span>
+      <span className="gf-sla-banner__progress" aria-hidden="true"><i style={{ width: `${Math.min(100, (elapsed / TAKEOVER_MS) * 100)}%` }} /></span>
     </div>
   );
 }
@@ -1489,7 +1467,9 @@ export default function IncidentReports() {
   }, []);
 
   useEffect(() => {
-    if (queueTab) setTab(queueTab);
+    if (!queueTab) return undefined;
+    const frame = requestAnimationFrame(() => setTab(queueTab));
+    return () => cancelAnimationFrame(frame);
   }, [queueTab]);
 
   const logAudit = useCallback((entry) => {
@@ -1618,21 +1598,18 @@ export default function IncidentReports() {
     setFlagReport(null);
   }
 
-  const queueMatches = (report) => {
-    if (selectedQueue === "pending-triage") return bucketFor(report) === "Pending Triage";
-    if (selectedQueue === "active-emergencies") return bucketFor(report) === "Active Emergencies";
-    if (selectedQueue === "external-agencies") return Boolean(report.external?.length);
-    if (selectedQueue === "infrastructure") return bucketFor(report) === "Infrastructure & Routine";
-    if (selectedQueue === "dispatch-tracking") return Boolean(report.responders);
-    return true;
-  };
-
   const filteredReports = useMemo(() => reports.filter((report) => {
     const search = query.trim().toLowerCase();
     const matchesQuery = !search || `${report.id} ${report.title} ${report.category} ${report.location} ${report.reporter} ${report.status} ${report.team}`.toLowerCase().includes(search);
+    const matchesQueue = selectedQueue === "pending-triage" ? bucketFor(report) === "Pending Triage"
+      : selectedQueue === "active-emergencies" ? bucketFor(report) === "Active Emergencies"
+      : selectedQueue === "external-agencies" ? Boolean(report.external?.length)
+      : selectedQueue === "infrastructure" ? bucketFor(report) === "Infrastructure & Routine"
+      : selectedQueue === "dispatch-tracking" ? Boolean(report.responders)
+      : true;
     return matchesQuery
       && bucketFor(report) === tab
-      && queueMatches(report)
+      && matchesQueue
       && (status === "All Statuses" || report.status === status)
       && (category === "All Categories" || report.category === category)
       && (location === "All Locations" || report.location === location)
@@ -1712,7 +1689,7 @@ export default function IncidentReports() {
           </div>
           <div className="flex flex-wrap gap-1.5">
             <button type="button" onClick={() => setAudit({ open: true, reportId: "All reports" })} className="gf-btn gf-btn--chip"><History size={11} />Audit Trail</button>
-            <button type="button" onClick={() => downloadReportsCsv(filteredReports)} className="gf-btn gf-btn--chip"><Download size={11} /> Export CSV</button>
+            <AdminReportActions filename="geofix167-incident-reports" rows={filteredReports} />
           </div>
         </div>
         <div className="overflow-x-auto">

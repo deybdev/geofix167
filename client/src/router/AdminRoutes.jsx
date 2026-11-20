@@ -12,6 +12,7 @@ import ResolutionVerification from "../features/admin/ResolutionVerification";
 import AccomplishmentLog from "../features/admin/AccomplishmentLog";
 import Residents from "../features/admin/Residents";
 import ReportsAnalytics from "../features/admin/ReportsAnalytics";
+import ReportDeck from "../features/admin/ReportDeck";
 import AdminSettings from "../features/admin/Settings";
 import AdminDispatch from "../features/admin/AdminDispatch";
 import RegistrationReview from "../features/admin/RegistrationReview";
@@ -36,6 +37,7 @@ export const adminRoutes = (
       <Route path="residents" element={<Residents />} />
       <Route path="registrations" element={<RegistrationReview />} />
       <Route path="reports-analytics" element={<ReportsAnalytics />} />
+      <Route path="reports-analytics/presentation" element={<ReportDeck />} />
       <Route path="settings" element={<AdminSettings />} />
     </Route>
     {/* Full-page map opened from embedded maps (dashboard, reports, etc.) */}
