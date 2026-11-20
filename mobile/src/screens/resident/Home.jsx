@@ -522,10 +522,7 @@ export default function Home() {
       )}
 
       {/* MAP PREVIEW — non-interactive; tapping anywhere opens the full map */}
-      <Pressable
-        onPress={openMap}
-        accessibilityRole="button"
-        accessibilityLabel="Open full map"
+      <View
         style={[
           tw`mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white`,
           { height: MAP_PREVIEW_HEIGHT, elevation: 2 },
@@ -540,18 +537,27 @@ export default function Home() {
           />
         </View>
 
-        <View
-          style={[
-            tw`absolute right-3 top-3 flex-row items-center rounded-xl bg-white px-3 py-2`,
-            { elevation: 4 },
-          ]}
+        {/* Keep the touch target above the native map, including the label. */}
+        <Pressable
+          onPress={openMap}
+          accessibilityRole="button"
+          accessibilityLabel="Open full map"
+          style={tw`absolute inset-0`}
         >
-          <Maximize2 size={14} color="#334155" />
-          <Text style={tw`ml-1.5 text-xs font-semibold text-slate-700`}>
-            Open map
-          </Text>
-        </View>
-      </Pressable>
+          <View
+            pointerEvents="none"
+            style={[
+              tw`absolute right-3 top-3 flex-row items-center rounded-xl bg-white px-3 py-2`,
+              { elevation: 4 },
+            ]}
+          >
+            <Maximize2 size={14} color="#334155" />
+            <Text style={tw`ml-1.5 text-xs font-semibold text-slate-700`}>
+              Open map
+            </Text>
+          </View>
+        </Pressable>
+      </View>
 
       {/* REPORT OVERVIEW */}
       <View style={tw`mb-6`}>
