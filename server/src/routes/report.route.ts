@@ -23,7 +23,9 @@ const resolveSchema = z.object({
 
 reportRoutes.use("*", async (c, next) => {
   c.header("Cache-Control", "no-store");
-  if (getCookie(c, "geofix_session")) return requireAuth(c, next);
+  if (c.req.header("Authorization")?.startsWith("Bearer ") || getCookie(c, "geofix_session")) {
+    return requireAuth(c, next);
+  }
   await next();
 });
 reportRoutes.get("/public", async (c) => {

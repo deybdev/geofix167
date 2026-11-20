@@ -231,3 +231,103 @@ await assert.rejects(repo.updateIncidentReportDetails(db,edgeReport.incident_id,
 assert.equal(sql.prepare('SELECT title FROM incident_reports WHERE incident_id=?').get(edgeReport.incident_id).title,originalTitle);
 sql.exec('DROP TRIGGER fail_audit');
 console.log('PASS all 196 status edges, stale-update isolation, and transactional detail-audit rollback');
+
+// Mobile requests carry a session token in Authorization, with no browser cookie.
+// Use real session hashing/lookup, controllers, ownership checks and SQLite writes.
+const mobileTokens = { a: crypto.randomUUID(), b: crypto.randomUUID(), expired: crypto.randomUUID(), revoked: crypto.randomUUID() };
+for (const [kind, token] of Object.entries(mobileTokens)) {
+  sql.prepare('INSERT INTO user_sessions_and_devices(user_id,token_hash,expires_at,revoked_at) VALUES(?,?,?,?)')
+    .run(kind === 'b' ? 'b' : 'a', await hash(token), kind === 'expired' ? '2000-01-01' : '2099-01-01', kind === 'revoked' ? '2020-01-01' : null);
+}
+const mobileEnv = { ...env, MEDIA_SIGNING_SECRET: 'mobile-test-signing-secret-at-least-32-characters' };
+const mobileRequest = (path, method = 'GET', body, token = mobileTokens.a, cookie) => {
+  const headers = new Headers({ Authorization: `Bearer ${token}` });
+  if (cookie) headers.set('Cookie', `geofix_session=${cookie}`);
+  const multipart = body instanceof FormData;
+  if (body && !multipart) headers.set('Content-Type', 'application/json');
+  return app.request('/api/reports' + path, {
+    method, headers, ...(body ? { body: multipart ? body : JSON.stringify(body) } : {}),
+  }, mobileEnv);
+};
+const mobilePhoto = (uploadId = crypto.randomUUID()) => {
+  const form = new FormData();
+  form.append('file', new File([png], 'mobile.png', { type: 'image/png' }));
+  form.append('upload_id', uploadId);
+  return form;
+};
+const mobileReports = [];
+for (const emergency of [0, 1]) {
+  const input = { ...payload, is_emergency: emergency, incident_category: 'fire', priority_level: 'CRITICAL', idempotency_key: crypto.randomUUID() };
+  const response = await mobileRequest('', 'POST', input);
+  assert.equal(response.status, 201, `Bearer-only ${emergency ? 'emergency' : 'regular'} creation`);
+  const created = await response.json();
+  const report = created.report;
+  assert.equal(report.reported_by_user_id, 'a');
+  assert.equal(report.guest_session_id, null);
+  assert.equal(report.is_emergency, emergency);
+  assert.equal(report.priority_code, 'P1');
+  assert.equal(sql.prepare('SELECT count(*) n FROM tracking_links WHERE report_id=?').get(report.incident_id).n, emergency);
+  assert.equal(Boolean(created.tracking_url), Boolean(emergency));
+  const replay = await mobileRequest('', 'POST', input);
+  assert.equal(replay.status, 200);
+  assert.equal((await replay.json()).report.incident_id, report.incident_id);
+  mobileReports.push(report);
+}
+const mobileId = mobileReports[0].incident_id;
+let mobileResponse = await mobileRequest('');
+assert.equal(mobileResponse.status, 200);
+const ownReports = (await mobileResponse.json()).reports;
+assert.ok(ownReports.every(report => report.reported_by_user_id === 'a'));
+assert.ok(mobileReports.every(report => ownReports.some(own => own.incident_id === report.incident_id)));
+assert.equal((await mobileRequest('/' + mobileId)).status, 200);
+for (const status of [1, 2, 3]) {
+  sql.prepare('UPDATE incident_reports SET incident_status_id=? WHERE incident_id=?').run(status, mobileId);
+  const response = await mobileRequest('/' + mobileId, 'PATCH', { description_sanitized: `Mobile edit ${status}`, location_description: 'Updated mobile location' });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).report.description_sanitized, `Mobile edit ${status}`);
+}
+assert.equal((await mobileRequest('/' + mobileId, 'PATCH', { priority_code: 'P4' })).status, 403);
+assert.equal((await mobileRequest('/' + mobileId + '/status', 'PATCH', { status_id: 4 })).status, 403);
+sql.prepare('UPDATE incident_reports SET incident_status_id=4 WHERE incident_id=?').run(mobileId);
+assert.equal((await mobileRequest('/' + mobileId, 'PATCH', { description_sanitized: 'Too late' })).status, 409);
+sql.prepare('UPDATE incident_reports SET incident_status_id=1 WHERE incident_id=?').run(mobileId);
+
+const mobileUploadId = crypto.randomUUID();
+assert.equal((await mobileRequest('/' + mobileId + '/attachments', 'POST', mobilePhoto(mobileUploadId))).status, 201);
+assert.equal((await mobileRequest('/' + mobileId + '/attachments', 'POST', mobilePhoto(mobileUploadId))).status, 200);
+mobileResponse = await mobileRequest('/' + mobileId + '/attachments');
+assert.equal(mobileResponse.status, 200);
+const mobileAttachments = (await mobileResponse.json()).attachments;
+assert.equal(mobileAttachments.length, 1);
+assert.equal(mobileAttachments[0].upload_id, mobileUploadId);
+const mobileMediaRow = sql.prepare('SELECT * FROM incident_media WHERE incident_id=?').get(mobileId);
+assert.equal(mobileMediaRow.uploaded_by_user_id, 'a');
+assert.equal(mobileMediaRow.byte_size, png.length);
+assert.deepEqual(Buffer.from(uploads.get(mobileMediaRow.storage_key)), png);
+
+// A different resident cannot read, edit or attach evidence to this report.
+for (const [path, method, body] of [
+  ['/' + mobileId, 'GET'], ['/' + mobileId, 'PATCH', { description_sanitized: 'Not mine' }],
+  ['/' + mobileId + '/attachments', 'GET'], ['/' + mobileId + '/attachments', 'POST', mobilePhoto()],
+]) assert.equal((await mobileRequest(path, method, body, mobileTokens.b)).status, 404);
+const otherReports = await (await mobileRequest('', 'GET', undefined, mobileTokens.b)).json();
+assert.ok(otherReports.reports.every(report => report.reported_by_user_id === 'b'));
+assert.ok(!otherReports.reports.some(report => report.incident_id === mobileId));
+assert.equal((await mobileRequest('', 'POST', { ...payload, reporter_user_id: 'b' })).status, 403);
+
+const countBeforeInvalid = sql.prepare('SELECT count(*) n FROM incident_reports').get().n;
+for (const token of ['invalid-mobile-token', mobileTokens.expired, mobileTokens.revoked]) {
+  for (const [path, method, body] of [
+    ['', 'POST', payload], ['', 'GET'], ['/' + mobileId, 'GET'],
+    ['/' + mobileId, 'PATCH', { description_sanitized: 'Rejected' }],
+    ['/' + mobileId + '/attachments', 'GET'], ['/' + mobileId + '/attachments', 'POST', mobilePhoto()],
+  ]) assert.equal((await mobileRequest(path, method, body, token)).status, 401);
+}
+assert.equal(sql.prepare('SELECT count(*) n FROM incident_reports').get().n, countBeforeInvalid);
+// Keep the verifier's Bearer precedence even when a stale/different cookie exists.
+assert.equal((await mobileRequest('/' + mobileId, 'GET', undefined, mobileTokens.a, 'b')).status, 200);
+assert.equal((await mobileRequest('', 'GET', undefined, 'invalid-mobile-token', 'b')).status, 401);
+assert.equal((await request('/', 'GET', undefined, 'b')).status, 200);
+assert.equal((await request('/public')).status, 200);
+assert.equal((await mobileRequest('/public')).status, 200);
+console.log('PASS Bearer-only regular/emergency creation, replay, owner listing/details/eligible edits, photo upload/replay/list, token rejection and cross-resident isolation');

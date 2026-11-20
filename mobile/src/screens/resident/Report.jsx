@@ -17,6 +17,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
+import * as Crypto from 'expo-crypto';
+import { File } from 'expo-file-system';
 import * as Location from 'expo-location';
 import {
   AlertCircle,
@@ -50,10 +52,14 @@ import {
 import tw from 'twrnc';
 
 import MapViewer from '../../components/map/MapViewer';
+import AnimatedSuccessBanner from '../../components/shared/SuccessBanner';
 import {
   buildResidentReportPayload,
   submitReport as createReport,
+  getReportAttachments,
+  uploadReportAttachment,
 } from '../../services/residentService';
+import { prepareReportPhoto, submitResidentEvidence, pendingEvidenceMessage } from '../../utils/residentSubmission';
 
 const BOUNDARY = require('../../../assets/map/barangay-167.json');
 
@@ -592,6 +598,13 @@ export default function Report({ guestMode = false, route }) {
   const insets = useSafeAreaInsets();
   const scrollRef = useRef(null);
   const submittingRef = useRef(false);
+  const submissionRef = useRef({});
+  const photoFilesRef = useRef(new Map());
+  const [pendingNotice, setPendingNotice] = useState('');
+  const [submitError, setSubmitError] = useState('');
+  const [photoNotice, setPhotoNotice] = useState('');
+  const [successNotice, setSuccessNotice] = useState('');
+  const captureRef = useRef(false);
   const [fade] = useState(() => new Animated.Value(1));
 
   const [step, setStep] = useState(0);
@@ -624,7 +637,9 @@ export default function Report({ guestMode = false, route }) {
   // Only the photo is required for residents. Guests also provide the name
   // associated with their report.
   const photoError =
-    photos.length > 0 ? null : 'At least one photo is required. Take one or choose from your gallery.';
+    photos.length > 0 ? null : guestMode
+      ? 'At least one photo is required. Take one or choose from your gallery.'
+      : 'At least one photo is required. Take a photo of the problem.';
   const detailsError = guestMode && !guestAlias.trim()
     ? 'Your name is required.'
     : photoError;
@@ -641,12 +656,19 @@ export default function Report({ guestMode = false, route }) {
   const showError = attempted ? currentError : null;
 
   useEffect(() => {
+    if (!successNotice) return;
+    const timer = setTimeout(() => setSuccessNotice(''), 6000);
+    return () => clearTimeout(timer);
+  }, [successNotice]);
+
+  useEffect(() => {
     fade.setValue(0);
     Animated.timing(fade, { toValue: 1, duration: 220, useNativeDriver: true }).start();
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   }, [step, fade]);
 
   const goTo = (target) => {
+    if (submittingRef.current || submissionRef.current.payload) return;
     setAttempted(false);
     setStep(target);
   };
@@ -666,6 +688,7 @@ export default function Report({ guestMode = false, route }) {
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!guestMode && (submittingRef.current || submissionRef.current.payload)) return true;
       if (step > 0 && !submittingRef.current) {
         setAttempted(false);
         setStep(step - 1);
@@ -675,7 +698,7 @@ export default function Report({ guestMode = false, route }) {
     });
 
     return () => subscription.remove();
-  }, [step]);
+  }, [step, guestMode]);
 
   /* ---------- selections ---------- */
 
@@ -742,13 +765,18 @@ export default function Report({ guestMode = false, route }) {
   /* ---------- photo ---------- */
 
   const pickPhoto = async (source) => {
+    if (captureRef.current || submittingRef.current || submissionRef.current.payload) return;
+    if (!guestMode) source = 'camera';
+    setPhotoNotice('');
     const remaining = MAX_PHOTOS - photos.length;
 
     if (remaining <= 0) {
-      Alert.alert('Photo limit reached', `You can add up to ${MAX_PHOTOS} photos.`);
+      if (guestMode) Alert.alert('Photo limit reached', `You can add up to ${MAX_PHOTOS} photos.`);
+      else setPhotoNotice(`You can add up to ${MAX_PHOTOS} photos.`);
       return;
     }
 
+    captureRef.current = true;
     try {
       const permission =
         source === 'camera'
@@ -756,6 +784,10 @@ export default function Report({ guestMode = false, route }) {
           : await ImagePicker.requestMediaLibraryPermissionsAsync();
 
       if (!permission.granted) {
+        if (!guestMode) {
+          setPhotoNotice('Allow camera access in Settings to take evidence photos.');
+          return;
+        }
         Alert.alert(
           'Permission needed',
           source === 'camera'
@@ -776,29 +808,49 @@ export default function Report({ guestMode = false, route }) {
 
       if (!result.canceled && result.assets?.length) {
         const uris = result.assets.map((asset) => asset.uri).filter(Boolean);
+        if (!guestMode) {
+          for (const asset of result.assets.filter(asset => asset.uri)) {
+            if (!photoFilesRef.current.has(asset.uri)) {
+              photoFilesRef.current.set(asset.uri, prepareReportPhoto(asset, {
+                randomUUID: Crypto.randomUUID,
+                fileInfo: uri => new File(uri),
+              }));
+            }
+          }
+        }
 
         setPhotos((current) =>
           [...current, ...uris.filter((uri) => !current.includes(uri))].slice(0, MAX_PHOTOS)
         );
       }
-    } catch {
-      Alert.alert('Photo error', 'Could not load the photo. Please try again.');
+    } catch (error) {
+      if (guestMode) Alert.alert('Photo error', 'Could not load the photo. Please try again.');
+      else setPhotoNotice(error.message || 'Could not capture the photo. Please try again.');
+    } finally {
+      captureRef.current = false;
     }
   };
 
   const removePhoto = (index) =>
     setPhotos((current) => current.filter((_, i) => i !== index));
 
-  const choosePhotoSource = () =>
-    Alert.alert('Photo evidence', 'Add a photo of the problem.', [
+  const choosePhotoSource = () => {
+    if (!guestMode) return pickPhoto('camera');
+    return Alert.alert('Photo evidence', 'Add a photo of the problem.', [
       { text: 'Take Photo', onPress: () => pickPhoto('camera') },
       { text: 'Choose from Gallery', onPress: () => pickPhoto('library') },
       { text: 'Cancel', style: 'cancel' },
     ]);
+  };
 
   /* ---------- submit ---------- */
 
   const resetForm = () => {
+    submissionRef.current = {};
+    photoFilesRef.current.clear();
+    setPendingNotice('');
+    setSubmitError('');
+    setPhotoNotice('');
     setStep(0);
     setReportType(null);
     setPriority(null);
@@ -824,6 +876,7 @@ export default function Report({ guestMode = false, route }) {
 
     submittingRef.current = true;
     setSubmitting(true);
+    setSubmitError('');
 
     try {
       const selectedChecks = checks.length ? `Selected details: ${checks.join(', ')}` : '';
@@ -837,7 +890,7 @@ export default function Report({ guestMode = false, route }) {
         landmark: null,
         callbackContact: null,
       });
-      const result = await createReport(guestMode ? {
+      if (guestMode) await createReport({
         ...residentPayload,
         reporter_type: 'GUEST',
         guest_alias: guestAlias.trim(),
@@ -845,20 +898,49 @@ export default function Report({ guestMode = false, route }) {
         classification: reportType === 'emergency' ? 'sudden' : 'maintenance',
         incident_category: reportType === 'emergency' ? 'Incident / Emergency' : 'Road Damage',
         priority_level: priority === 4 ? 'LOW' : priority === 3 ? 'MEDIUM' : 'HIGH',
-      } : residentPayload);
+      });
+      else {
+        const session = await submitResidentEvidence(submissionRef.current, {
+          payload: residentPayload,
+          items: photos.map(uri => photoFilesRef.current.get(uri)),
+          create: createReport, list: getReportAttachments, upload: uploadReportAttachment,
+          randomUUID: Crypto.randomUUID,
+        });
+        if (!session) return;
+        if (!session.complete) {
+          const message = pendingEvidenceMessage(session);
+          setPendingNotice(message);
+          return;
+        }
+      }
 
       if (reportType === 'emergency' && !guestMode) {
         navigation.replace('Track', {
-          reportId: result.data.report.public_id,
+          reportId: submissionRef.current.report.public_id,
           location: { lat: location.lat, lng: location.lng },
           priority,
         });
         return;
       }
 
-      Alert.alert('Report submitted', 'Thank you. Your report has been sent to the barangay.');
+      if (guestMode) Alert.alert('Report submitted', 'Thank you. Your report has been sent to the barangay.');
+      else {
+        const reference = submissionRef.current.report.reference_number;
+        setSuccessNotice(`Report submitted${reference ? ` · ${reference}` : ''}`);
+      }
       resetForm();
     } catch (error) {
+      if (submissionRef.current.report) {
+        const message = pendingEvidenceMessage(submissionRef.current);
+        setPendingNotice(message);
+        return;
+      }
+      if (!guestMode) {
+        setSubmitError(submissionRef.current.payload
+          ? 'We could not confirm submission. Retry safely to check or submit this same report. Your details and photos are kept.'
+          : error.message || 'Could not submit report. Your details and photos are kept.');
+        return;
+      }
       Alert.alert(
         'Could not submit report',
         error?.message || 'Something went wrong. Please try again.'
@@ -946,12 +1028,12 @@ export default function Report({ guestMode = false, route }) {
 
       {photos.length === 0 ? (
         <View style={tw`flex-row`}>
-          <View style={tw`mr-3 flex-1`}>
+          <View style={guestMode ? tw`mr-3 flex-1` : tw`flex-1`}>
             <OutlineButton icon={Camera} label="Take Photo" onPress={() => pickPhoto('camera')} />
           </View>
-          <View style={tw`flex-1`}>
+          {guestMode && <View style={tw`flex-1`}>
             <OutlineButton icon={ImageIcon} label="Gallery" onPress={() => pickPhoto('library')} />
-          </View>
+          </View>}
         </View>
       ) : (
         <View style={tw`-mx-1 flex-row flex-wrap`}>
@@ -1005,6 +1087,7 @@ export default function Report({ guestMode = false, route }) {
         </View>
       )}
       <FieldError message={showError} />
+      {!guestMode && !!photoNotice && <View accessibilityRole="alert" accessibilityLiveRegion="polite"><FieldError message={photoNotice} /></View>}
 
       <View style={tw`mb-2 mt-6 flex-row items-center justify-between`}>
         <Text style={tw`text-sm font-bold text-slate-900`}>What do you see?</Text>
@@ -1256,9 +1339,13 @@ export default function Report({ guestMode = false, route }) {
   const nextLabel = isReview
     ? submitting
       ? 'Submitting…'
-      : isEmergency
-        ? 'Submit Emergency Report'
-        : 'Submit Report'
+      : pendingNotice
+        ? 'Retry photos'
+        : submitError
+          ? 'Retry report'
+          : isEmergency
+            ? 'Submit Emergency Report'
+            : 'Submit Report'
     : 'Next';
 
   return (
@@ -1276,6 +1363,16 @@ export default function Report({ guestMode = false, route }) {
       >
         <Animated.View style={{ opacity: fade }}>{renderStep()}</Animated.View>
       </ScrollView>
+
+      {!guestMode && !!successNotice && <View style={tw`mx-4 mb-3`}><AnimatedSuccessBanner message={successNotice} /></View>}
+      {!guestMode && isReview && !!(pendingNotice || submitError) && (
+        <ScrollView style={{ maxHeight: 150 }} contentContainerStyle={tw`px-4 pb-3`}>
+          <View accessibilityRole="alert" accessibilityLiveRegion="assertive" style={tw`flex-row rounded-xl border border-red-100 bg-red-50 px-4 py-3`}>
+            <AlertCircle size={18} color="#DC2626" />
+            <Text style={tw`ml-3 flex-1 text-sm leading-5 text-red-700`}>{pendingNotice || submitError}</Text>
+          </View>
+        </ScrollView>
+      )}
 
       {/* FOOTER (hidden on Type and Priority, which advance on tap) */}
       {stepKey !== 'type' && stepKey !== 'priority' && (
