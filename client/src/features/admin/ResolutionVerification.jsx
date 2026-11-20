@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { toast } from "../../shared/components/ui/toast";
 import { stamp } from "../../shared/components/GovernanceUi";
+import { Link } from "react-router-dom";
 
 const NOW = () => Date.now();
 
@@ -299,7 +300,7 @@ function DrawerSection({ title, icon: Icon, tone = "slate", children }) {
 /* Review drawer — evidence review + role-based closure                */
 /* ------------------------------------------------------------------ */
 
-function ReviewDrawer({ submission, onClose, onToggleObligation, onAuthorize, onReject, onOpenIntegrity }) {
+function ReviewDrawer({ submission, onClose, onToggleObligation, onAuthorize, onReject, onOpenIntegrity, printableIncidentId }) {
   const [remark, setRemark] = useState("");
   const [publish, setPublish] = useState(true);
   const closed = submission.status === "Closed";
@@ -328,6 +329,11 @@ function ReviewDrawer({ submission, onClose, onToggleObligation, onAuthorize, on
       footer={
         closed ? (
           <div className="flex flex-wrap items-center justify-end gap-2">
+            {printableIncidentId && (
+              <Link to={`/admin/incident-reports/${encodeURIComponent(printableIncidentId)}/report`} className={`${btnPrimary} no-underline`}>
+                <Printer size={12} />Printable incident report
+              </Link>
+            )}
             <button type="button" onClick={onClose} className={btnSecondary}>Close</button>
           </div>
         ) : (
@@ -767,11 +773,31 @@ const TABS = [
 
 export default function ResolutionVerification() {
   const [submissions, setSubmissions] = useState(seedSubmissions);
+  const [printableIncidentIds, setPrintableIncidentIds] = useState({});
   const [integrity, setIntegrity] = useState(seedIntegrity);
   const [audit, setAudit] = useState(seedAudit);
   const [tab, setTab] = useState("evidence");
   const [query, setQuery] = useState("");
   const [drawer, setDrawer] = useState(null); // { mode: "review" | "reconcile" | "integrity", id }
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/reports?status_id=10", { credentials: "include" })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || "Could not load resolved reports.");
+        return payload.reports ?? [];
+      })
+      .then((reports) => {
+        if (!active) return;
+        const resolvedByReference = Object.fromEntries(reports
+          .filter((report) => report.status_code === "CLOSED" && report.reference_number && report.incident_id)
+          .map((report) => [report.reference_number, report.incident_id]));
+        setPrintableIncidentIds(resolvedByReference);
+      })
+      .catch(() => { if (active) setPrintableIncidentIds({}); });
+    return () => { active = false; };
+  }, []);
 
   const addAudit = (entry) => setAudit((log) => [entry, ...log]);
   const getSubmission = (id) => submissions.find((s) => s.id === id);
@@ -1068,6 +1094,7 @@ export default function ResolutionVerification() {
           onAuthorize={authorize}
           onReject={reject}
           onOpenIntegrity={flagFromReview}
+          printableIncidentId={printableIncidentIds[reviewTarget.reportId]}
         />
       )}
       {reconcileTarget && (

@@ -1076,8 +1076,8 @@ export default function MaintenanceTasks() {
       && (zone === "All Zones" || task.zone === zone);
     const matchesTab = tab === "active" ? ACTIVE_STATUSES.includes(task.status)
       : tab === "verify" ? task.status === "Awaiting Verification"
-      : tab === "resolved" ? task.status === "Verified Fixed"
-      : true;
+        : tab === "resolved" ? task.status === "Verified Fixed"
+          : true;
     return matchesSearch && matchesFilters && matchesTab;
   }), [tasks, query, priority, team, zone, tab]);
 

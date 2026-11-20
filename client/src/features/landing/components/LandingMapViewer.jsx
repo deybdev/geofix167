@@ -44,6 +44,8 @@ export default function LandingMapViewer({
         selectedIncident={selectedReport}
         onIncidentSelect={onSelectReport}
         trackers={trackers}
+        allowOutsideIncidents
+        allowOutsideBounds
         showBackButton={false}
       />
     </div>
