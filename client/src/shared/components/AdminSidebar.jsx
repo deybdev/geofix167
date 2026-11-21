@@ -44,7 +44,7 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
           ><Menu size={19} /></button>}
           <div className={`flex items-center gap-2 ${open ? "" : "flex-col"}`}>
             <img
-              src="/geofix167.jpg"
+              src="/geofix167.png"
               alt="GeoFix 167"
               className="h-10 w-10 shrink-0 rounded-lg object-contain"
             />

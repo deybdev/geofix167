@@ -1,4 +1,4 @@
-const logo = "/geofix167.jpg";
+const logo = "/geofix167.png";
 
 export default function Logo({
   inverse = false,
