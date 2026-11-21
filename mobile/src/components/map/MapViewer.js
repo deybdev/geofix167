@@ -264,7 +264,7 @@ const IncidentMarker = memo(function IncidentMarker({
       zIndex={selected ? 100 : 1}
       anchor={{ x: 0.5, y: 1 }}
     >
-      <View style={{ alignItems: 'center' }}>
+      <View collapsable={false} style={{ width: 48, height: 58, alignItems: 'center', justifyContent: 'flex-start' }}>
         <View
           style={[
             tw`h-11 w-11 items-center justify-center rounded-full`,
@@ -773,27 +773,15 @@ export default function MapViewer({
             tracksViewChanges={false}
             zIndex={300}
           >
-            <View style={isFollowingNavigation ? tw`h-12 w-12 items-center justify-center rounded-full bg-blue-500/25` : tw`h-12 w-12 items-center justify-center rounded-full bg-slate-400/25`}>
-              <View style={tw`h-7 w-7 items-center justify-center rounded-full border-2 border-blue-700 bg-blue-500`}>
-                <View style={tw`h-2.5 w-2.5 rounded-full bg-white`} />
+            <View collapsable={false} style={{ width: 48, height: 48, alignItems: 'center', justifyContent: 'center' }}>
+              <View style={isFollowingNavigation ? tw`h-12 w-12 items-center justify-center rounded-full bg-blue-500/25` : tw`h-12 w-12 items-center justify-center rounded-full bg-slate-400/25`}>
+                <View style={tw`h-7 w-7 items-center justify-center rounded-full border-2 border-blue-700 bg-blue-500`}>
+                  <View style={tw`h-2.5 w-2.5 rounded-full bg-white`} />
+                </View>
               </View>
             </View>
           </Marker>
         ) : null}
-
-        {navigationMode ? highwayShields.filter(hasValidCoords).map((shield, index) => (
-          <Marker
-            key={`${shield.label}-${index}`}
-            coordinate={toLatLng(shield)}
-            anchor={{ x: 0.5, y: 0.5 }}
-            tracksViewChanges={false}
-            zIndex={250}
-          >
-            <View style={tw`rounded-md border-2 border-green-200 bg-green-700 px-2 py-1`}>
-              <Text style={tw`text-xs font-extrabold text-white`}>{shield.label}</Text>
-            </View>
-          </Marker>
-        )) : null}
 
         {trackers.filter(hasValidCoords).map((tracker) => (
           <ResponderMarker key={tracker.id} tracker={tracker} />

@@ -170,7 +170,12 @@ route.get("/", async (c) => {
       COALESCE(NULLIF(trim(u.first_name || ' ' || u.last_name), ''), gs.display_name, 'Guest') AS reporter_name,
       COALESCE(r.callback_mobile_number, gs.contact_mobile_number, '') AS reporter_phone,
       COALESCE(r.description_sanitized, r.description_original, '') AS incident_description,
-      COALESCE(r.is_emergency, 1) AS is_emergency
+      COALESCE(r.is_emergency, 1) AS is_emergency,
+      (
+        SELECT ise.note FROM incident_status_events ise
+        WHERE ise.incident_id = rd.incident_id AND ise.note LIKE '[BDRRMO NOTE]%'
+        ORDER BY ise.created_at DESC LIMIT 1
+      ) AS tactical_note
     FROM responder_dispatches rd
     LEFT JOIN incident_reports r ON r.incident_id = rd.incident_id
     LEFT JOIN users u ON u.user_id = r.reported_by_user_id
@@ -662,6 +667,159 @@ route.post("/:dispatchId/maintenance-repair", async (c) => {
     media_id: mediaId,
     repair_photo_ids: meta.repair_photo_ids,
   });
+});
+
+route.post("/:dispatchId/complete-agency", async (c) => {
+  const dispatchId = c.req.param("dispatchId");
+  const body = (await c.req.json().catch(() => null)) as {
+    incident_id?: string;
+    summary?: string;
+    proof_photo_base64?: string;
+    proof_photo_mime?: string;
+    persons?: Array<{ full_name?: string; contact?: string; role_in_incident?: string; age?: string; sex?: string; notes?: string }>;
+  } | null;
+
+  if (!dispatchId || !body?.incident_id) {
+    return c.json({ error: "dispatchId and incident_id are required." }, 400);
+  }
+
+  const currentUser = c.get("user");
+  const db = c.env.geofix167_db;
+  const mediaId = await storeBase64IncidentPhoto(
+    c,
+    body.incident_id,
+    currentUser.id,
+    body.proof_photo_base64,
+    body.proof_photo_mime,
+    `${currentUser.role}-resolution`,
+  );
+
+  const reportType = currentUser.role === "police" ? "Police Criminal / Incident Report" : "BFP Fire Scene Report";
+  const personsCount = Array.isArray(body.persons) ? body.persons.length : 0;
+  const payloadNote = `[AGENCY REPORT] ${reportType} by ${currentUser.role.toUpperCase()} (${personsCount} person(s)). ${String(body.summary || "").trim()}`;
+
+  await db.batch([
+    db.prepare(`
+      UPDATE responder_dispatches
+      SET status = 'COMPLETED'
+      WHERE responder_dispatch_id = ?
+    `).bind(dispatchId),
+    db.prepare(`
+      INSERT INTO incident_status_events
+        (incident_status_event_id, incident_id, from_incident_status_id, to_incident_status_id, changed_by_user_id, note)
+      VALUES (?, ?, 8, 9, ?, ?)
+    `).bind(crypto.randomUUID(), body.incident_id, currentUser.id, payloadNote),
+    db.prepare(`
+      UPDATE incident_reports
+      SET incident_status_id = 9, updated_at = datetime('now')
+      WHERE incident_id = ? AND incident_status_id NOT IN (10, 11)
+    `).bind(body.incident_id),
+  ]);
+
+  return c.json({
+    ok: true,
+    status: "COMPLETED",
+    proof_media_id: mediaId,
+  }, 201);
+});
+
+route.post("/:dispatchId/request-backup", async (c) => {
+  const dispatchId = c.req.param("dispatchId");
+  const body = (await c.req.json().catch(() => null)) as {
+    incident_id?: string;
+    requested_support?: string;
+    reason?: string;
+  } | null;
+
+  if (!dispatchId || !body?.incident_id) {
+    return c.json({ error: "dispatchId and incident_id are required." }, 400);
+  }
+
+  const currentUser = c.get("user");
+  await c.env.geofix167_db.prepare(`
+    INSERT INTO incident_status_events
+      (incident_status_event_id, incident_id, from_incident_status_id, to_incident_status_id, changed_by_user_id, note)
+    VALUES (?, ?, 8, 8, ?, ?)
+  `).bind(
+    crypto.randomUUID(),
+    body.incident_id,
+    currentUser.id,
+    `[BACKUP REQUEST] ${currentUser.role.toUpperCase()} requested ${body.requested_support || "Tanod Emergency Transport"}: ${body.reason || "Field support needed on scene"}`,
+  ).run();
+
+  return c.json({ ok: true }, 201);
+});
+
+route.post("/:dispatchId/arrive", async (c) => {
+  const dispatchId = c.req.param("dispatchId");
+  const body = (await c.req.json().catch(() => null)) as {
+    incident_id?: string;
+  } | null;
+
+  if (!dispatchId) {
+    return c.json({ error: "dispatchId is required." }, 400);
+  }
+
+  const currentUser = c.get("user");
+  const db = c.env.geofix167_db;
+
+  const tanodRow = await db.prepare(`
+    SELECT tanod_assignment_id, incident_id FROM tanod_assignments WHERE tanod_assignment_id = ?
+  `).bind(dispatchId).first<{ tanod_assignment_id: string; incident_id: string }>();
+
+  const agencyRow = !tanodRow
+    ? await db.prepare(`
+        SELECT responder_dispatch_id, incident_id FROM responder_dispatches WHERE responder_dispatch_id = ?
+      `).bind(dispatchId).first<{ responder_dispatch_id: string; incident_id: string }>()
+    : null;
+
+  const incidentId = body?.incident_id || tanodRow?.incident_id || agencyRow?.incident_id;
+  if (!incidentId) {
+    return c.json({ error: "Dispatch assignment not found." }, 404);
+  }
+
+  const nowIso = new Date().toISOString();
+  const statements = [];
+
+  if (tanodRow) {
+    statements.push(
+      db.prepare(`
+        UPDATE tanod_assignments
+        SET assignment_status_id = 5
+        WHERE tanod_assignment_id = ?
+      `).bind(dispatchId),
+    );
+  } else if (agencyRow) {
+    statements.push(
+      db.prepare(`
+        UPDATE responder_dispatches
+        SET status = 'ON_SCENE'
+        WHERE responder_dispatch_id = ?
+      `).bind(dispatchId),
+    );
+  }
+
+  statements.push(
+    db.prepare(`
+      UPDATE incident_reports
+      SET incident_status_id = 8, updated_at = datetime('now')
+      WHERE incident_id = ? AND incident_status_id NOT IN (9, 10, 11)
+    `).bind(incidentId),
+    db.prepare(`
+      INSERT INTO incident_status_events
+        (incident_status_event_id, incident_id, from_incident_status_id, to_incident_status_id, changed_by_user_id, note)
+      VALUES (?, ?, 7, 8, ?, ?)
+    `).bind(
+      crypto.randomUUID(),
+      incidentId,
+      currentUser.id,
+      `${currentUser.role.toUpperCase()} arrived on scene`,
+    ),
+  );
+
+  await db.batch(statements);
+
+  return c.json({ ok: true, status: "ON_SCENE", arrived_at: nowIso });
 });
 
 export default route;

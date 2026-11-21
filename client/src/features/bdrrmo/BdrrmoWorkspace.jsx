@@ -1,108 +1,1603 @@
 import { useEffect, useMemo, useState } from "react";
-import { Activity, BarChart3, CheckCircle2, Clock3, Download, Eye, Handshake, MapPin, Maximize2, Minimize2, Radio, RotateCcw, Search, Settings, X } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  BarChart3,
+  Camera,
+  CheckCircle2,
+  Clock3,
+  Download,
+  Flame,
+  Handshake,
+  Lock,
+  MapPin,
+  MapPinned,
+  Maximize2,
+  Minimize2,
+  Navigation,
+  Radio,
+  RotateCcw,
+  Search,
+  Send,
+  Settings,
+  Shield,
+  ShieldCheck,
+  TriangleAlert,
+  Truck,
+  UserCheck,
+  X,
+} from "lucide-react";
 import { toast } from "../../shared/components/ui/toast";
-import { ASSIGNMENT_STATUS, AVAILABILITY_STATUS, INCIDENT_STATUS, PRIORITY, QR_STATUS, SUPPORT_STATUS, activeIncidentCodes, displayStatus } from "./statusModel";
+import MapViewer from "../../shared/components/MapViewer";
+import {
+  ASSIGNMENT_STATUS,
+  AVAILABILITY_STATUS,
+  INCIDENT_STATUS,
+  PRIORITY,
+  QR_STATUS,
+  activeIncidentCodes,
+  displayStatus,
+} from "./statusModel";
 import ReportBuilder from "./ReportBuilder";
 import { useAuth } from "../../shared/hooks/useAuth";
-import { validateClosure, validateHandover, validateIncident } from "./validation";
+import { validateHandover, validateIncident } from "./validation";
 import { useBdrrmoDemo } from "./BdrrmoDemoContext";
 import ConfirmationDialog from "../../shared/components/ConfirmationDialog";
 import { useSearchParams } from "react-router-dom";
 
+/* ----------------------------------------------------------------------- */
+/* Views & Streamlined Tabs (only meaningful live operational views)       */
+/* ----------------------------------------------------------------------- */
+
 const views = {
-  incidents: { title: "Incidents", subtitle: "Review the complete emergency lifecycle from intake to closure.", icon: Activity, tabs: ["All", "Pending Review", "Unassigned", "Active", "Takeover", "Completed"] },
-  dispatch: { title: "Dispatch & Responders", subtitle: "Coordinate assignments and responder availability in one workspace.", icon: Radio, tabs: ["Assignments", "Roster", "Available", "Deployed", "Unavailable", "Reassignment"] },
-  handover: { title: "Handover & Completion", subtitle: "Reconcile handovers and verify requirements before authorized closure.", icon: Handshake, tabs: ["Pending Handover", "Handover History", "For Review", "Returned for Correction", "Ready for Closure", "Closed"] },
-  analytics: { title: "Reports & Analytics", subtitle: "Explore emergency performance using one shared demo dataset.", icon: BarChart3 },
-  settings: { title: "Profile & Settings", subtitle: "Manage BDRRMO dashboard preferences and session information.", icon: Settings },
+  incidents: {
+    title: "Incidents",
+    subtitle: "Manage forwarded emergencies from dispatch to coordinated closure.",
+    icon: Activity,
+    tabs: ["All", "Unassigned", "Active", "For Closure", "Closed"],
+  },
+  dispatch: {
+    title: "Dispatch & Responders",
+    subtitle: "Coordinate multi-agency dispatch and live responder availability.",
+    icon: Radio,
+    tabs: ["Pending Dispatch", "Active Units", "Responder Roster"],
+  },
+  handover: {
+    title: "Handover & Completion",
+    subtitle: "Verify field completion, hospital QR handovers, and authorize closure.",
+    icon: Handshake,
+    tabs: ["For Closure", "Hospital Handovers", "Closed"],
+  },
+  analytics: {
+    title: "Reports & Analytics",
+    subtitle: "Live Barangay 167 emergency metrics and printable operational reports.",
+    icon: BarChart3,
+  },
+  settings: {
+    title: "Profile & Settings",
+    subtitle: "Manage BDRRMO dashboard preferences and session details.",
+    icon: Settings,
+  },
 };
 
-const badge = (value = "") => ["ACCEPTED","AVAILABLE","CLOSED","COMPLETED"].includes(value)
-  ? "bg-emerald-100 text-emerald-800" : ["PENDING_ACCEPTANCE","NEEDS_CORRECTION","UNAVAILABLE","FOR_CLOSURE_REVIEW"].includes(value)
-    ? "bg-amber-100 text-amber-900" : "bg-blue-100 text-blue-800";
-const demoAction = (label) => toast.add({ type: "success", title: `${label} recorded`, description: "Demo state only — no live operational request was sent." });
-const tabHelp={All:"View all", "Pending Review":"Pending review",Unassigned:"No assignment",Active:"Active incidents",Takeover:"Escalated review",Completed:"Completed incidents",Assignments:"View assignments",Roster:"View roster",Available:"Available responders",Deployed:"Deployed responders",Unavailable:"Unavailable responders",Reassignment:"Reassignment requests","Pending Handover":"Pending handovers","Handover History":"Handover history","For Review":"For review","Returned for Correction":"Needs correction","Ready for Closure":"Ready for closure",Closed:"Closed incidents",Overview:"Analytics overview","Report Builder":"Build report","Generated Reports":"Generated reports"};
-function nextIncidentAction(incident,assignment){if(incident.incidentStatusCode==="CLOSED")return {label:"View record",confirm:null};if(incident.incidentStatusCode==="FOR_CLOSURE_REVIEW")return {label:"Review completion",confirm:"Authorize closure"};if(!assignment&&incident.incidentStatusCode==="FORWARDED_TO_BDRRMO")return {label:"Assign Tanod",confirm:"Confirm assignment"};const actions={OFFERED:["Confirm acceptance","Confirm acceptance"],ACCEPTED:["Start response","Start response"],EN_ROUTE:["Confirm arrival","Confirm arrival"],ON_SCENE:["Submit completion","Submit completion"]};const value=actions[assignment?.statusCode];return value?{label:value[0],confirm:value[1]}:{label:"View details",confirm:null}}
+/* ----------------------------------------------------------------------- */
+/* Maintenance-matched UI Primitives                                       */
+/* ----------------------------------------------------------------------- */
+
+function Chip({ children, className = "" }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-1 text-[10px] font-bold leading-none ${className}`}
+    >
+      {children}
+    </span>
+  );
+}
+
+const statusTone = (code = "") => {
+  if (["ACCEPTED", "AVAILABLE", "CLOSED", "COMPLETED"].includes(code)) {
+    return "bg-(--gf-green-tint-2) text-(--gf-green)";
+  }
+  if (
+    ["PENDING_ACCEPTANCE", "NEEDS_CORRECTION", "FOR_CLOSURE_REVIEW", "FORWARDED_TO_BDRRMO", "OFFERED", "DISPATCHED"].includes(code)
+  ) {
+    return "bg-[#fff1c6] text-[#e69500]";
+  }
+  if (["BUSY", "UNAVAILABLE", "OUT_OF_SERVICE", "DECLINED", "CANCELLED"].includes(code)) {
+    return "bg-[#fdecea] text-[#dc2626]";
+  }
+  return "bg-[#eef2fb] text-[#4c6fbf]";
+};
+
+const priorityTone = (code = "") => {
+  if (code === "P1") return "bg-[#fdecea] text-[#dc2626]";
+  if (code === "P2") return "bg-[#fff1c6] text-[#e69500]";
+  if (code === "P3") return "bg-[#eef2fb] text-[#4c6fbf]";
+  return "bg-[#eef2f4] text-[#60738f]";
+};
+
+function InfoRow({ label, children }) {
+  return (
+    <div className="flex items-start justify-between gap-3 border-b border-[#f1f4f6] py-1.5 last:border-b-0">
+      <span className="shrink-0 text-[9px] font-semibold text-[#7184a0]">{label}</span>
+      <span className="text-right text-[10px] font-semibold text-[#263246]">{children}</span>
+    </div>
+  );
+}
+
+function DrawerSection({ title, icon: Icon, children, last = false }) {
+  return (
+    <section className={`pb-4 ${last ? "" : "border-b border-[#edf0f2]"}`}>
+      <h3 className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-[#60738f]">
+        {Icon && <Icon size={11} className="text-(--gf-green)" />}
+        {title}
+      </h3>
+      {children}
+    </section>
+  );
+}
+
+/* ----------------------------------------------------------------------- */
+/* Main Workspace                                                          */
+/* ----------------------------------------------------------------------- */
 
 export default function BdrrmoWorkspace({ view }) {
-  const { incidents, assignments } = useBdrrmoDemo();
+  const { incidents, assignments, handovers } = useBdrrmoDemo();
   const meta = views[view];
-  const [tab, setTab] = useState(meta.tabs?.[0]);
+  const [rawTab, setTab] = useState(meta.tabs?.[0]);
+  const tab = meta.tabs?.includes(rawTab) ? rawTab : meta.tabs?.[0];
   const [query, setQuery] = useState("");
   const [selectedIncident, setSelectedIncident] = useState(null);
   const [selectedHandover, setSelectedHandover] = useState(null);
-  const [searchParams,setSearchParams]=useSearchParams();
-  const [highlightedId,setHighlightedId]=useState(null);
-  useEffect(()=>{if(view!=="incidents")return;const incidentId=searchParams.get("incident");if(!incidentId)return;const match=incidents.find(item=>item.id===incidentId);if(match){const frame=window.requestAnimationFrame(()=>{setSelectedIncident(match);setHighlightedId(incidentId);document.getElementById(`incident-${incidentId}`)?.scrollIntoView({behavior:"smooth",block:"center"})});const timer=window.setTimeout(()=>{setHighlightedId(null);setSearchParams({}, {replace:true})},3500);return()=>{window.cancelAnimationFrame(frame);window.clearTimeout(timer)}}},[view,searchParams,incidents,setSearchParams]);
-  const filtered = useMemo(() => incidents.filter((item) => {
-    const matchesQuery = `${item.id} ${item.title} ${item.location}`.toLowerCase().includes(query.toLowerCase());
-    if (!matchesQuery || view !== "incidents") return matchesQuery;
-    if (tab === "Pending Review") return item.incidentStatusCode === "FORWARDED_TO_BDRRMO" && item.reviewType === "BDRRMO_ESCALATION";
-    if (tab === "Unassigned") return item.incidentStatusCode === "FORWARDED_TO_BDRRMO" && !assignments.some((a) => a.incidentId === item.id);
-    if (tab === "Active") return activeIncidentCodes.includes(item.incidentStatusCode);
-    if (tab === "Takeover") return false;
-    if (tab === "Completed") return ["FOR_CLOSURE_REVIEW", "CLOSED"].includes(item.incidentStatusCode);
-    return true;
-  }), [query, tab, view, incidents, assignments]);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [highlightedId, setHighlightedId] = useState(null);
 
-  if (view === "analytics") return <Analytics meta={meta} rows={filtered} onOpen={setSelectedIncident} selected={selectedIncident} />;
+  useEffect(() => {
+    if (view !== "incidents") return;
+    const incidentId = searchParams.get("incident");
+    if (!incidentId) return;
+    const match = incidents.find((item) => item.id === incidentId);
+    if (match) {
+      const frame = window.requestAnimationFrame(() => {
+        setSelectedIncident(match);
+        setHighlightedId(incidentId);
+        document
+          .getElementById(`incident-${incidentId}`)
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+      const timer = window.setTimeout(() => {
+        setHighlightedId(null);
+        setSearchParams({}, { replace: true });
+      }, 3500);
+      return () => {
+        window.cancelAnimationFrame(frame);
+        window.clearTimeout(timer);
+      };
+    }
+  }, [view, searchParams, incidents, setSearchParams]);
+
+  const tabCounts = useMemo(() => {
+    if (view === "incidents") {
+      return {
+        All: incidents.length,
+        Unassigned: incidents.filter(
+          (i) => i.incidentStatusCode === "FORWARDED_TO_BDRRMO" && !(i.dispatchedUnits?.length > 0),
+        ).length,
+        Active: incidents.filter((i) => activeIncidentCodes.includes(i.incidentStatusCode)).length,
+        "For Closure": incidents.filter((i) => i.incidentStatusCode === "FOR_CLOSURE_REVIEW").length,
+        Closed: incidents.filter((i) => i.incidentStatusCode === "CLOSED").length,
+      };
+    }
+    if (view === "handover") {
+      return {
+        "For Closure": incidents.filter((i) => i.incidentStatusCode === "FOR_CLOSURE_REVIEW").length,
+        "Hospital Handovers": handovers.length,
+        Closed: incidents.filter((i) => i.incidentStatusCode === "CLOSED").length,
+      };
+    }
+    if (view === "dispatch") {
+      return {
+        "Pending Dispatch": incidents.filter((i) => i.incidentStatusCode !== "CLOSED").length,
+        "Active Units": assignments.filter((a) => !["COMPLETED", "CANCELLED", "DECLINED"].includes(a.statusCode)).length,
+      };
+    }
+    return {};
+  }, [view, incidents, assignments, handovers]);
+
+  const filtered = useMemo(
+    () =>
+      incidents.filter((item) => {
+        const matchesQuery = `${item.id} ${item.title} ${item.category} ${item.location}`
+          .toLowerCase()
+          .includes(query.toLowerCase());
+        if (!matchesQuery || view !== "incidents") return matchesQuery;
+        if (tab === "Unassigned") {
+          return item.incidentStatusCode === "FORWARDED_TO_BDRRMO" && !(item.dispatchedUnits?.length > 0);
+        }
+        if (tab === "Active") return activeIncidentCodes.includes(item.incidentStatusCode);
+        if (tab === "For Closure") return item.incidentStatusCode === "FOR_CLOSURE_REVIEW";
+        if (tab === "Closed") return item.incidentStatusCode === "CLOSED";
+        return true;
+      }),
+    [query, tab, view, incidents],
+  );
+
+  if (view === "analytics") {
+    return (
+      <Analytics
+        meta={meta}
+        rows={filtered}
+        onOpen={setSelectedIncident}
+        selected={selectedIncident}
+      />
+    );
+  }
   if (view === "settings") return <SettingsView meta={meta} />;
 
-  return <div className="space-y-5">
-    <Header meta={meta} />
-    <Tabs tabs={meta.tabs} value={tab} onChange={setTab} />
-    {view === "incidents" && <><SearchBar query={query} setQuery={setQuery} /><IncidentTable rows={filtered} onOpen={setSelectedIncident} highlightedId={highlightedId} /></>}
-    {view === "dispatch" && <DispatchView tab={tab} onOpen={setSelectedIncident} />}
-    {view === "handover" && <HandoverView tab={tab} onOpen={setSelectedHandover} onIncident={setSelectedIncident} />}
-    {selectedIncident && <IncidentDrawer incident={selectedIncident} onClose={() => setSelectedIncident(null)} />}
-    {selectedHandover && <HandoverDrawer record={selectedHandover} onClose={() => setSelectedHandover(null)} onIncident={() => { setSelectedHandover(null); setSelectedIncident(incidents.find((i) => i.id === selectedHandover.incidentId)); }} />}
-  </div>;
+  return (
+    <div className="space-y-5">
+      <Header meta={meta} />
+      <Tabs tabs={meta.tabs} value={tab} onChange={setTab} counts={tabCounts} />
+
+      {view === "incidents" && (
+        <>
+          <SearchBar query={query} setQuery={setQuery} />
+          <IncidentTable
+            rows={filtered}
+            onOpen={setSelectedIncident}
+            highlightedId={highlightedId}
+            emptyLabel="No emergencies match this filter."
+          />
+        </>
+      )}
+
+      {view === "dispatch" && (
+        <DispatchView tab={tab} onOpen={setSelectedIncident} />
+      )}
+
+      {view === "handover" && (
+        <HandoverView
+          tab={tab}
+          onOpen={setSelectedHandover}
+          onIncident={setSelectedIncident}
+        />
+      )}
+
+      {selectedIncident && (
+        <IncidentDrawer
+          incident={selectedIncident}
+          onClose={() => setSelectedIncident(null)}
+        />
+      )}
+
+      {selectedHandover && (
+        <HandoverDrawer
+          record={selectedHandover}
+          onClose={() => setSelectedHandover(null)}
+          onIncident={() => {
+            const linked = incidents.find(
+              (i) => i.incidentId === selectedHandover.incidentId || i.id === selectedHandover.incidentId,
+            );
+            setSelectedHandover(null);
+            if (linked) setSelectedIncident(linked);
+          }}
+        />
+      )}
+    </div>
+  );
 }
 
-function Header({ meta }) { const Icon = meta.icon; return <header className="flex items-start gap-3"><span className="rounded-xl bg-emerald-100 p-3 text-emerald-800"><Icon size={20} /></span><div><h2 className="text-lg font-bold text-emerald-950">{meta.title}</h2><p className="text-xs text-slate-500">{meta.subtitle}</p></div></header>; }
-function Tabs({ tabs, value, onChange }) { return <div className="overflow-x-auto"><div className="inline-flex min-w-full gap-1 rounded-xl border border-slate-200 bg-white p-1 sm:min-w-0" role="tablist">{tabs.map((item) => <button key={item} title={tabHelp[item]||item} role="tab" aria-label={`${item}: ${tabHelp[item]||item}`} aria-selected={value === item} onClick={() => onChange(item)} className={`whitespace-nowrap rounded-lg px-3 py-2 text-xs font-bold transition ${value === item ? "bg-emerald-800 text-white shadow-sm" : "text-slate-600 hover:bg-emerald-50"}`}>{item}</button>)}</div></div>; }
-function SearchBar({ query, setQuery }) { return <section className="flex gap-2 rounded-xl border border-slate-200 bg-white p-3"><label className="flex flex-1 items-center gap-2 rounded-lg border border-slate-200 px-3"><Search size={14} /><input value={query} onChange={(e) => setQuery(e.target.value)} className="h-9 w-full text-xs outline-none" placeholder="Search incident ID, title, or location" /></label><button onClick={() => setQuery("")} className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-bold"><RotateCcw size={13} />Reset</button></section>; }
+/* ----------------------------------------------------------------------- */
+/* Shared Header, Tabs, Search, Table                                      */
+/* ----------------------------------------------------------------------- */
 
-function IncidentTable({ rows, onOpen, highlightedId }) { const [expanded,setExpanded]=useState(false);const {assignments}=useBdrrmoDemo();return <><section className={`overflow-hidden rounded-xl border border-slate-200 bg-white ${expanded?"fixed inset-4 z-50 flex flex-col shadow-2xl":""}`}><header className="flex items-center justify-between border-b px-4 py-3"><div><h3 className="text-sm font-bold text-emerald-950">Incident records</h3><p className="text-[10px] text-slate-500">{rows.length} matching records</p></div><button title={expanded?"Minimize":"Maximize"} onClick={()=>setExpanded(v=>!v)} className="rounded-lg border p-2 text-emerald-800" aria-label={expanded?"Minimize table":"Maximize table"}>{expanded?<Minimize2 size={15}/>:<Maximize2 size={15}/>}</button></header><div className={`overflow-auto ${expanded?"min-h-0 flex-1":""}`}><table className="w-full min-w-[850px] text-left text-xs"><thead className="sticky top-0 z-10 bg-slate-50 text-slate-500"><tr>{["Incident", "Category", "Location", "Priority", "Incident status", "Assignment", "Elapsed", "Action"].map((h) => <th className="px-4 py-3" key={h}>{h}</th>)}</tr></thead><tbody>{rows.map((item) => {const assignment=assignments.find(a=>a.incidentId===item.id);const action=nextIncidentAction(item,assignment);return <tr id={`incident-${item.id}`} key={item.id} className={`border-t border-slate-100 transition-colors duration-500 hover:bg-emerald-50/30 ${highlightedId===item.id?"bg-amber-100 ring-2 ring-inset ring-amber-400":""}`}><td className="px-4 py-3"><strong className="block text-emerald-900">{item.id}</strong>{item.title}</td><td className="px-4">{item.category}</td><td className="px-4"><MapPin size={12} className="mr-1 inline" />{item.location}</td><td className="px-4"><strong>{item.priorityCode}</strong><span className="block text-[10px] text-slate-500">{displayStatus(PRIORITY,item.priorityCode)}</span></td><td className="px-4"><span className={`rounded-full px-2 py-1 text-[9px] font-bold ${badge(item.incidentStatusCode)}`}>{displayStatus(INCIDENT_STATUS,item.incidentStatusCode)}</span></td><td className="px-4">{assignment?displayStatus(ASSIGNMENT_STATUS,assignment.statusCode):"No record"}</td><td className="px-4 font-mono"><Clock3 size={11} className="mr-1 inline" />{item.elapsed}</td><td className="px-4"><button title={action.label} onClick={() => onOpen(item)} className="inline-flex items-center gap-1 font-bold text-emerald-800"><Eye size={13} />{action.label}</button></td></tr>})}</tbody></table></div>{!rows.length && <Empty text="No incidents match this view." />}</section>{expanded&&<button className="fixed inset-0 z-40 bg-slate-950/30" aria-label="Minimize table" onClick={()=>setExpanded(false)}/>}</>; }
+function Header({ meta }) {
+  const Icon = meta.icon;
+  return (
+    <header className="flex items-start gap-3">
+      <span className="rounded-xl bg-(--gf-green-soft) p-3 text-(--gf-green)">
+        <Icon size={20} />
+      </span>
+      <div>
+        <h2 className="text-lg font-bold text-[#263246]">{meta.title}</h2>
+        <p className="text-xs text-[#60738f]">{meta.subtitle}</p>
+      </div>
+    </header>
+  );
+}
+
+function Tabs({ tabs, value, onChange, counts = {} }) {
+  return (
+    <div className="overflow-x-auto">
+      <div
+        className="inline-flex min-w-full gap-1 rounded-xl border border-[#e2e8eb] bg-white p-1 sm:min-w-0"
+        role="tablist"
+      >
+        {tabs.map((item) => {
+          const active = value === item;
+          const count = counts[item];
+          return (
+            <button
+              key={item}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => onChange(item)}
+              className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 py-2 text-xs font-bold transition ${
+                active
+                  ? "bg-(--gf-green) text-white shadow-sm"
+                  : "text-[#60738f] hover:bg-(--gf-green-soft) hover:text-(--gf-green)"
+              }`}
+            >
+              <span>{item}</span>
+              {typeof count === "number" && (
+                <span
+                  className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                    active ? "bg-white/20 text-white" : "bg-[#eef2f4] text-[#60738f]"
+                  }`}
+                >
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function SearchBar({ query, setQuery }) {
+  return (
+    <section className="flex gap-2 rounded-xl border border-[#e2e8eb] bg-white p-3">
+      <label className="flex flex-1 items-center gap-2 rounded-lg border border-[#dfe7ea] px-3 focus-within:border-(--gf-green)">
+        <Search size={14} className="text-[#7c8ba3]" />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="h-9 w-full text-xs text-[#263246] outline-none"
+          placeholder="Search incident ID, category, title, or location..."
+        />
+      </label>
+      <button
+        type="button"
+        onClick={() => setQuery("")}
+        className="flex items-center gap-1.5 rounded-lg border border-[#dfe7ea] px-3 text-xs font-bold text-[#60738f] hover:border-(--gf-green) hover:text-(--gf-green)"
+      >
+        <RotateCcw size={13} />
+        Reset
+      </button>
+    </section>
+  );
+}
+
+function IncidentTable({ rows, onOpen, highlightedId, emptyLabel = "No incidents found." }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <>
+      <section
+        className={`overflow-hidden rounded-xl border border-[#e2e8eb] bg-white shadow-sm ${
+          expanded ? "fixed inset-4 z-50 flex flex-col shadow-2xl" : ""
+        }`}
+      >
+        <header className="flex items-center justify-between border-b border-[#edf0f2] px-4 py-3">
+          <div>
+            <h3 className="text-sm font-bold text-[#263246]">Incident records</h3>
+            <p className="text-[10px] text-[#60738f]">{rows.length} matching records</p>
+          </div>
+          <button
+            type="button"
+            title={expanded ? "Minimize" : "Maximize"}
+            onClick={() => setExpanded((v) => !v)}
+            className="rounded-lg border border-[#dfe7ea] p-2 text-(--gf-green)"
+            aria-label={expanded ? "Minimize table" : "Maximize table"}
+          >
+            {expanded ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+          </button>
+        </header>
+
+        <div className={`overflow-x-auto ${expanded ? "min-h-0 flex-1" : ""}`}>
+          <table className="w-full min-w-[920px] border-collapse text-left text-[12px]">
+            <thead>
+              <tr className="border-b border-[#e2e8eb] bg-(--gf-surface) text-[10px] font-bold uppercase tracking-wider text-[#60738f]">
+                {["Incident", "Category", "Location", "Priority", "Status", "Dispatched Units", "Elapsed", "Action"].map(
+                  (h) => (
+                    <th className="px-4 py-3.5" key={h}>
+                      {h}
+                    </th>
+                  ),
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((item) => {
+                const units = item.dispatchedUnits || [];
+                const hasBackupAlert = item.backupAlerts?.length > 0;
+                return (
+                  <tr
+                    id={`incident-${item.id}`}
+                    key={item.id}
+                    className={`border-b border-[#f1f4f6] transition-colors last:border-b-0 hover:bg-(--gf-row-hover) ${
+                      highlightedId === item.id ? "bg-[#fff1c6]/50 ring-2 ring-inset ring-[#e69500]" : ""
+                    }`}
+                  >
+                    <td className="px-4 py-3.5">
+                      <span className="font-bold text-(--gf-green)">{item.id}</span>
+                      <div className="mt-0.5 text-[12px] font-semibold text-[#263246]">{item.title}</div>
+                      {hasBackupAlert && (
+                        <div className="mt-1">
+                          <Chip className="bg-[#fdecea] text-[#dc2626]">
+                            <AlertTriangle size={9} /> Backup Requested
+                          </Chip>
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <Chip className="bg-[#eef2f4] text-[#60738f]">{item.category}</Chip>
+                    </td>
+                    <td className="px-4 py-3.5 text-[#60738f]">
+                      <span className="inline-flex items-center gap-1">
+                        <MapPin size={12} className="shrink-0 text-(--gf-green)" />
+                        {item.location}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <Chip className={priorityTone(item.priorityCode)}>
+                        {item.priorityCode} · {displayStatus(PRIORITY, item.priorityCode).split(",")[0]}
+                      </Chip>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <Chip className={statusTone(item.incidentStatusCode)}>
+                        {displayStatus(INCIDENT_STATUS, item.incidentStatusCode)}
+                      </Chip>
+                    </td>
+                    <td className="px-4 py-3.5">
+                      {units.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {units.map((u) => (
+                            <Chip key={u.id} className={statusTone(u.status)}>
+                              {u.role.toUpperCase()} · {u.status}
+                            </Chip>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-[11px] italic text-[#94a3b8]">Unassigned</span>
+                      )}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3.5 font-mono text-[11px] text-[#60738f]">
+                      <Clock3 size={11} className="mr-1 inline" />
+                      {item.elapsed}
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <button
+                        type="button"
+                        onClick={() => onOpen(item)}
+                        className="rounded-md bg-(--gf-green) px-3.5 py-2 text-[11px] font-bold text-white transition hover:-translate-y-px hover:bg-(--gf-green-dark) focus-visible:outline-2 focus-visible:outline-(--gf-green)"
+                      >
+                        Manage
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {!rows.length && (
+                <tr>
+                  <td colSpan={8} className="px-4 py-10 text-center text-xs text-[#60738f]">
+                    {emptyLabel}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      {expanded && (
+        <button
+          type="button"
+          className="fixed inset-0 z-40 bg-slate-950/30"
+          aria-label="Minimize table"
+          onClick={() => setExpanded(false)}
+        />
+      )}
+    </>
+  );
+}
+
+/* ----------------------------------------------------------------------- */
+/* Dispatch & Responders View                                              */
+/* ----------------------------------------------------------------------- */
 
 function DispatchView({ tab, onOpen }) {
-  const {incidents,assignments,responders}=useBdrrmoDemo();
-  const showRoster = ["Roster", "Available", "Deployed", "Unavailable", "Reassignment"].includes(tab);
-  const roster = responders.filter((r) => tab === "Available" ? r.availabilityStatus === "AVAILABLE" : tab === "Deployed" ? assignments.some(a=>a.responderId===r.id&&!["COMPLETED","CANCELLED"].includes(a.statusCode)) : tab === "Unavailable" || tab === "Reassignment" ? r.availabilityStatus === "UNAVAILABLE" : true);
-  if (showRoster) return <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{roster.map((r) => {const assignment=assignments.find(a=>a.responderId===r.id&&!["COMPLETED","CANCELLED"].includes(a.statusCode));return <article key={r.unit} className="rounded-xl border border-slate-200 bg-white p-4"><div className="flex justify-between gap-3"><div><strong className="text-sm">{r.name}</strong><p className="text-xs text-slate-500">{r.unit}</p></div><span className={`h-fit rounded-full px-2 py-1 text-[9px] font-bold ${badge(r.availabilityStatus)}`}>{displayStatus(AVAILABILITY_STATUS,r.availabilityStatus)}</span></div><dl className="mt-4 grid grid-cols-2 gap-3 text-xs"><div><dt className="text-slate-500">Assignment</dt><dd className="font-semibold">{assignment?.incidentId??"No record"}</dd></div><div><dt className="text-slate-500">Last update</dt><dd className="font-semibold">{r.updated}</dd></div></dl><button onClick={() => demoAction(tab === "Reassignment" ? "Availability review" : "Responder review")} className="mt-4 w-full rounded-lg border border-emerald-200 py-2 text-xs font-bold text-emerald-800">Review record</button></article>})}</section>;
-  return <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]"><IncidentTable rows={incidents.filter((i) => i.incidentStatusCode !== "CLOSED")} onOpen={onOpen} /><aside className="rounded-xl border border-slate-200 bg-white p-4"><h3 className="text-sm font-bold text-emerald-900">Available responders</h3><p className="mt-1 text-[10px] text-slate-500">Availability comes from responder_resources.</p><div className="mt-3 space-y-2">{responders.filter((r) => r.availabilityStatus === "AVAILABLE").map((r) => <button key={r.unit} onClick={() => demoAction("Responder selected")} className="w-full rounded-lg border border-slate-200 p-3 text-left text-xs hover:border-emerald-300"><strong>{r.name}</strong><span className="block text-slate-500">{r.unit} · {displayStatus(AVAILABILITY_STATUS,r.availabilityStatus)}</span></button>)}</div></aside></div>;
+  const { incidents, assignments, responders } = useBdrrmoDemo();
+  const [availabilityFilter, setAvailabilityFilter] = useState("ALL");
+
+  if (tab === "Active Units") {
+    const active = assignments.filter((a) => !["COMPLETED", "CANCELLED", "DECLINED"].includes(a.statusCode));
+    return (
+      <section className="overflow-hidden rounded-xl border border-[#e2e8eb] bg-white shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[780px] border-collapse text-left text-[12px]">
+            <thead>
+              <tr className="border-b border-[#e2e8eb] bg-(--gf-surface) text-[10px] font-bold uppercase tracking-wider text-[#60738f]">
+                {["Incident", "Responder Unit", "Department", "Unit Status", "Dispatched", "Action"].map((h) => (
+                  <th className="px-4 py-3.5" key={h}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {active.map((a) => {
+                const linked = incidents.find((i) => i.id === a.incidentId);
+                return (
+                  <tr key={a.id} className="border-b border-[#f1f4f6] last:border-b-0 hover:bg-(--gf-row-hover)">
+                    <td className="px-4 py-3.5 font-bold text-(--gf-green)">{a.incidentId}</td>
+                    <td className="px-4 py-3.5 font-semibold text-[#263246]">{a.responderLabel || a.responderId}</td>
+                    <td className="px-4 py-3.5 uppercase text-[#60738f]">{a.role || "TANOD"}</td>
+                    <td className="px-4 py-3.5">
+                      <Chip className={statusTone(a.statusCode)}>
+                        {displayStatus(ASSIGNMENT_STATUS, a.statusCode)}
+                      </Chip>
+                    </td>
+                    <td className="px-4 py-3.5 text-[11px] text-[#60738f]">{a.assignedAt}</td>
+                    <td className="px-4 py-3.5">
+                      {linked && (
+                        <button
+                          type="button"
+                          onClick={() => onOpen(linked)}
+                          className="rounded-md bg-(--gf-green) px-3.5 py-2 text-[11px] font-bold text-white transition hover:bg-(--gf-green-dark)"
+                        >
+                          Manage
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+              {!active.length && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-10 text-center text-xs text-[#60738f]">
+                    No active deployed units right now.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    );
+  }
+
+  if (tab === "Responder Roster") {
+    const roster = responders.filter((r) =>
+      availabilityFilter === "ALL" ? true : r.availabilityStatus === availabilityFilter,
+    );
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-wrap gap-2">
+          {["ALL", "AVAILABLE", "BUSY", "UNAVAILABLE"].map((status) => (
+            <button
+              key={status}
+              type="button"
+              onClick={() => setAvailabilityFilter(status)}
+              className={`rounded-lg border px-3 py-1.5 text-xs font-bold transition ${
+                availabilityFilter === status
+                  ? "border-(--gf-green) bg-(--gf-green) text-white"
+                  : "border-[#dfe7ea] bg-white text-[#60738f] hover:border-(--gf-green)"
+              }`}
+            >
+              {status === "ALL" ? `All (${responders.length})` : displayStatus(AVAILABILITY_STATUS, status)}
+            </button>
+          ))}
+        </div>
+
+        {roster.length === 0 ? (
+          <div className="rounded-xl border border-[#e2e8eb] bg-white p-10 text-center text-xs text-[#60738f]">
+            No responders match this availability filter.
+          </div>
+        ) : (
+          <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {roster.map((r) => {
+              const activeAssign = assignments.find(
+                (a) => a.responderId === r.id && !["COMPLETED", "CANCELLED", "DECLINED"].includes(a.statusCode),
+              );
+              const linked = activeAssign ? incidents.find((i) => i.id === activeAssign.incidentId) : null;
+              return (
+                <article
+                  key={r.id || r.unit}
+                  className="flex flex-col rounded-xl border border-[#e2e8eb] bg-white p-4 shadow-sm"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <strong className="text-sm text-[#263246]">{r.name}</strong>
+                      <p className="text-xs text-[#60738f]">{r.unit}</p>
+                    </div>
+                    <Chip className={statusTone(r.availabilityStatus)}>
+                      {displayStatus(AVAILABILITY_STATUS, r.availabilityStatus)}
+                    </Chip>
+                  </div>
+                  <dl className="mt-4 grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <dt className="text-[#7c8ba3]">Active Assignment</dt>
+                      <dd className="font-semibold text-[#263246]">{activeAssign?.incidentId ?? "Standby"}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-[#7c8ba3]">Last Update</dt>
+                      <dd className="font-semibold text-[#263246]">{r.updated}</dd>
+                    </div>
+                  </dl>
+                  {linked && (
+                    <button
+                      type="button"
+                      onClick={() => onOpen(linked)}
+                      className="mt-4 w-full rounded-md bg-(--gf-green) py-2 text-xs font-bold text-white transition hover:bg-(--gf-green-dark)"
+                    >
+                      Manage {linked.id}
+                    </button>
+                  )}
+                </article>
+              );
+            })}
+          </section>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <IncidentTable
+        rows={incidents.filter((i) => i.incidentStatusCode !== "CLOSED")}
+        onOpen={onOpen}
+        emptyLabel="No open emergencies waiting for dispatch."
+      />
+      <aside className="h-fit rounded-xl border border-[#e2e8eb] bg-white p-4 shadow-sm">
+        <h3 className="text-sm font-bold text-(--gf-green)">Available Responders</h3>
+        <p className="mt-0.5 text-[10px] text-[#60738f]">Live availability from responder roster.</p>
+        <div className="mt-3 space-y-2">
+          {responders.filter((r) => r.availabilityStatus === "AVAILABLE").length === 0 ? (
+            <p className="py-4 text-center text-xs text-[#60738f]">No responders currently available.</p>
+          ) : (
+            responders
+              .filter((r) => r.availabilityStatus === "AVAILABLE")
+              .map((r) => (
+                <div
+                  key={r.id || r.unit}
+                  className="flex items-center justify-between rounded-lg border border-[#edf0f2] bg-[#f8fafb] px-3 py-2.5 text-xs"
+                >
+                  <div>
+                    <strong className="block text-[#263246]">{r.name}</strong>
+                    <span className="text-[10px] text-[#60738f]">{r.unit}</span>
+                  </div>
+                  <Chip className="bg-(--gf-green-tint-2) text-(--gf-green)">AVAILABLE</Chip>
+                </div>
+              ))
+          )}
+        </div>
+      </aside>
+    </div>
+  );
 }
+
+/* ----------------------------------------------------------------------- */
+/* Handover & Completion View                                              */
+/* ----------------------------------------------------------------------- */
 
 function HandoverView({ tab, onOpen, onIncident }) {
-  const {incidents,handovers}=useBdrrmoDemo();
-  if (["For Review", "Returned for Correction", "Ready for Closure", "Closed"].includes(tab)) {
-    const rows = incidents.filter((i) => tab === "For Review" || tab === "Ready for Closure" ? i.incidentStatusCode === "FOR_CLOSURE_REVIEW" : tab === "Closed" ? i.incidentStatusCode === "CLOSED" : handovers.some(h=>h.incidentId===i.id&&h.qrStatusCode==="NEEDS_CORRECTION"));
-    return <IncidentTable rows={rows} onOpen={onIncident} />;
+  const { incidents, handovers } = useBdrrmoDemo();
+
+  if (tab === "For Closure" || tab === "Closed") {
+    const rows = incidents.filter((i) =>
+      tab === "For Closure" ? i.incidentStatusCode === "FOR_CLOSURE_REVIEW" : i.incidentStatusCode === "CLOSED",
+    );
+    return (
+      <IncidentTable
+        rows={rows}
+        onOpen={onIncident}
+        emptyLabel={tab === "For Closure" ? "No incidents awaiting closure review." : "No closed incidents yet."}
+      />
+    );
   }
-  const rows = tab === "Pending Handover" ? handovers.filter((h) => h.qrStatusCode === "PENDING_ACCEPTANCE") : handovers;
-  return <section className="overflow-hidden rounded-xl border border-slate-200 bg-white"><div className="overflow-x-auto"><table className="w-full min-w-[780px] text-left text-xs"><thead className="bg-slate-50 text-slate-500"><tr>{["Record", "Incident", "Receiver", "Method", "QR status", "Receiver authentication", "Action"].map((h) => <th className="px-4 py-3" key={h}>{h}</th>)}</tr></thead><tbody>{rows.map((h) => <tr key={h.id} className="border-t border-slate-100"><td className="px-4 py-3 font-bold text-emerald-800">{h.id}</td><td className="px-4"><button className="font-bold hover:underline" onClick={() => onIncident(incidents.find((i) => i.id === h.incidentId))}>{h.incidentId}</button></td><td className="px-4">{h.receiver}<span className="block text-[10px] text-slate-500">{h.receiverType}</span></td><td className="px-4">{h.method}</td><td className="px-4"><span className={`rounded-full px-2 py-1 text-[9px] font-bold ${badge(h.qrStatusCode)}`}>{displayStatus(QR_STATUS,h.qrStatusCode)}</span></td><td className="px-4">{h.authenticatedReceiver ? "Authenticated account" : "External QR acknowledgment"}</td><td className="px-4"><button onClick={() => onOpen(h)} className="inline-flex items-center gap-1 font-bold text-emerald-800"><Eye size={13} />Review</button></td></tr>)}</tbody></table></div></section>;
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-[#e2e8eb] bg-white shadow-sm">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[780px] border-collapse text-left text-[12px]">
+          <thead>
+            <tr className="border-b border-[#e2e8eb] bg-(--gf-surface) text-[10px] font-bold uppercase tracking-wider text-[#60738f]">
+              {["Record", "Incident", "Receiver", "Method", "QR Status", "Created", "Action"].map((h) => (
+                <th className="px-4 py-3.5" key={h}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {handovers.map((h) => (
+              <tr key={h.id} className="border-b border-[#f1f4f6] last:border-b-0 hover:bg-(--gf-row-hover)">
+                <td className="px-4 py-3.5 font-bold text-(--gf-green)">{h.id}</td>
+                <td className="px-4 py-3.5 font-semibold text-[#263246]">{h.incidentId}</td>
+                <td className="px-4 py-3.5">
+                  <span className="font-semibold text-[#263246]">{h.receiver}</span>
+                  <span className="block text-[10px] text-[#7c8ba3]">{h.receiverType}</span>
+                </td>
+                <td className="px-4 py-3.5 text-[#60738f]">{h.method}</td>
+                <td className="px-4 py-3.5">
+                  <Chip className={statusTone(h.qrStatusCode)}>
+                    {displayStatus(QR_STATUS, h.qrStatusCode)}
+                  </Chip>
+                </td>
+                <td className="px-4 py-3.5 text-[11px] text-[#60738f]">{h.createdAt}</td>
+                <td className="px-4 py-3.5">
+                  <button
+                    type="button"
+                    onClick={() => onOpen(h)}
+                    className="rounded-md bg-(--gf-green) px-3.5 py-2 text-[11px] font-bold text-white transition hover:bg-(--gf-green-dark)"
+                  >
+                    Manage
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {!handovers.length && (
+              <tr>
+                <td colSpan={7} className="px-4 py-10 text-center text-xs text-[#60738f]">
+                  No hospital QR handover records yet.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
 }
 
-function DrawerShell({ title, subtitle, onClose, children, footer }) { return <><button className="fixed inset-0 z-30 bg-slate-950/35" aria-label="Close details" onClick={onClose} /><aside role="dialog" aria-modal="true" aria-label={title} className="fixed inset-y-0 right-0 z-40 w-full max-w-xl overflow-y-auto bg-white shadow-2xl animate-[bdrrmo-drawer_220ms_ease-out] motion-reduce:animate-none"><header className="sticky top-0 z-10 flex items-start justify-between border-b bg-white p-5"><div><p className="text-xs font-bold text-emerald-800">{subtitle}</p><h2 className="mt-1 text-xl font-bold">{title}</h2></div><button onClick={onClose} className="rounded-lg border border-slate-200 p-2" aria-label="Close"><X size={16} /></button></header><div className="space-y-5 p-5">{children}</div><footer className="sticky bottom-0 flex gap-2 border-t bg-white p-4">{footer}</footer></aside></>; }
+/* ----------------------------------------------------------------------- */
+/* Incident Manage Drawer (Admin Maintenance Review UI Aesthetic)          */
+/* ----------------------------------------------------------------------- */
+
 function IncidentDrawer({ incident: initialIncident, onClose }) {
-  const {incidents,assignments,supportRequests,handovers,advanceAssignment,closeIncident,assign,responders}=useBdrrmoDemo();
-  const [confirmOpen,setConfirmOpen]=useState(false);
-  const incident=incidents.find(i=>i.id===initialIncident.id)??initialIncident;
-  const assignment=assignments.find(a=>a.incidentId===incident.id&&!['CANCELLED','DECLINED'].includes(a.statusCode));
-  const support=supportRequests.filter(s=>s.incidentId===incident.id); const action=nextIncidentAction(incident,assignment);
-  const closureErrors=incident.incidentStatusCode==='FOR_CLOSURE_REVIEW'?validateClosure({incident,assignment,linkedHandovers:handovers.filter(h=>h.incidentId===incident.id)}):[];
-  const errors=[...validateIncident(incident),...closureErrors];
-  function execute(){const beforeIncident=incident.incidentStatusCode;const beforeAssignment=assignment?.statusCode??'No record';let ok=true;if(!assignment&&incident.incidentStatusCode==='FORWARDED_TO_BDRRMO'){const available=responders.find(r=>r.availabilityStatus==='AVAILABLE');ok=available?assign(incident.id,available.id):false}else if(incident.incidentStatusCode==='FOR_CLOSURE_REVIEW'){closeIncident(incident.id)}else if(assignment){ok=advanceAssignment(incident.id)}else{ok=false}setConfirmOpen(false);if(ok){toast.add({type:"success",title:`${action.label} successful`,description:`${incident.id} updated from ${beforeIncident} / ${beforeAssignment}.`})}else{toast.add({type:"error",title:"Action could not continue",description:"Review the current status or responder availability, then try again."})}}
-  return <><DrawerShell title={incident.title} subtitle={`${incident.id} · ${displayStatus(INCIDENT_STATUS,incident.incidentStatusCode)}`} onClose={onClose} footer={<><button disabled={!action.confirm||errors.length>0} onClick={()=>setConfirmOpen(true)} className="flex-1 rounded-lg bg-emerald-800 px-4 py-3 text-xs font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300">{action.label}</button><button onClick={onClose} className="rounded-lg border px-4 text-xs font-bold">Close</button></>}><InfoGrid items={[["Priority",`${incident.priorityCode} · ${displayStatus(PRIORITY,incident.priorityCode)}`],["Incident status",`${incident.incidentStatusCode} · ${displayStatus(INCIDENT_STATUS,incident.incidentStatusCode)}`],["Location",incident.location],["Assignment",assignment?`${assignment.statusCode} · ${displayStatus(ASSIGNMENT_STATUS,assignment.statusCode)}`:"No record"],["Submitted",incident.submittedAt],["Support",support.length?support.map(s=>`${s.statusCode} · ${displayStatus(SUPPORT_STATUS,s.statusCode)}`).join(", "):"No record"]]}/>{errors.length>0&&<ValidationErrors errors={errors}/>}<Section title="Incident description"><p className="text-xs leading-5 text-slate-600">{incident.description}</p></Section><Section title="Evidence"><p className="text-xs text-slate-600">{incident.media.join(", ")} evidence attached. Demo metadata only.</p></Section><Section title="Status history"><ol className="space-y-3 border-l border-emerald-200 pl-4 text-xs">{incident.timeline.map((step,index)=><li key={`${step}-${index}`}><CheckCircle2 size={13} className="mr-2 inline text-emerald-700"/>{step} · {displayStatus(INCIDENT_STATUS,step)}</li>)}</ol></Section><Notice/></DrawerShell><ConfirmationDialog open={confirmOpen} onOpenChange={setConfirmOpen} onConfirm={execute} title={`${action.confirm}?`} description={`${incident.id}: ${incident.incidentStatusCode}${assignment?` / ${assignment.statusCode}`:" / no assignment"} will proceed to the next migration-backed state. This updates local demo data only.`} confirmLabel={action.confirm||"Confirm"}/></>
-}
-function HandoverDrawer({ record, onClose, onIncident }) { const errors=validateHandover(record,{correctionReason:record.remarks});return <DrawerShell title={`Handover ${record.id}`} subtitle={`${record.incidentId} · ${displayStatus(QR_STATUS,record.qrStatusCode)}`} onClose={onClose} footer={<><button disabled={errors.length>0} onClick={() => demoAction("Handover review")} className="flex-1 rounded-lg bg-emerald-800 px-3 py-3 text-xs font-bold text-white disabled:bg-slate-300">Confirm review</button><button onClick={() => demoAction("Correction request")} className="rounded-lg border border-amber-300 px-3 text-xs font-bold text-amber-900">Return for correction</button></>}><button onClick={onIncident} className="w-full rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-left text-xs font-bold text-emerald-900">Open linked incident {record.incidentId}</button>{errors.length>0&&<ValidationErrors errors={errors}/>}<InfoGrid items={[["Receiver", record.receiver], ["Receiver type", record.receiverType], ["Organization", record.organization], ["Receiving officer", record.officer], ["Method", record.method], ["QR status", `${record.qrStatusCode} · ${displayStatus(QR_STATUS,record.qrStatusCode)}`], ["Created", record.createdAt], ["Accepted", record.acceptedAt??"Not recorded"], ["Expires", record.expiresAt]]} /><Section title="Verification"><p className="text-xs leading-5 text-slate-600">{record.authenticatedReceiver ? "Authenticated department account confirmation." : "External QR acknowledgment. This is not automatic proof of hospital acceptance and requires BDRRMO review."}</p></Section><Section title="Receiving remarks"><p className="text-xs leading-5 text-slate-600">{record.remarks}</p></Section><Section title="Handover timeline"><ol className="space-y-3 border-l border-violet-200 pl-4 text-xs"><li>Protected handover record created · {record.createdAt}</li><li>{record.qrStatusCode} · {displayStatus(QR_STATUS,record.qrStatusCode)}</li><li>{record.acceptedAt ? `Acknowledged · ${record.acceptedAt}` : "Acknowledgment not recorded"}</li></ol></Section><Notice /></DrawerShell>; }
+  const {
+    incidents,
+    handovers,
+    responders,
+    batchDispatch,
+    broadcastNote,
+    closeServerIncident,
+  } = useBdrrmoDemo();
 
-function Analytics({ meta, rows, onOpen, selected }) { const {incidents,assignments,supportRequests,handovers}=useBdrrmoDemo(); const [section,setSection]=useState("Overview");const [range, setRange] = useState("Month"); return <div className="space-y-5"><Header meta={meta} /><Tabs tabs={["Overview","Report Builder","Generated Reports"]} value={section} onChange={setSection}/>{section==="Report Builder"?<ReportBuilder/>:section==="Generated Reports"?<div className="rounded-xl border bg-white p-10 text-center text-sm text-slate-500">Generated report persistence requires approved backend support. Use Report Builder preview and Print / PDF for now.</div>:<><div className="flex flex-wrap gap-2">{["Week", "Month", "Year"].map((r) => <button key={r} onClick={() => setRange(r)} className={`rounded-lg border px-3 py-2 text-xs font-bold ${range === r ? "border-emerald-800 bg-emerald-800 text-white" : "border-slate-200 bg-white"}`}>{r}</button>)}<button onClick={() => demoAction("Analytics CSV export")} className="ml-auto flex items-center gap-2 rounded-lg border bg-white px-3 text-xs font-bold"><Download size={14} />Export CSV</button></div><section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{[["Emergency reports", incidents.length], ["Forwarded to BDRRMO", incidents.filter(i=>i.incidentStatusCode==="FORWARDED_TO_BDRRMO").length], ["Active assignments",assignments.filter(a=>!["COMPLETED","CANCELLED"].includes(a.statusCode)).length], ["For closure review",incidents.filter(i=>i.incidentStatusCode==="FOR_CLOSURE_REVIEW").length]].map(([a, b]) => <article key={a} className="bdrrmo-reveal rounded-xl border bg-white p-4"><span className="text-[10px] font-bold uppercase text-slate-500">{a}</span><strong className="mt-2 block text-2xl">{b}</strong><small className="text-emerald-700">Current {range.toLowerCase()} · demo</small></article>)}</section><section className="grid gap-5 lg:grid-cols-2"><Chart title="Emergency volume" values={[2,3,2,4,3,5,incidents.length]} /><Chart title="Records by response stage" values={[incidents.length,assignments.length,supportRequests.length,handovers.length]} /></section><IncidentTable rows={rows} onOpen={onOpen} /></>}{selected && <IncidentDrawer incident={selected} view="analytics" onClose={() => onOpen(null)} />}</div>; }
-function SettingsView({ meta }) { const {user}=useAuth();const [notifications, setNotifications] = useState(true); const [compact, setCompact] = useState(false);return <div className="space-y-5"><Header meta={meta} /><section className="max-w-3xl rounded-xl border bg-white p-5"><h3 className="font-bold">Account</h3><div className="mt-4 rounded-lg bg-slate-50 p-4"><strong className="text-sm">{user?.name||[user?.first_name,user?.last_name].filter(Boolean).join(" ")||"BDRRMO Officer"}</strong><p className="text-xs text-slate-500">Role: {user?.role||"bdrrmo"}</p></div><h3 className="mt-6 font-bold">Dashboard preferences</h3><Toggle label="Operational notifications" value={notifications} setValue={setNotifications} /><Toggle label="Compact table density" value={compact} setValue={setCompact} /><button onClick={() => demoAction("Preferences")} className="mt-5 rounded-lg bg-emerald-800 px-4 py-2 text-xs font-bold text-white">Save preferences</button><p className="mt-6 border-t pt-4 text-xs text-slate-500">Use the persistent sidebar footer to open this profile or securely sign out.</p></section></div>; }
-function Toggle({ label, value, setValue }) { return <div className="mt-4 flex items-center justify-between border-t pt-4"><span className="text-sm font-semibold">{label}</span><button role="switch" aria-checked={value} onClick={() => setValue(!value)} className={`relative h-6 w-11 rounded-full ${value ? "bg-emerald-700" : "bg-slate-300"}`}><span className={`absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition-transform ${value ? "translate-x-5" : ""}`} /></button></div>; }
-function Chart({ title, values }) { const max = Math.max(...values); return <button onClick={() => demoAction(`${title} drill-down`)} className="rounded-xl border bg-white p-4 text-left"><h3 className="text-sm font-bold text-emerald-900">{title}</h3><div className="mt-6 flex h-36 items-end gap-3">{values.map((v, i) => <span key={i} className="flex-1 rounded-t bg-emerald-600" style={{ height: `${Math.max(10, (v / max) * 120)}px` }} title={`${v}`} />)}</div><p className="mt-3 text-[10px] text-slate-500">Click to open the demo drill-down.</p></button>; }
-function InfoGrid({ items }) { return <dl className="grid grid-cols-2 gap-3">{items.map(([a, b]) => <div key={a} className="rounded-lg bg-slate-50 p-3"><dt className="text-[10px] text-slate-500">{a}</dt><dd className="mt-1 break-words text-xs font-bold">{b}</dd></div>)}</dl>; }
-function Section({ title, children }) { return <section><h3 className="mb-2 text-sm font-bold text-emerald-950">{title}</h3>{children}</section>; }
-function Notice() { return <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"><strong>Demo action boundary</strong><p className="mt-1">No live dispatch, handover, or closure mutation is sent from this frontend workspace.</p></div>; }
-function Empty({ text }) { return <div className="p-10 text-center text-sm text-slate-500">{text}</div>; }
-function ValidationErrors({errors}){return <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800"><strong>Complete these requirements:</strong><ul className="mt-2 list-disc pl-5">{errors.map(error=><li key={error}>{error}</li>)}</ul></div>}
+  const incident = incidents.find((i) => i.id === initialIncident.id) ?? initialIncident;
+
+  const fireLocked = Boolean(incident.lockedDepartments?.fire);
+  const policeLocked = Boolean(incident.lockedDepartments?.police);
+
+  const [includeFire, setIncludeFire] = useState(fireLocked);
+  const [includePolice, setIncludePolice] = useState(policeLocked);
+  const [selectedTanodId, setSelectedTanodId] = useState("");
+  const [tacticalNoteDraft, setTacticalNoteDraft] = useState("");
+  const [showLiveTrackingMap, setShowLiveTrackingMap] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
+
+  useEffect(() => {
+    const onKey = (event) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [onClose]);
+
+  const availableTanods = responders.filter(
+    (r) => r.availabilityStatus === "AVAILABLE" && (!r.resourceType || r.resourceType === "TANOD"),
+  );
+  const dispatchedUnits = incident.dispatchedUnits || [];
+  const linkedHandovers = handovers.filter(
+    (h) => h.incidentId === incident.incidentId || h.incidentId === incident.id,
+  );
+
+  // Live validations
+  const incidentErrors = validateIncident(incident);
+  const selectedTanod = responders.find((r) => r.id === selectedTanodId) || null;
+  const dispatchErrors = [];
+  if (!(includeFire || fireLocked || includePolice || policeLocked || selectedTanodId)) {
+    dispatchErrors.push("Select at least one department (BFP / Police) or an available Tanod.");
+  }
+  if (selectedTanod && selectedTanod.availabilityStatus !== "AVAILABLE") {
+    dispatchErrors.push("Selected Tanod is no longer AVAILABLE.");
+  }
+  const canBatchDispatch = dispatchErrors.length === 0 && incident.incidentStatusCode !== "CLOSED";
+
+  const pendingUnits = dispatchedUnits.filter(
+    (u) => !["COMPLETED", "CANCELLED", "DECLINED"].includes(u.status),
+  );
+  const closureWarnings = [];
+  if (dispatchedUnits.length === 0) {
+    closureWarnings.push("No responder units have been dispatched yet.");
+  }
+  if (pendingUnits.length > 0) {
+    closureWarnings.push(`${pendingUnits.length} dispatched unit(s) are still active on this incident.`);
+  }
+  if (linkedHandovers.some((h) => h.qrStatusCode === "PENDING_ACCEPTANCE")) {
+    closureWarnings.push("A hospital QR handover is still pending acceptance.");
+  }
+
+  const hasCoordinates = Number.isFinite(Number(incident.lat)) && Number.isFinite(Number(incident.lng));
+  const liveTrackers = dispatchedUnits
+    .filter((u) => u.location && Number.isFinite(u.location.lat) && Number.isFinite(u.location.lng))
+    .map((u) => ({
+      id: u.id,
+      lat: u.location.lat,
+      lng: u.location.lng,
+      category: u.role === "fire" ? "fire" : u.role === "police" ? "crime" : "incident",
+      label: u.label,
+    }));
+
+  async function handleBatchDispatch() {
+    if (!canBatchDispatch || submitting) return;
+    setSubmitting(true);
+    try {
+      const departments = [];
+      if (includeFire || fireLocked) departments.push("fire");
+      if (includePolice || policeLocked) departments.push("police");
+      await batchDispatch(incident.incidentId, {
+        departments,
+        tanod_unit_id: selectedTanodId || null,
+        tactical_note: tacticalNoteDraft.trim() || undefined,
+      });
+      setTacticalNoteDraft("");
+      setSelectedTanodId("");
+      toast.add({
+        type: "success",
+        title: "Dispatch sent",
+        description: `${incident.id} dispatched to selected responders.`,
+      });
+    } catch (err) {
+      toast.add({ type: "error", title: "Dispatch failed", description: err.message });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleBroadcastNote() {
+    if (!tacticalNoteDraft.trim() || submitting) return;
+    setSubmitting(true);
+    try {
+      await broadcastNote(incident.incidentId, tacticalNoteDraft.trim());
+      setTacticalNoteDraft("");
+      toast.add({
+        type: "success",
+        title: "Tactical note sent",
+        description: "Broadcast to all dispatched units on this incident.",
+      });
+    } catch (err) {
+      toast.add({ type: "error", title: "Failed to send note", description: err.message });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleAuthorizeClosure() {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      await closeServerIncident(incident.incidentId);
+      setConfirmCloseOpen(false);
+      toast.add({
+        type: "success",
+        title: "Incident closed",
+        description: `${incident.id} closed and synced to Admin.`,
+      });
+    } catch (err) {
+      toast.add({ type: "error", title: "Closure failed", description: err.message });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        aria-label="Close emergency drawer"
+        onClick={onClose}
+        className="fixed inset-0 z-[80] cursor-default border-0 bg-slate-900/40 backdrop-blur-[2px] [animation:gf-fade-in_0.18s_ease-out]"
+      />
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Manage emergency ${incident.id}`}
+        className="fixed inset-y-0 right-0 z-[90] flex w-full flex-col border-l border-[#e2e8eb] bg-white shadow-[-18px_0_40px_rgba(15,23,42,0.25)] [animation:gf-drawer-in_0.22s_ease-out] sm:w-[44%] sm:min-w-[520px] sm:max-w-[700px]"
+      >
+        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-[#edf0f2] bg-(--gf-green-soft) px-5 py-4">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-[14px] font-bold text-(--gf-green)">{incident.id}</h2>
+              <Chip className={statusTone(incident.incidentStatusCode)}>
+                {displayStatus(INCIDENT_STATUS, incident.incidentStatusCode)}
+              </Chip>
+              <Chip className={priorityTone(incident.priorityCode)}>
+                {incident.priorityCode}
+              </Chip>
+              <Chip className="bg-[#eef2f4] text-[#60738f]">{incident.category}</Chip>
+            </div>
+            <p className="mt-1 truncate text-[11px] font-semibold text-[#263246]">
+              {incident.title} • {incident.location}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="rounded-full p-1.5 text-[#60738f] transition hover:bg-white hover:text-(--gf-green)"
+          >
+            <X size={16} />
+          </button>
+        </header>
+
+        <div className="gf-drawer-body">
+          {incidentErrors.length > 0 && <ValidationErrors errors={incidentErrors} />}
+
+          <DrawerSection title="Incident Lifecycle Timeline" icon={Clock3}>
+            <IncidentTimeline incident={incident} dispatchedUnits={dispatchedUnits} />
+          </DrawerSection>
+
+          <DrawerSection title="Emergency Report & Reporter" icon={ShieldCheck}>
+            <div>
+              <InfoRow label="Incident ID">{incident.id}</InfoRow>
+              <InfoRow label="Category">{incident.category}</InfoRow>
+              <InfoRow label="Priority">
+                {incident.priorityCode} · {displayStatus(PRIORITY, incident.priorityCode)}
+              </InfoRow>
+              <InfoRow label="Reporter">
+                {incident.reporterName || "Guest Reporter"}
+                {incident.reporterPhone ? ` · ${incident.reporterPhone}` : ""}
+              </InfoRow>
+              <InfoRow label="Submitted">{incident.submittedAt}</InfoRow>
+              <InfoRow label="Dispatched Units">
+                {dispatchedUnits.length ? `${dispatchedUnits.length} unit(s)` : "None yet"}
+              </InfoRow>
+            </div>
+            {incident.description && (
+              <p className="mt-2 rounded-md border border-[#e0e7eb] bg-white px-3 py-2 text-[11px] leading-relaxed text-[#42506a]">
+                <span className="font-bold text-[#263246]">Report description:</span> {incident.description}
+              </p>
+            )}
+          </DrawerSection>
+
+          {incident.backupAlerts?.length > 0 && (
+            <DrawerSection title="Field Backup / Transport Alerts" icon={TriangleAlert}>
+              <div className="space-y-2">
+                {incident.backupAlerts.map((alert) => (
+                  <div key={alert.id} className="rounded-lg border border-[#f3d3d3] bg-[#fdecea] p-3 text-[11px] text-[#991b1b]">
+                    <div className="flex items-center gap-1.5 font-bold">
+                      <AlertTriangle size={13} />
+                      <span>{alert.note.replace("[BACKUP REQUEST] ", "")}</span>
+                    </div>
+                    <p className="mt-1 text-[9px] text-[#b91c1c]">{alert.created_at}</p>
+                  </div>
+                ))}
+              </div>
+            </DrawerSection>
+          )}
+
+          {incident.incidentStatusCode !== "CLOSED" && (
+            <DrawerSection title="Single / Batch Dispatch (BFP, Police & Tanod Transport)" icon={UserCheck}>
+              <div className="space-y-3 rounded-lg border border-[#e0e7eb] bg-[#f8fafb] p-3.5">
+                <div className="grid grid-cols-2 gap-2">
+                  <label
+                    className={`flex items-center justify-between rounded-lg border px-3 py-2.5 text-[11px] font-bold transition ${
+                      fireLocked
+                        ? "cursor-not-allowed border-[#f3d3d3] bg-[#fdecea] text-[#dc2626]"
+                        : includeFire
+                          ? "border-(--gf-green) bg-(--gf-green-soft) text-(--gf-green)"
+                          : "border-[#dfe7ea] bg-white text-[#263246]"
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <input
+                        type="checkbox"
+                        checked={includeFire || fireLocked}
+                        disabled={fireLocked}
+                        onChange={(e) => setIncludeFire(e.target.checked)}
+                      />
+                      <Flame size={13} className="text-[#dc2626]" />
+                      BFP (Fire)
+                    </span>
+                    {fireLocked && <Lock size={12} title="Auto-locked for Fire incidents" />}
+                  </label>
+
+                  <label
+                    className={`flex items-center justify-between rounded-lg border px-3 py-2.5 text-[11px] font-bold transition ${
+                      policeLocked
+                        ? "cursor-not-allowed border-[#cbd5f5] bg-[#eef2fb] text-[#4c6fbf]"
+                        : includePolice
+                          ? "border-(--gf-green) bg-(--gf-green-soft) text-(--gf-green)"
+                          : "border-[#dfe7ea] bg-white text-[#263246]"
+                    }`}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <input
+                        type="checkbox"
+                        checked={includePolice || policeLocked}
+                        disabled={policeLocked}
+                        onChange={(e) => setIncludePolice(e.target.checked)}
+                      />
+                      <Shield size={13} className="text-[#4c6fbf]" />
+                      Police (PNP)
+                    </span>
+                    {policeLocked && <Lock size={12} title="Auto-locked for Crime incidents" />}
+                  </label>
+                </div>
+
+                <div>
+                  <label className="block text-[9px] font-bold uppercase tracking-wide text-[#7184a0]">
+                    Assign Available Tanod (Emergency Patient Transport)
+                  </label>
+                  <select
+                    value={selectedTanodId}
+                    onChange={(e) => setSelectedTanodId(e.target.value)}
+                    className="mt-1 h-9 w-full rounded-md border border-[#dfe7ea] bg-white px-2.5 text-[11px] font-semibold text-[#263246] outline-none focus:border-(--gf-green)"
+                  >
+                    <option value="">— Optional: No Tanod transport assigned —</option>
+                    {availableTanods.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} ({t.unit}) — AVAILABLE
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {dispatchErrors.length > 0 && (
+                  <p className="flex items-center gap-1 text-[10px] font-semibold text-[#e69500]">
+                    <TriangleAlert size={11} />
+                    {dispatchErrors[0]}
+                  </p>
+                )}
+
+                <button
+                  type="button"
+                  disabled={!canBatchDispatch || submitting}
+                  onClick={handleBatchDispatch}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-md bg-(--gf-green) py-2.5 text-[11px] font-bold text-white transition hover:bg-(--gf-green-dark) disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Truck size={14} />
+                  {submitting ? "Dispatching..." : "Dispatch / Batch Dispatch Selected Units"}
+                </button>
+              </div>
+            </DrawerSection>
+          )}
+
+          <DrawerSection title="Geotagged Location & Live Unit Tracking" icon={MapPinned}>
+            <div className="mb-2.5 flex items-center justify-between rounded-lg border border-[#e0e7eb] bg-white px-3 py-2">
+              <div className="flex items-center gap-2 text-[11px] font-semibold text-[#263246]">
+                <Navigation size={13} className="text-(--gf-green)" />
+                <span>Show Live Responder Tracking Map ({liveTrackers.length} live GPS)</span>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={showLiveTrackingMap}
+                onClick={() => setShowLiveTrackingMap((v) => !v)}
+                className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
+                  showLiveTrackingMap ? "bg-(--gf-green)" : "bg-[#c8d2da]"
+                }`}
+              >
+                <span
+                  className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                    showLiveTrackingMap ? "translate-x-4" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+
+            {showLiveTrackingMap && hasCoordinates && (
+              <div className="mb-3 overflow-hidden rounded-lg border border-[#dfe7ea]">
+                <div className="h-[220px]">
+                  <MapViewer
+                    compact
+                    incidents={[
+                      {
+                        id: incident.id,
+                        title: incident.title,
+                        category: fireLocked ? "fire" : policeLocked ? "crime" : "emergency",
+                        status: incident.incidentStatusCode,
+                        lat: Number(incident.lat),
+                        lng: Number(incident.lng),
+                      },
+                    ]}
+                    selectedIncident={{ id: incident.id, lat: Number(incident.lat), lng: Number(incident.lng) }}
+                    trackers={liveTrackers}
+                    allowOutsideBounds
+                    allowOutsideIncidents
+                  />
+                </div>
+                <div className="flex items-center justify-between bg-[#f8fafb] px-3 py-2 text-[9px] font-bold text-[#60738f]">
+                  <span>{incident.location}, Barangay 167</span>
+                  <span>
+                    {Number(incident.lat).toFixed(4)} N, {Number(incident.lng).toFixed(4)} E
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {dispatchedUnits.length > 0 ? (
+              <div className="space-y-1.5">
+                {dispatchedUnits.map((unit) => (
+                  <div
+                    key={unit.id}
+                    className="flex items-center justify-between rounded-lg border border-[#e0e7eb] bg-white px-3 py-2 text-[11px]"
+                  >
+                    <div>
+                      <strong className="text-[#263246]">{unit.label}</strong>
+                      <p className="text-[9px] text-[#7c8ba3]">
+                        {unit.location
+                          ? `Live GPS: ${unit.location.lat.toFixed(4)}, ${unit.location.lng.toFixed(4)}`
+                          : "Awaiting live GPS ping"}
+                      </p>
+                    </div>
+                    <Chip className={statusTone(unit.status)}>{unit.status}</Chip>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[11px] text-[#7c8ba3]">No units dispatched to this emergency yet.</p>
+            )}
+          </DrawerSection>
+
+          <DrawerSection title="Shared Tactical Dispatch Notes" icon={Send}>
+            <div className="flex gap-2">
+              <input
+                value={tacticalNoteDraft}
+                onChange={(e) => setTacticalNoteDraft(e.target.value)}
+                placeholder="e.g. Road blocked on Rizal St — use Magsaysay Blvd..."
+                className="h-9 flex-1 rounded-md border border-[#dfe7ea] bg-white px-3 text-[11px] text-[#263246] outline-none focus:border-(--gf-green)"
+              />
+              <button
+                type="button"
+                disabled={!tacticalNoteDraft.trim() || submitting}
+                onClick={handleBroadcastNote}
+                className="flex items-center gap-1 rounded-md bg-(--gf-green) px-3 text-[11px] font-bold text-white transition hover:bg-(--gf-green-dark) disabled:opacity-40"
+              >
+                <Send size={12} />
+                Send
+              </button>
+            </div>
+            {incident.tacticalNotes?.length > 0 && (
+              <ul className="mt-2 space-y-1.5">
+                {incident.tacticalNotes.map((n) => (
+                  <li
+                    key={n.id}
+                    className="rounded-md border border-[#dfe7ea] bg-(--gf-green-soft)/60 px-3 py-2 text-[11px] text-[#263246]"
+                  >
+                    {n.note.replace("[BDRRMO NOTE] ", "")}
+                    <span className="ml-2 text-[9px] text-[#60738f]">{n.created_at}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </DrawerSection>
+
+          {incident.agencyReports?.length > 0 && (
+            <DrawerSection title="Submitted Field Resolution Reports" icon={CheckCircle2}>
+              <ul className="space-y-2">
+                {incident.agencyReports.map((rep) => (
+                  <li
+                    key={rep.id}
+                    className="rounded-lg border border-(--gf-green-tint-2) bg-(--gf-green-soft) p-3 text-[11px] text-[#263246]"
+                  >
+                    <div className="flex items-center gap-1.5 font-bold text-(--gf-green)">
+                      <CheckCircle2 size={13} />
+                      <span>{rep.note.replace("[AGENCY REPORT] ", "")}</span>
+                    </div>
+                    <p className="mt-1 text-[9px] text-[#60738f]">{rep.created_at}</p>
+                  </li>
+                ))}
+              </ul>
+            </DrawerSection>
+          )}
+
+          <DrawerSection title="Evidence & Resolution Proof Photos" icon={Camera} last>
+            {incident.photos?.length > 0 ? (
+              <div className="grid grid-cols-2 gap-2">
+                {incident.photos.map((photo, idx) => (
+                  <a
+                    key={photo.id}
+                    href={`/api/reports/${encodeURIComponent(incident.incidentId)}/photos/${encodeURIComponent(photo.id)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="relative block h-[120px] overflow-hidden rounded-lg border border-[#dfe7ea] bg-slate-100"
+                  >
+                    <img
+                      src={`/api/reports/${encodeURIComponent(incident.incidentId)}/photos/${encodeURIComponent(photo.id)}`}
+                      alt={photo.filename}
+                      loading="lazy"
+                      className="h-full w-full object-cover"
+                    />
+                    <span className="absolute bottom-1 left-1 rounded bg-slate-900/75 px-1.5 py-0.5 text-[8px] font-bold text-white">
+                      {photo.by_staff ? `Responder Proof #${idx + 1}` : `Reporter Photo #${idx + 1}`}
+                    </span>
+                  </a>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[11px] text-[#7c8ba3]">No photos uploaded yet.</p>
+            )}
+          </DrawerSection>
+        </div>
+
+        <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-[#edf0f2] bg-(--gf-green-soft) px-5 py-3">
+          {incident.incidentStatusCode === "CLOSED" ? (
+            <span className="flex items-center gap-1 text-[10px] font-semibold text-(--gf-green)">
+              <CheckCircle2 size={12} /> Incident is closed and synced to Admin.
+            </span>
+          ) : closureWarnings.length > 0 ? (
+            <span className="flex items-center gap-1 text-[10px] font-semibold text-[#e69500]">
+              <TriangleAlert size={11} /> {closureWarnings[0]}
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 text-[10px] font-semibold text-(--gf-green)">
+              <CheckCircle2 size={12} /> All units completed — ready for coordinated closure.
+            </span>
+          )}
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md border border-[#dfe7ea] bg-white px-3 py-2 text-[10px] font-bold text-[#60738f] transition hover:text-(--gf-green)"
+            >
+              Close
+            </button>
+            {incident.incidentStatusCode !== "CLOSED" && (
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={() => setConfirmCloseOpen(true)}
+                className="rounded-md bg-(--gf-green) px-3.5 py-2 text-[10px] font-bold text-white transition hover:bg-(--gf-green-dark) disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {submitting ? "Closing..." : "Authorize Closure"}
+              </button>
+            )}
+          </div>
+        </footer>
+      </aside>
+
+      <ConfirmationDialog
+        open={confirmCloseOpen}
+        onOpenChange={setConfirmCloseOpen}
+        onConfirm={handleAuthorizeClosure}
+        title="Authorize coordinated closure?"
+        description={
+          closureWarnings.length > 0
+            ? `${incident.id}: ${closureWarnings.join(" ")} Close this incident anyway and sync to Admin?`
+            : `${incident.id} will be marked CLOSED and synced to Admin.`
+        }
+        confirmLabel="Authorize Closure"
+      />
+    </>
+  );
+}
+
+/* ----------------------------------------------------------------------- */
+/* Handover Manage Drawer                                                  */
+/* ----------------------------------------------------------------------- */
+
+function HandoverDrawer({ record, onClose, onIncident }) {
+  const errors = validateHandover(record, { correctionReason: record.remarks });
+
+  return (
+    <>
+      <button
+        type="button"
+        aria-label="Close handover drawer"
+        onClick={onClose}
+        className="fixed inset-0 z-[80] cursor-default border-0 bg-slate-900/40 backdrop-blur-[2px]"
+      />
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Handover ${record.id}`}
+        className="fixed inset-y-0 right-0 z-[90] flex w-full flex-col border-l border-[#e2e8eb] bg-white shadow-[-18px_0_40px_rgba(15,23,42,0.25)] sm:w-[40%] sm:min-w-[460px] sm:max-w-[600px]"
+      >
+        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-[#edf0f2] bg-(--gf-green-soft) px-5 py-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h2 className="text-[14px] font-bold text-(--gf-green)">Handover {record.id}</h2>
+              <Chip className={statusTone(record.qrStatusCode)}>
+                {displayStatus(QR_STATUS, record.qrStatusCode)}
+              </Chip>
+            </div>
+            <p className="mt-0.5 text-[10px] text-[#60738f]">Incident {record.incidentId}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="rounded-full p-1.5 text-[#60738f] transition hover:bg-white hover:text-(--gf-green)"
+          >
+            <X size={16} />
+          </button>
+        </header>
+
+        <div className="gf-drawer-body">
+          {errors.length > 0 && <ValidationErrors errors={errors} />}
+          <DrawerSection title="Hospital QR Handover Details" icon={Handshake}>
+            <InfoRow label="Incident">{record.incidentId}</InfoRow>
+            <InfoRow label="Receiver">{record.receiver}</InfoRow>
+            <InfoRow label="Receiving Officer">{record.officer}</InfoRow>
+            <InfoRow label="Method">{record.method}</InfoRow>
+            <InfoRow label="Created">{record.createdAt}</InfoRow>
+            <InfoRow label="Accepted">{record.acceptedAt ?? "Pending scan"}</InfoRow>
+            <InfoRow label="Expires">{record.expiresAt ?? "—"}</InfoRow>
+          </DrawerSection>
+          <DrawerSection title="Remarks" icon={ShieldCheck} last>
+            <p className="text-[11px] leading-relaxed text-[#42506a]">{record.remarks}</p>
+          </DrawerSection>
+        </div>
+
+        <footer className="flex shrink-0 items-center justify-end gap-2 border-t border-[#edf0f2] bg-(--gf-green-soft) px-5 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md border border-[#dfe7ea] bg-white px-3 py-2 text-[10px] font-bold text-[#60738f]"
+          >
+            Close
+          </button>
+          <button
+            type="button"
+            onClick={onIncident}
+            className="rounded-md bg-(--gf-green) px-3.5 py-2 text-[10px] font-bold text-white hover:bg-(--gf-green-dark)"
+          >
+            Open Linked Incident
+          </button>
+        </footer>
+      </aside>
+    </>
+  );
+}
+
+/* ----------------------------------------------------------------------- */
+/* Analytics & Settings Views                                              */
+/* ----------------------------------------------------------------------- */
+
+function Analytics({ meta, rows, onOpen, selected }) {
+  const { incidents, assignments, supportRequests, handovers } = useBdrrmoDemo();
+  const [section, setSection] = useState("Overview");
+
+  function exportCsv() {
+    if (!incidents.length) {
+      toast.add({ type: "error", title: "Nothing to export", description: "No live incidents available." });
+      return;
+    }
+    const headers = ["ID", "Title", "Category", "Location", "Priority", "Status", "Submitted"];
+    const lines = [
+      headers.join(","),
+      ...incidents.map((i) =>
+        [i.id, i.title, i.category, i.location, i.priorityCode, i.incidentStatusCode, i.submittedAt]
+          .map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`)
+          .join(","),
+      ),
+    ];
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `bdrrmo-incidents-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div className="space-y-5">
+      <Header meta={meta} />
+      <Tabs tabs={["Overview", "Report Builder"]} value={section} onChange={setSection} />
+
+      {section === "Report Builder" ? (
+        <ReportBuilder />
+      ) : (
+        <>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={exportCsv}
+              className="flex items-center gap-2 rounded-md bg-(--gf-green) px-3.5 py-2 text-xs font-bold text-white transition hover:bg-(--gf-green-dark)"
+            >
+              <Download size={14} />
+              Export CSV
+            </button>
+          </div>
+          <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              ["Total Emergencies", incidents.length],
+              ["Awaiting Dispatch", incidents.filter((i) => i.incidentStatusCode === "FORWARDED_TO_BDRRMO").length],
+              ["Active Units", assignments.filter((a) => !["COMPLETED", "CANCELLED", "DECLINED"].includes(a.statusCode)).length],
+              ["For Closure", incidents.filter((i) => i.incidentStatusCode === "FOR_CLOSURE_REVIEW").length],
+            ].map(([label, value]) => (
+              <article key={label} className="rounded-xl border border-[#e2e8eb] bg-white p-4 shadow-sm">
+                <span className="text-[10px] font-bold uppercase tracking-wide text-[#60738f]">{label}</span>
+                <strong className="mt-2 block text-2xl font-extrabold text-[#263246]">{value}</strong>
+              </article>
+            ))}
+          </section>
+          <section className="grid gap-5 lg:grid-cols-2">
+            <Chart
+              title="Records by Stage"
+              labels={["Incidents", "Dispatches", "Backup Alerts", "QR Handovers"]}
+              values={[incidents.length, assignments.length, supportRequests.length, handovers.length]}
+            />
+            <Chart
+              title="Incidents by Status"
+              labels={["Forwarded", "Active", "For Closure", "Closed"]}
+              values={[
+                incidents.filter((i) => i.incidentStatusCode === "FORWARDED_TO_BDRRMO").length,
+                incidents.filter((i) => activeIncidentCodes.includes(i.incidentStatusCode)).length,
+                incidents.filter((i) => i.incidentStatusCode === "FOR_CLOSURE_REVIEW").length,
+                incidents.filter((i) => i.incidentStatusCode === "CLOSED").length,
+              ]}
+            />
+          </section>
+          <IncidentTable rows={rows} onOpen={onOpen} emptyLabel="No emergency records available." />
+        </>
+      )}
+
+      {selected && <IncidentDrawer incident={selected} onClose={() => onOpen(null)} />}
+    </div>
+  );
+}
+
+function SettingsView({ meta }) {
+  const { user } = useAuth();
+  const [notifications, setNotifications] = useState(true);
+  const [compact, setCompact] = useState(false);
+
+  return (
+    <div className="space-y-5">
+      <Header meta={meta} />
+      <section className="max-w-3xl rounded-xl border border-[#e2e8eb] bg-white p-5 shadow-sm">
+        <h3 className="font-bold text-[#263246]">Account</h3>
+        <div className="mt-3 rounded-lg bg-[#f8fafb] p-4">
+          <strong className="text-sm text-[#263246]">
+            {user?.name || [user?.first_name, user?.last_name].filter(Boolean).join(" ") || "BDRRMO Officer"}
+          </strong>
+          <p className="text-xs text-[#60738f]">Role: {user?.role || "bdrrmo"}</p>
+        </div>
+        <h3 className="mt-6 font-bold text-[#263246]">Dashboard preferences</h3>
+        <Toggle label="Operational notifications" value={notifications} setValue={setNotifications} />
+        <Toggle label="Compact table density" value={compact} setValue={setCompact} />
+        <button
+          type="button"
+          onClick={() => toast.add({ type: "success", title: "Preferences saved", description: "Your BDRRMO workspace preferences have been updated." })}
+          className="mt-5 rounded-md bg-(--gf-green) px-4 py-2 text-xs font-bold text-white hover:bg-(--gf-green-dark)"
+        >
+          Save preferences
+        </button>
+      </section>
+    </div>
+  );
+}
+
+function Toggle({ label, value, setValue }) {
+  return (
+    <div className="mt-4 flex items-center justify-between border-t border-[#edf0f2] pt-4">
+      <span className="text-sm font-semibold text-[#263246]">{label}</span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={value}
+        onClick={() => setValue(!value)}
+        className={`relative h-6 w-11 rounded-full transition-colors ${value ? "bg-(--gf-green)" : "bg-[#c8d2da]"}`}
+      >
+        <span
+          className={`absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition-transform ${
+            value ? "translate-x-5" : ""
+          }`}
+        />
+      </button>
+    </div>
+  );
+}
+
+function Chart({ title, labels, values }) {
+  const max = Math.max(1, ...values);
+  return (
+    <div className="rounded-xl border border-[#e2e8eb] bg-white p-4 shadow-sm">
+      <h3 className="text-sm font-bold text-(--gf-green)">{title}</h3>
+      <div className="mt-6 flex h-36 items-end gap-4">
+        {values.map((v, i) => (
+          <div key={labels[i]} className="flex flex-1 flex-col items-center gap-1.5">
+            <span className="text-[10px] font-bold text-[#263246]">{v}</span>
+            <span
+              className="w-full rounded-t bg-(--gf-green)"
+              style={{ height: `${Math.max(8, (v / max) * 100)}px` }}
+            />
+            <span className="text-[10px] text-[#60738f]">{labels[i]}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ValidationErrors({ errors }) {
+  return (
+    <div role="alert" className="rounded-lg border border-[#f3d3d3] bg-[#fdecea] p-3 text-[11px] text-[#991b1b]">
+      <strong>Validation issues:</strong>
+      <ul className="mt-1.5 list-disc pl-5">
+        {errors.map((error) => (
+          <li key={error}>{error}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function IncidentTimeline({ incident, dispatchedUnits = [] }) {
+  const earliestDispatch = dispatchedUnits
+    .map((u) => u.dispatched_at)
+    .filter(Boolean)
+    .sort()[0];
+  const anyOnScene =
+    incident.incidentStatusCode === "ON_SCENE" ||
+    dispatchedUnits.some((u) => ["ON_SCENE", "COMPLETED"].includes(u.status));
+  const anyResolved =
+    ["FOR_CLOSURE_REVIEW", "CLOSED"].includes(incident.incidentStatusCode) ||
+    (incident.agencyReports?.length || 0) > 0;
+  const isClosed = incident.incidentStatusCode === "CLOSED";
+
+  const steps = [
+    { key: "Submitted", done: true, timestamp: incident.submittedAt || "Recorded" },
+    { key: "Forwarded", done: true, timestamp: incident.submittedAt || "Escalated to BDRRMO" },
+    { key: "Dispatched", done: dispatchedUnits.length > 0 || anyOnScene || anyResolved || isClosed, timestamp: earliestDispatch || "Pending dispatch" },
+    { key: "On Scene", done: anyOnScene || anyResolved || isClosed, timestamp: anyOnScene ? "Unit arrived on scene" : "Awaiting arrival" },
+    { key: "Resolved", done: anyResolved || isClosed, timestamp: incident.agencyReports?.[0]?.created_at || (anyResolved ? "Field proof submitted" : "Pending resolution") },
+    { key: "Closed", done: isClosed, timestamp: isClosed ? "Authorized & synced to Admin" : "Pending BDRRMO closure" },
+  ];
+
+  const activeIdx = steps.findIndex((s) => !s.done);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-1.5">
+        {steps.map((step, idx) => {
+          const isCurrent = idx === activeIdx;
+          return (
+            <span
+              key={step.key}
+              className={`gf-stage ${
+                isCurrent ? "text-[#e69500]" : step.done ? "text-(--gf-green)" : "text-[#a0b0c0]"
+              }`}
+            >
+              <span
+                className={`gf-stage-dot ${
+                  step.done ? "gf-stage-dot--done" : isCurrent ? "gf-stage-dot--active" : "gf-stage-dot--locked"
+                }`}
+              >
+                {step.done ? "✓" : ""}
+              </span>
+              {step.key}
+            </span>
+          );
+        })}
+      </div>
+
+      <ol className="mt-2 space-y-1.5 border-l-2 border-[#e2e8eb] pl-3">
+        {steps.map((step, idx) => {
+          const isCurrent = idx === activeIdx;
+          return (
+            <li key={step.key} className="flex items-center justify-between gap-2 text-[10px]">
+              <span
+                className={`font-bold ${
+                  step.done ? "text-(--gf-green)" : isCurrent ? "text-[#e69500]" : "text-[#94a3b8]"
+                }`}
+              >
+                {step.key}
+              </span>
+              <span className="text-right text-[9px] text-[#60738f]">{step.timestamp}</span>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
