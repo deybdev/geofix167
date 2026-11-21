@@ -216,7 +216,7 @@ const seededAudit = () => [
 
 function Chip({ children, className = "" }) {
   return (
-    <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[8px] font-bold leading-none ${className}`}>
+    <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-1 text-[10px] font-bold leading-none ${className}`}>
       {children}
     </span>
   );
@@ -316,15 +316,15 @@ function StatCard({ label, value, icon: Icon, alert = false, hint, onClick }) {
   return (
     <Tag
       {...(clickable ? { type: "button", onClick } : {})}
-      className={`flex items-center gap-3 rounded-xl border bg-white p-4 text-left shadow-sm transition ${alert ? "border-[#f3d3d3]" : "border-[#e2e8eb]"} ${clickable ? "cursor-pointer hover:border-(--gf-green) hover:shadow-md focus-visible:outline-2 focus-visible:outline-(--gf-green)" : ""}`}
+      className={`flex min-h-[112px] items-center gap-4 rounded-xl border bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 ${alert ? "border-[#f3d3d3] hover:border-[#efa9a1] hover:shadow-md" : "border-[#e2e8eb] hover:border-(--gf-green) hover:shadow-md"} ${clickable ? "cursor-pointer focus-visible:outline-2 focus-visible:outline-(--gf-green)" : ""}`}
     >
-      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${alert ? "bg-[#fdecea] text-[#dc2626]" : "bg-(--gf-green-soft) text-(--gf-green)"}`}>
-        <Icon size={18} />
+      <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg ${alert ? "bg-[#fdecea] text-[#dc2626]" : "bg-(--gf-green-soft) text-(--gf-green)"}`}>
+        <Icon size={21} />
       </span>
       <span className="min-w-0">
-        <span className="block text-[9px] font-bold uppercase tracking-wide text-[#60738f]">{label}</span>
-        <span className={`block text-xl font-extrabold leading-tight ${alert ? "text-[#dc2626]" : "text-[#263246]"}`}>{value}</span>
-        {hint && <span className="block text-[8px] font-medium text-[#a8b6c6]">{hint}</span>}
+        <span className="block text-[11px] font-bold uppercase tracking-wide text-[#60738f]">{label}</span>
+        <span className={`block text-3xl font-extrabold leading-tight ${alert ? "text-[#dc2626]" : "text-[#263246]"}`}>{value}</span>
+        {hint && <span className="mt-1 block text-[10px] font-medium leading-snug text-[#7c8ba3]">{hint}</span>}
       </span>
     </Tag>
   );
@@ -332,35 +332,35 @@ function StatCard({ label, value, icon: Icon, alert = false, hint, onClick }) {
 
 function IntakeCard({ item, onReview }) {
   return (
-    <article className="flex flex-col gap-2 rounded-xl border border-[#e0e7eb] bg-white p-4 transition hover:border-(--gf-green) hover:shadow-sm">
+    <article className="flex min-h-[310px] flex-col gap-3 rounded-xl border border-[#e0e7eb] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-(--gf-green) hover:shadow-md">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-1.5">
             <Chip className="bg-(--gf-green-tint-2) text-(--gf-green)">{item.reportId}</Chip>
             <Chip className="bg-[#eef2f4] text-[#60738f]">{item.category}</Chip>
           </div>
-          <h3 className="mt-1 text-[11px] font-bold leading-snug text-[#263246]">{item.issue}</h3>
+          <h3 className="mt-2 text-[15px] font-bold leading-snug text-[#263246]">{item.issue}</h3>
         </div>
         <Chip className="mt-0.5 shrink-0 rounded-full bg-[#fff1c6] text-[#e69500]">new</Chip>
       </div>
-      <p className="flex items-start gap-1 text-[9px] text-[#60738f]">
-        <MapPinned size={11} className="mt-px shrink-0 text-(--gf-green)" />
+      <p className="flex items-start gap-1.5 text-[12px] text-[#60738f]">
+        <MapPinned size={14} className="mt-px shrink-0 text-(--gf-green)" />
         {item.location}{item.zone ? ` - ${item.zone}` : ""}
       </p>
-      <p className="text-[9px] text-[#a8b6c6]">GPS {item.geotag.source} ({item.geotag.accuracy}) • {item.geotag.landmark}</p>
-      <p className="text-[9px] italic leading-relaxed text-[#60738f]">“{item.narration}”</p>
+      <p className="text-[11px] text-[#7c8ba3]">GPS {item.geotag.source} ({item.geotag.accuracy}) • {item.geotag.landmark}</p>
+      <p className="text-[12px] italic leading-relaxed text-[#60738f]">“{item.narration}”</p>
       <div className="flex flex-wrap items-center gap-1.5">
         {item.reporter.type === "guest"
           ? <Chip className="bg-[#eef2fb] text-[#4c6fbf]"><Link2 size={8} />{item.reporter.token ? `Guest link ${item.reporter.token}` : `Guest · ${item.reporter.name || "Reporter"}`}</Chip>
           : <Chip className="bg-(--gf-green-tint) text-(--gf-green)"><ShieldCheck size={8} />Verified Resident · {item.reporter.name}</Chip>}
         {item.outsideBarangay && <Chip className="bg-[#fdecea] text-[#dc2626]">Outside Barangay 167</Chip>}
         <EvidenceChips evidence={item.evidence} small />
-        <span className="ml-auto text-[8px] font-medium text-[#a8b6c6]">{item.submitted}</span>
+        <span className="ml-auto text-[10px] font-medium text-[#7c8ba3]">{item.submitted}</span>
       </div>
       <button
         type="button"
         onClick={() => onReview(item)}
-        className="mt-auto w-full rounded-md bg-(--gf-green) px-3 py-2 text-[10px] font-bold text-white transition hover:bg-(--gf-green-dark) focus-visible:outline-2 focus-visible:outline-(--gf-green)"
+        className="mt-auto w-full rounded-md bg-(--gf-green) px-4 py-3 text-[12px] font-bold text-white transition hover:-translate-y-px hover:bg-(--gf-green-dark) focus-visible:outline-2 focus-visible:outline-(--gf-green)"
       >
         Review
       </button>
@@ -688,11 +688,11 @@ const TABLE_HEADINGS = ["Task ID", "Issue", "Location", "Assigned Tanod", "Prior
 
 function TaskTable({ tasks, emptyLabel, actionLabel, onOpen, nowTs }) {
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[980px] border-collapse text-left text-[10px]">
+    <div className="overflow-x-auto rounded-lg border border-[#edf0f2]">
+      <table className="w-full min-w-[1120px] border-collapse text-left text-[12px]">
         <thead>
-          <tr className="border-b border-[#e2e8eb] bg-(--gf-surface) text-[8px] font-bold uppercase tracking-wider text-[#60738f]">
-            {TABLE_HEADINGS.map((h) => <th key={h} className="px-3 py-2.5">{h}</th>)}
+          <tr className="border-b border-[#e2e8eb] bg-(--gf-surface) text-[10px] font-bold uppercase tracking-wider text-[#60738f]">
+            {TABLE_HEADINGS.map((h) => <th key={h} className="px-4 py-3.5">{h}</th>)}
           </tr>
         </thead>
         <tbody>
@@ -700,7 +700,7 @@ function TaskTable({ tasks, emptyLabel, actionLabel, onOpen, nowTs }) {
             const overdue = isOverdue(task, nowTs);
             return (
               <tr key={task.id} className="border-b border-[#f1f4f6] transition-colors last:border-b-0 hover:bg-(--gf-row-hover)">
-                <td className="px-3 py-3">
+                <td className="px-4 py-4">
                   <span className="font-bold text-(--gf-green)">{task.id}</span>
                   <div className="mt-1 flex flex-wrap gap-1">
                     <OriginChip task={task} />
@@ -708,23 +708,23 @@ function TaskTable({ tasks, emptyLabel, actionLabel, onOpen, nowTs }) {
                     {task.notified && !task.published && <Chip className="bg-(--gf-green-tint) text-(--gf-green)">reporter notified</Chip>}
                   </div>
                 </td>
-                <td className="px-3 py-3">
-                  <span className="font-semibold text-[#263246]">{task.issue}</span>
-                  <div className="text-[8px] text-[#a8b6c6]">{task.category}</div>
+                <td className="px-4 py-4">
+                  <span className="text-[12px] font-semibold text-[#263246]">{task.issue}</span>
+                  <div className="mt-1 text-[10px] text-[#7c8ba3]">{task.category}</div>
                 </td>
-                <td className="px-3 py-3 text-[#60738f]">
+                <td className="px-4 py-4 text-[12px] text-[#60738f]">
                   {task.location}
-                  <div className="text-[8px] text-[#a8b6c6]">{task.zone}</div>
+                  <div className="mt-1 text-[10px] text-[#7c8ba3]">{task.zone}</div>
                 </td>
-                <td className="px-3 py-3 font-semibold text-(--gf-green)">
+                <td className="px-4 py-4 text-[12px] font-semibold text-(--gf-green)">
                   {task.team || <span className="italic text-[#a0b0c0]">Unassigned</span>}
                 </td>
-                <td className="px-3 py-3"><PriorityBadge priority={task.priority} /></td>
-                <td className={`whitespace-nowrap px-3 py-3 ${overdue ? "font-bold text-[#dc2626]" : "text-[#60738f]"}`}>
+                <td className="px-4 py-4"><PriorityBadge priority={task.priority} /></td>
+                <td className={`whitespace-nowrap px-4 py-4 ${overdue ? "font-bold text-[#dc2626]" : "text-[#60738f]"}`}>
                   {fmtDue(task.deadline)}
                   {overdue && <div className="mt-0.5"><Chip className="bg-[#fdecea] text-[#dc2626]">overdue</Chip></div>}
                 </td>
-                <td className="px-3 py-3">
+                <td className="px-4 py-4">
                   <div className="flex flex-wrap items-center gap-1">
                     <StatusBadge status={task.status} />
                     {task.fastTrackPending && (
@@ -732,11 +732,11 @@ function TaskTable({ tasks, emptyLabel, actionLabel, onOpen, nowTs }) {
                     )}
                   </div>
                 </td>
-                <td className="px-3 py-3">
+                <td className="px-4 py-4">
                   <button
                     type="button"
                     onClick={() => onOpen(task.id)}
-                    className="rounded-md bg-(--gf-green) px-2.5 py-1.5 text-[9px] font-bold text-white transition hover:bg-(--gf-green-dark) focus-visible:outline-2 focus-visible:outline-(--gf-green)"
+                    className="rounded-md bg-(--gf-green) px-3.5 py-2 text-[11px] font-bold text-white transition hover:-translate-y-px hover:bg-(--gf-green-dark) focus-visible:outline-2 focus-visible:outline-(--gf-green)"
                   >
                     {task.fastTrackPending ? "Manage (Pending)" : actionLabel}
                   </button>
@@ -848,7 +848,7 @@ function TaskDrawer({ task, onClose, onCompleteCheck, onCloseTask, onUpdateInspe
         role="dialog"
         aria-modal="true"
         aria-label={`Manage task ${task.id}`}
-        className="fixed inset-y-0 right-0 z-[90] flex w-full flex-col border-l border-[#e2e8eb] bg-white shadow-[-18px_0_40px_rgba(15,23,42,0.25)] [animation:gf-drawer-in_0.22s_ease-out] sm:w-[40%] sm:min-w-[500px] sm:max-w-[680px]"
+        className="fixed inset-y-0 right-0 z-[90] flex w-full flex-col border-l border-[#e2e8eb] bg-white shadow-[-18px_0_40px_rgba(15,23,42,0.25)] [animation:gf-drawer-in_0.22s_ease-out] sm:w-[48%] sm:min-w-[680px] sm:max-w-[820px]"
       >
         {/* Drawer header */}
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-[#edf0f2] bg-(--gf-green-soft) px-5 py-4">
@@ -1793,18 +1793,18 @@ export default function MaintenanceTasks() {
   const actionLabel = tab === "verify" ? "Review" : "Manage";
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {/* 1 — KPI summary banner */}
-      <section aria-label="Maintenance KPI summary" className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Pending Intake" value={stats.intake} icon={FileText} hint="guest & resident reports awaiting review" onClick={() => setTab("intake")} />
-        <StatCard label="Active Tasks" value={stats.active} icon={Wrench} hint="ongoing Tanod site checks & repairs" onClick={() => setTab("active")} />
-        <StatCard label="Awaiting Verification" value={stats.verifying} icon={ShieldCheck} hint="site checked — needs final repair proof" onClick={() => setTab("verify")} />
+      <section aria-label="Maintenance KPI summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Pending Intake" value={stats.intake} icon={FileText} hint="auto-routed reports awaiting work orders" onClick={() => setTab("intake")} />
+        <StatCard label="Active Tasks" value={stats.active} icon={Wrench} hint="ongoing repairs in the field" onClick={() => setTab("active")} />
+        <StatCard label="Awaiting Verification" value={stats.verifying} icon={ShieldCheck} hint="crew done — needs admin proof-review" onClick={() => setTab("verify")} />
         <StatCard label="Overdue Tasks" value={stats.overdue} icon={Clock} hint="past deadline — escalate now" alert onClick={() => setTab("active")} />
       </section>
 
       {/* 2 — Tabbed workspaces */}
-      <section className="rounded-lg border border-[#e2e8eb] bg-white shadow-sm">
-        <div role="tablist" aria-label="Maintenance workspaces" className="flex flex-wrap gap-1 border-b border-[#e2e8eb] px-3">
+      <section className="rounded-xl border border-[#e2e8eb] bg-white shadow-sm">
+        <div role="tablist" aria-label="Maintenance workspaces" className="flex flex-wrap gap-1 border-b border-[#e2e8eb] px-4">
           {TABS.map(({ key, label, icon: Icon }) => {
             const count = tabCounts[key];
             const alerting = (key === "intake" || key === "verify") && count > 0;
@@ -1818,11 +1818,11 @@ export default function MaintenanceTasks() {
                 aria-selected={active}
                 aria-controls={`panel-${key}`}
                 onClick={() => setTab(key)}
-                className={`-mb-px flex items-center gap-2 border-b-2 px-3.5 py-3 text-[11px] font-bold transition ${active ? "border-(--gf-green) text-(--gf-green)" : "border-transparent text-[#60738f] hover:text-(--gf-green)"}`}
+                className={`-mb-px flex items-center gap-2 rounded-t-md border-b-2 px-4 py-3.5 text-[13px] font-bold transition hover:-translate-y-px hover:bg-(--gf-green-soft) ${active ? "border-(--gf-green) bg-(--gf-green-soft) text-(--gf-green)" : "border-transparent text-[#60738f] hover:text-(--gf-green)"}`}
               >
-                <Icon size={12} />
+                <Icon size={15} />
                 {label}
-                <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-bold leading-none ${alerting ? "bg-[#fff1c6] text-[#e69500]" : "bg-[#eef2f4] text-[#60738f]"}`}>
+                <span className={`rounded-full px-2 py-1 text-[11px] font-bold leading-none ${alerting ? "bg-[#fff1c6] text-[#e69500]" : "bg-[#eef2f4] text-[#60738f]"}`}>
                   {count}
                 </span>
               </button>
@@ -1830,10 +1830,10 @@ export default function MaintenanceTasks() {
           })}
         </div>
 
-        <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="p-4">
+        <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="p-5">
           {tab === "intake" ? (
             queue.length ? (
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {queue.map((item) => (
                   <IntakeCard
                     key={item.queueId}
@@ -1852,21 +1852,21 @@ export default function MaintenanceTasks() {
           ) : (
             <>
               {/* Top bar: search + filters + record actions */}
-              <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-[#e2e8eb] bg-(--gf-surface) p-2">
+              <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-[#e2e8eb] bg-(--gf-surface) p-3">
                 <label className="gf-search">
                   <Search size={14} />
                   <input
                     aria-label="Search tasks"
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Search tasks, Tanods, zones, origin reports..."
-                    className="w-full text-[10px] outline-none placeholder:text-[#a0b0c0]"
+                    placeholder="Search tasks, teams, zones, origin reports..."
+                    className="w-full text-[12px] outline-none placeholder:text-[#7c8ba3]"
                   />
                 </label>
                 <SelectFilter value={priority} options={["All Priorities", ...PRIORITIES]} onChange={setPriority} ariaLabel="Filter priority" />
                 <SelectFilter value={team} options={["All Teams", ...TEAMS]} onChange={setTeam} ariaLabel="Filter team" />
                 <SelectFilter value={zone} options={["All Zones", ...ZONES]} onChange={setZone} ariaLabel="Filter zone" />
-                <button type="button" onClick={resetFilters} className="flex items-center gap-1 px-2 text-[9px] text-[#60738f] hover:text-(--gf-green)"><RotateCcw size={11} /> Reset</button>
+                <button type="button" onClick={resetFilters} className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] text-[#60738f] transition hover:bg-(--gf-green-soft) hover:text-(--gf-green)"><RotateCcw size={13} /> Reset</button>
                 <div className="ml-auto flex flex-wrap items-center gap-1.5">
                   <button type="button" onClick={() => setAudit({ open: true, taskId: "All tasks" })} className="gf-btn gf-btn--chip"><History size={11} />Audit Trail</button>
                   <button type="button" onClick={() => toast.add({ title: "Export ready", description: "CSV of the filtered maintenance records is prepared.", type: "success" })} className="gf-btn gf-btn--chip"><Download size={11} /> Export CSV</button>
@@ -1875,9 +1875,9 @@ export default function MaintenanceTasks() {
                 </div>
               </div>
 
-              <p className="mb-2 text-[9px] font-semibold text-[#7184a0]">
-                {tab === "active" && `Showing ${filtered.length} active work order(s)`}
-                {tab === "verify" && `Showing ${filtered.length} work order(s) awaiting final repair proof verification`}
+              <p className="mb-3 text-[11px] font-semibold text-[#7184a0]">
+                {tab === "active" && `Showing ${filtered.length} pending / in-progress work order(s)`}
+                {tab === "verify" && `Showing ${filtered.length} submission(s) awaiting admin proof-review`}
                 {tab === "resolved" && `Showing ${filtered.length} verified, logged resolution(s)`}
               </p>
 

@@ -263,7 +263,7 @@ function DrawerShell({ title, subtitle, badges, onClose, children, footer }) {
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="fixed inset-y-0 right-0 z-[90] flex w-full flex-col border-l border-slate-200 bg-white shadow-2xl [animation:gf-drawer-in_0.22s_ease-out] sm:w-[45%] sm:min-w-[520px] sm:max-w-[760px]"
+        className="fixed inset-y-0 right-0 z-[90] flex w-full flex-col border-l border-slate-200 bg-white shadow-2xl [animation:gf-drawer-in_0.22s_ease-out] sm:w-[48%] sm:min-w-[680px] sm:max-w-[820px]"
       >
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4">
           <div className="min-w-0">
