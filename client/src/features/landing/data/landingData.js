@@ -1,5 +1,17 @@
 // Initial data for Barangay 167 GeoFix Landing Page
 
+export const BRAND = {
+  name: "GeoFix 167",
+  barangay: "Barangay 167",
+  zone: "Zone 15 · District 1",
+  city: "Caloocan City",
+  area: "Llano",
+  tagline: "Tulung-tulong… Sama-sama sa Pagsulong!",
+  motto: "Aksyon at Malasakit",
+  hotline: "668-338-3141",
+  serviceArea: "2.87 sq. km",
+};
+
 export const INITIAL_REPORTS = [
   {
     id: "REP-123",

@@ -4,6 +4,7 @@ import { CircleMarker, MapContainer, TileLayer, useMap } from "react-leaflet";
 import { ArrowLeft, Check, Clock3, Copy, Share2, ShieldAlert } from "lucide-react";
 import L from "leaflet";
 import { PATHS } from "../router/paths";
+import PublicLoader from "../shared/components/PublicLoader";
 import "leaflet/dist/leaflet.css";
 
 const EXPIRED_MESSAGE = "This incident has been resolved. This tracking link has expired.";
@@ -128,7 +129,7 @@ export default function PublicTrackingPage() {
   }
 
   if (!data) {
-    return <main className="grid min-h-dvh place-items-center bg-[#f4f8f5] px-5 text-sm font-semibold text-slate-600">Loading incident tracking…</main>;
+    return <main className="grid min-h-dvh place-items-center bg-[#f6f3ea] px-5"><PublicLoader label="Loading incident tracking…" /></main>;
   }
 
   const incident = data.incident_location;
