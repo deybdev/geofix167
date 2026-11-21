@@ -68,9 +68,7 @@ export default function LandingHeader({ onReportClick }) {
           
           {/* Brand Logo & Name (Responsive) */}
           <Link to={PATHS.home} className="flex items-center gap-2 sm:gap-3 transition-opacity hover:opacity-90 min-w-0 mr-2">
-            <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-xl bg-white p-1 shadow-sm ring-1 ring-slate-900/10">
-              <img src="/geofix167.png" alt="GeoFix 167 Logo" className="h-8 w-8 sm:h-10 sm:w-10 object-contain" />
-            </div>
+            <img src="/geofix167.png" alt="GeoFix 167 Logo" className="h-10 w-10 sm:h-12 sm:w-12 shrink-0 object-contain" />
             <div className="flex flex-col min-w-0">
               <div className="flex items-center gap-1.5">
                 <span className="text-base sm:text-lg md:text-xl font-extrabold tracking-tight text-[#2E8B57] truncate">
@@ -173,9 +171,7 @@ export default function LandingHeader({ onReportClick }) {
             <div>
               <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 bg-slate-50/60">
                 <div className="flex items-center gap-2.5">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white p-1 shadow-sm ring-1 ring-slate-900/10">
-                    <img src="/geofix167.png" alt="GeoFix 167" className="h-7 w-7 object-contain" />
-                  </div>
+                  <img src="/geofix167.png" alt="GeoFix 167" className="h-9 w-9 shrink-0 object-contain" />
                   <div>
                     <h3 className="text-sm font-extrabold text-[#2E8B57] leading-tight">
                       GeoFix 167

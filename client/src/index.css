@@ -210,22 +210,18 @@
   min-height: min(35rem, 70vh);
   align-items: center;
   overflow: hidden;
-  background: var(--landing-forest-deep);
+  background-color: #17231d;
+  background-image:
+    linear-gradient(90deg, rgb(0 0 0 / 62%) 0%, rgb(0 0 0 / 42%) 55%, rgb(0 0 0 / 24%) 100%),
+    url("/pictures/barangay-hall.jpg");
+  background-position: center 55%;
+  background-repeat: no-repeat;
+  background-size: cover;
   color: #fff;
 }
 
 .landing-hero::after {
-  position: absolute;
-  top: 4%;
-  right: 3%;
-  bottom: 4%;
-  width: min(46vw, 44rem);
-  content: "";
-  pointer-events: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 720 620' fill='none'%3E%3Cg stroke='%23b5cfbd' stroke-opacity='.22' stroke-width='1.2'%3E%3Cpath d='M390 20c-93 41-91 103-16 133 74 30 158-2 201 49 44 52 12 111-68 127-80 16-204-5-247 48-44 54 2 118 98 126 97 8 184-38 260 3 29 15 49 41 60 84'/%3E%3Cpath d='M376-11c-111 49-111 122-22 158 88 36 180 2 230 60 50 58 15 128-75 146-91 18-226-5-276 57-51 63 2 139 111 148 109 9 204-43 289 3 37 20 63 54 76 94'/%3E%3Cpath d='M363-42c-130 57-130 142-28 183 102 42 204 4 259 71 56 66 18 145-84 166-102 20-249-6-305 66-58 71 3 159 124 169 122 10 224-48 319 4 45 25 78 66 92 107'/%3E%3Cpath d='M526 16c-31 52-19 91 34 107 58 18 120-13 157 18'/%3E%3Cpath d='M547-14c-40 68-24 118 43 139 73 22 151-16 197 23'/%3E%3Cpath d='M568-44c-49 82-29 144 52 170 87 26 182-20 237 27'/%3E%3C/g%3E%3C/svg%3E");
-  background-position: center;
-  background-size: contain;
-  opacity: 0.8;
+  display: none;
 }
 
 .landing-hero__inner {
@@ -245,8 +241,12 @@
 .landing-hero .landing-display {
   max-width: 12ch;
   color: #fffefa;
+  font-family: "Segoe UI", Inter, ui-sans-serif, system-ui, sans-serif;
   font-size: clamp(2.75rem, 5vw, 4.75rem);
+  font-weight: 800;
+  letter-spacing: -0.045em;
   line-height: 1.05;
+  text-shadow: 0 2px 18px rgb(0 0 0 / 24%);
 }
 
 .landing-section {
