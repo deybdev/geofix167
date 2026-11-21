@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import tw from 'twrnc';
 import { getReportAttachments, uploadReportAttachment } from '../../services/residentService';
 import { MAX_ATTACHMENTS, uploadEvidenceQueue, validateEvidence } from '../../utils/residentReport';
-import ReportCapture from './ReportCapture';
+import CameraCapture from '../shared/CameraCapture';
 
 export function ReportAction({ label, onPress, disabled = false }) {
   return <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress}
@@ -166,7 +166,7 @@ export default function ReportMedia({ reportId, attachments, mediaError, canUplo
     {!!notice && <Text accessibilityLiveRegion="polite" style={tw`mt-3 text-slate-700`}>{notice}</Text>}
     {/* One modal avoids overlapping native presentations during capture/retake. */}
     {(capture || preview) && <Modal visible animationType="slide" onRequestClose={capture ? closeCamera : () => setPreview(null)}>
-    {capture ? <ReportCapture initialMode={capture.initialMode} signal={capture.controller.signal} onCapture={acceptCapture} onCancel={closeCamera} />
+    {capture ? <CameraCapture initialMode={capture.initialMode} signal={capture.controller.signal} onCapture={acceptCapture} onCancel={closeCamera} />
       : <MediaPreview media={preview} onClose={() => setPreview(null)}
       {...(preview.pendingId && pending.some(item => item.id === preview.pendingId) ? {
         onRetake: () => openCamera(pending.find(item => item.id === preview.pendingId)),
