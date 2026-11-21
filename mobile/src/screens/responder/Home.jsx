@@ -1,242 +1,311 @@
-import { useCallback, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Pressable, Modal, ActivityIndicator, RefreshControl } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  RefreshControl,
+  Modal,
+  Vibration,
+} from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import { AlertTriangle, CheckCircle2, Clock, MapPin } from 'lucide-react-native';
-import * as Location from 'expo-location';
+import {
+  AlertTriangle,
+  CheckCircle2,
+  MapPin,
+  ChevronRight,
+  BellRing,
+} from 'lucide-react-native';
+import {
+  setAudioModeAsync,
+  useAudioPlaylist,
+  useAudioPlaylistStatus,
+} from 'expo-audio';
 import tw from 'twrnc';
 
 import { useAuth } from '../../context/AuthContext';
 import {
+  addPoliceTestIncident,
   getResponderDispatches,
-  updateResponderDispatchStatus,
 } from '../../services/responderDispatchService';
+
+const GREEN = '#1F7A4D';
+
+// Include DISPATCHED because it is already assigned, even if the officer
+// has not started travelling or updated the response progress yet.
+const ACTIVE_STATUSES = [
+  'DISPATCHED',
+  'ACCEPTED',
+  'EN_ROUTE',
+  'ON_SCENE',
+  'IN_PROGRESS',
+];
 
 export default function ResponderHome() {
   const { user } = useAuth();
   const navigation = useNavigation();
+  const alarmPlayer = useAudioPlaylist({
+    sources: [require('../../../assets/incident-audio.mp3')],
+    loop: 'all',
+  });
+  const alarmStatus = useAudioPlaylistStatus(alarmPlayer);
+  const alarmActiveRef = useRef(false);
+
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
-  const [acceptingId, setAcceptingId] = useState(null);
-  const [permissionPromptItem, setPermissionPromptItem] = useState(null);
-  const [requestingLocation, setRequestingLocation] = useState(false);
+  const [incomingNotice, setIncomingNotice] = useState(null);
+
+  useEffect(() => {
+    setAudioModeAsync({
+      playsInSilentMode: true,
+      shouldPlayInBackground: true,
+      interruptionMode: 'doNotMix',
+    }).catch(() => {});
+
+    return () => {
+      alarmActiveRef.current = false;
+    };
+  }, [alarmPlayer]);
 
   const loadDispatches = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
+
     setError('');
+
     try {
-      const dispatches = await getResponderDispatches();
-      setItems(dispatches.filter((d) => d.status === 'DISPATCHED'));
+      const dispatches = await getResponderDispatches(undefined, user?.role);
+
+      const activeDispatches = (Array.isArray(dispatches) ? dispatches : [])
+        .filter((item) => ACTIVE_STATUSES.includes(item.status));
+
+      // The backend should enforce one active assignment per responder.
+      // This ordering is only a defensive UI fallback if old/duplicate
+      // assignments exist: show the oldest active assignment first.
+      activeDispatches.sort((a, b) => {
+        const aTime = new Date(
+          a.assigned_at || a.created_at || a.createdAt || 0
+        ).getTime();
+        const bTime = new Date(
+          b.assigned_at || b.created_at || b.createdAt || 0
+        ).getTime();
+
+        return aTime - bTime;
+      });
+
+      setItems(activeDispatches);
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Unable to load active assignments.');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [user]);
 
   useFocusEffect(
     useCallback(() => {
       loadDispatches(false);
-    }, [loadDispatches]),
+    }, [loadDispatches])
   );
 
-  function isSuddenIncident(item) {
-    return item.is_guest_emergency === true || Number(item.is_emergency) === 1
-      || item.classification === 'sudden' || item.incident_classification === 'sudden';
+  // Use the oldest active assignment for the dashboard status summary.
+  const currentIncident = items[0] || null;
+
+  function getStatusLabel(status) {
+    const labels = {
+      DISPATCHED: 'Assigned to you',
+      ACCEPTED: 'Assigned to you',
+      EN_ROUTE: 'En Route',
+      ON_SCENE: 'On Scene',
+      IN_PROGRESS: 'In Progress',
+    };
+
+    return labels[status] || status || 'Assigned';
   }
 
-  async function acceptAssignment(item, { locationPermissionHandled = false, locationSharingOff = false } = {}) {
-    setAcceptingId(item.id);
-    setError('');
+  async function stopAlarm() {
+    alarmActiveRef.current = false;
+    Vibration.cancel();
     try {
-      await updateResponderDispatchStatus(item.id, 'ACCEPTED');
-      const acceptedItem = { ...item, status: 'ACCEPTED' };
-      setItems((prev) => prev.map((entry) => entry.id === item.id ? acceptedItem : entry));
-      if (isSuddenIncident(item)) {
-        navigation.navigate('Map', {
-          assignment: acceptedItem,
-          locationPermissionHandled,
-          locationSharingOff,
-        });
-      }
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setAcceptingId(null);
-    }
-  }
-
-  async function continueWithLocationChoice(item, requestPermission) {
-    let granted = false;
-    setRequestingLocation(true);
-    if (requestPermission) {
-      try {
-        const permission = await Location.requestForegroundPermissionsAsync();
-        granted = permission.status === 'granted';
-      } catch {
-        granted = false;
-      }
-    }
-    setPermissionPromptItem(null);
-    setRequestingLocation(false);
-    await acceptAssignment(item, {
-      locationPermissionHandled: true,
-      locationSharingOff: !granted,
-    });
-  }
-
-  async function reopenAssignmentMap(item) {
-    let granted = false;
-    try {
-      const permission = await Location.getForegroundPermissionsAsync();
-      granted = permission.status === 'granted';
+      if (alarmStatus.playing) alarmPlayer.pause();
+      if (alarmStatus.isLoaded) await alarmPlayer.seekTo(0);
     } catch {
-      granted = false;
+      // The audio player can be released while navigating; ignore stale cleanup calls.
     }
-    navigation.navigate('Map', {
-      assignment: item,
-      locationPermissionHandled: true,
-      locationSharingOff: !granted,
-    });
   }
 
-  function handleAccept(item) {
-    if (isSuddenIncident(item)) {
-      setPermissionPromptItem(item);
-      return;
+  function sendTestIncomingIncident() {
+    if (String(user?.role || '').toLowerCase() !== 'police') return;
+
+    const incident = addPoliceTestIncident();
+    setItems((current) => [incident, ...current]);
+    setIncomingNotice(incident);
+    Vibration.vibrate([0, 500, 200, 500], true);
+    alarmActiveRef.current = true;
+    if (alarmStatus.isLoaded) {
+      void alarmPlayer.seekTo(0)
+        .then(() => {
+          if (alarmActiveRef.current) alarmPlayer.play();
+        })
+        .catch(() => {});
+    } else {
+      alarmPlayer.play();
     }
-    void acceptAssignment(item);
+  }
+
+  function viewIncomingReport() {
+    if (!incomingNotice) return;
+    const incident = incomingNotice;
+    setIncomingNotice(null);
+    void stopAlarm();
+    navigation.navigate('Map', {
+      assignment: incident,
+      locationPermissionHandled: false,
+      locationSharingOff: true,
+    });
   }
 
   return (
-    <ScrollView
-      style={tw`flex-1 px-5 pt-6`}
-      contentContainerStyle={tw`pb-8`}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={() => loadDispatches(true)}
-          colors={['#1F7A4D']}
-          tintColor="#1F7A4D"
-        />
-      }
-    >
-      <Text style={tw`text-3xl font-extrabold text-slate-900`}>Home</Text>
-      <Text style={tw`mt-1 text-sm text-slate-500`}>
-        Welcome, {user?.full_name || 'Responder'}.
-      </Text>
-
-      {error ? (
-        <View style={tw`mt-4 rounded-xl bg-red-50 p-3`}>
-          <Text style={tw`text-xs font-semibold text-red-700`}>{error}</Text>
+    <>
+      <ScrollView
+        style={tw`flex-1 bg-slate-50 px-5 pt-6`}
+        contentContainerStyle={tw`pb-10`}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => loadDispatches(true)}
+            colors={[GREEN]}
+            tintColor={GREEN}
+          />
+        }
+      >
+        <View>
+          <Text style={tw`text-3xl font-extrabold text-slate-900`}>
+            Dashboard
+          </Text>
+          <Text style={tw`mt-1 text-sm text-slate-500`}>
+            {String(user?.role || 'Responder').toUpperCase()} overview
+          </Text>
         </View>
-      ) : null}
 
-      {loading ? (
-        <View style={tw`mt-8 items-center`}>
-          <ActivityIndicator size="small" color="#1F7A4D" />
-          <Text style={tw`mt-2 text-xs text-slate-500`}>Loading emergencies...</Text>
-        </View>
-      ) : items.length === 0 ? (
-        <View style={tw`mt-6 flex-row items-center rounded-2xl border border-slate-200 bg-white p-4`}>
-          <Clock size={20} color="#64748B" />
-          <View style={tw`ml-3 flex-1`}>
-            <Text style={tw`text-sm font-semibold text-slate-800`}>No active emergencies</Text>
-            <Text style={tw`mt-0.5 text-xs text-slate-500`}>
-              Incoming guest emergencies and dispatches will appear here.
+        <View style={tw`mt-5 flex-row gap-3`}>
+          <View style={tw`flex-1 rounded-2xl bg-white p-4`}>
+            <View style={tw`h-9 w-9 items-center justify-center rounded-xl bg-green-50`}>
+              <AlertTriangle size={18} color={GREEN} />
+            </View>
+            <Text style={tw`mt-3 text-2xl font-extrabold text-slate-900`}>
+              {loading ? '-' : items.length}
+            </Text>
+            <Text style={tw`mt-1 text-xs font-medium text-slate-500`}>
+              Active assignments
+            </Text>
+          </View>
+
+          <View style={tw`flex-1 rounded-2xl bg-white p-4`}>
+            <View style={tw`h-9 w-9 items-center justify-center rounded-xl bg-green-50`}>
+              <CheckCircle2 size={18} color={GREEN} />
+            </View>
+            <Text
+              numberOfLines={1}
+              style={tw`mt-3 text-base font-extrabold text-slate-900`}
+            >
+              {currentIncident ? getStatusLabel(currentIncident.status) : 'Available'}
+            </Text>
+            <Text style={tw`mt-1 text-xs font-medium text-slate-500`}>
+              Current status
             </Text>
           </View>
         </View>
-      ) : (
-        <View style={tw`mt-5 gap-3`}>
-          {items.map((item) => {
-            const isAccepted = item.status === 'ACCEPTED' || item.status === 'EN_ROUTE' || item.status === 'ON_SCENE';
-            return (
-              <View key={item.id} style={tw`rounded-2xl border border-slate-200 bg-white p-4`}>
-                <View style={tw`flex-row items-center justify-between`}>
-                  <View style={tw`flex-row items-center gap-2`}>
-                    <AlertTriangle size={16} color="#DC2626" />
-                    <Text style={tw`text-xs font-bold uppercase text-red-600`}>
-                      {item.urgency || 'High'} • {item.incident_category}
-                    </Text>
-                  </View>
-                  <Text style={tw`rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold text-slate-700`}>
-                    {item.status}
-                  </Text>
-                </View>
 
-                <Text style={tw`mt-2 text-base font-bold text-slate-900`}>
-                  {item.incident_title}
-                </Text>
+        {String(user?.role || '').toLowerCase() === 'police' ? (
+          <TouchableOpacity
+            onPress={sendTestIncomingIncident}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Test incoming Emergency report"
+            style={tw`mt-4 flex-row items-center justify-center rounded-2xl bg-red-600 px-4 py-3.5`}
+          >
+            <BellRing size={18} color="#FFFFFF" />
+            <Text style={tw`ml-2 text-sm font-extrabold text-white`}>
+              Test Incoming Emergency Report
+            </Text>
+          </TouchableOpacity>
+        ) : null}
 
-                {item.incident_location ? (
-                  <View style={tw`mt-1.5 flex-row items-center gap-1`}>
-                    <MapPin size={13} color="#64748B" />
-                    <Text style={tw`flex-1 text-xs text-slate-500`} numberOfLines={1}>
-                      {item.incident_location}
-                    </Text>
-                  </View>
-                ) : null}
+        {/* ERROR */}
+        {error ? (
+          <View style={tw`mt-4 rounded-xl bg-red-50 p-3`}>
+            <Text style={tw`text-xs font-semibold text-red-700`}>
+              {error}
+            </Text>
 
-                {isAccepted ? (
-                  <TouchableOpacity
-                    onPress={() => void reopenAssignmentMap(item)}
-                    style={tw`mt-3 flex-row items-center justify-center gap-1.5 rounded-xl bg-green-50 px-3 py-2.5`}
-                  >
-                    <CheckCircle2 size={15} color="#1F7A4D" />
-                    <Text style={tw`text-xs font-bold text-green-800`}>Accepted — Tap to Open Map</Text>
-                  </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity
-                    onPress={() => handleAccept(item)}
-                    disabled={acceptingId === item.id}
-                    style={tw`mt-3 items-center rounded-xl bg-[#1F7A4D] py-2.5`}
-                  >
-                    <Text style={tw`text-xs font-bold text-white`}>
-                      {acceptingId === item.id ? 'Accepting...' : 'Accept Emergency'}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            );
-          })}
+            <TouchableOpacity
+              onPress={() => loadDispatches(true)}
+              style={tw`mt-2`}
+            >
+              <Text style={tw`text-xs font-bold text-red-700`}>
+                Try again
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
+        {/* QUICK ACCESS */}
+        <View style={tw`mt-7`}>
+          <Text style={tw`mb-3 text-base font-bold text-slate-900`}>
+            Quick Access
+          </Text>
+
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Map')}
+            style={tw`flex-row items-center rounded-xl border border-slate-200 bg-white p-3`}
+            activeOpacity={0.8}
+          >
+            <MapPin size={19} color={GREEN} />
+            <Text style={tw`ml-2 text-xs font-bold text-slate-700`}>
+              Open Live Map
+            </Text>
+            <View style={tw`flex-1`} />
+            <ChevronRight size={16} color="#94A3B8" />
+          </TouchableOpacity>
         </View>
-      )}
-
+      </ScrollView>
       <Modal
-        visible={Boolean(permissionPromptItem)}
+        visible={Boolean(incomingNotice)}
         transparent
         animationType="fade"
-        onRequestClose={() => setPermissionPromptItem(null)}
+        statusBarTranslucent
+        onRequestClose={viewIncomingReport}
       >
-        <View style={tw`flex-1 items-center justify-center bg-slate-950/50 px-6`}>
-          <View style={tw`w-full max-w-md rounded-3xl bg-white p-5 shadow-xl`}>
-            <View style={tw`h-11 w-11 items-center justify-center rounded-2xl bg-green-50`}>
-              <MapPin size={21} color="#1F7A4D" />
+        <View style={tw`flex-1 items-center justify-center bg-black/50 px-6`}>
+          <View style={tw`w-full rounded-3xl bg-white p-6`}>
+            <View style={tw`h-12 w-12 items-center justify-center rounded-full bg-red-100`}>
+              <BellRing size={24} color="#DC2626" />
             </View>
-            <Text style={tw`mt-4 text-lg font-extrabold text-slate-900`}>Share your location while responding?</Text>
-            <Text style={tw`mt-2 text-sm leading-5 text-slate-600`}>
-              GeoFix 167 uses foreground location to show your route and update the incident tracking map. You can still accept and navigate manually if you skip location sharing.
+            <Text style={tw`mt-4 text-lg font-extrabold text-slate-900`}>
+              Incoming Emergency Report
             </Text>
-            <Pressable
-              onPress={() => void continueWithLocationChoice(permissionPromptItem, true)}
-              disabled={requestingLocation || acceptingId === permissionPromptItem?.id}
-              style={tw`mt-5 items-center rounded-xl bg-[#1F7A4D] py-3 ${requestingLocation ? 'opacity-60' : ''}`}
+            <Text style={tw`mt-2 text-sm font-bold text-slate-800`}>
+              {incomingNotice?.incident_title}
+            </Text>
+            <Text style={tw`mt-1 text-sm text-slate-500`}>
+              {incomingNotice?.incident_location}
+            </Text>
+            <TouchableOpacity
+              onPress={viewIncomingReport}
+              activeOpacity={0.85}
+              accessibilityRole="button"
+              accessibilityLabel="View reports on the map"
+              style={tw`mt-6 items-center rounded-xl bg-[#1F7A4D] py-3.5`}
             >
-              <Text style={tw`text-sm font-bold text-white`}>{requestingLocation ? 'Checking permission...' : 'Continue and share location'}</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => void continueWithLocationChoice(permissionPromptItem, false)}
-              disabled={requestingLocation || acceptingId === permissionPromptItem?.id}
-              style={tw`mt-2 items-center rounded-xl border border-slate-200 bg-white py-3`}
-            >
-              <Text style={tw`text-sm font-bold text-slate-700`}>Skip location and open map</Text>
-            </Pressable>
+              <Text style={tw`text-sm font-extrabold text-white`}>
+                View Reports
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
-    </ScrollView>
+    </>
   );
 }

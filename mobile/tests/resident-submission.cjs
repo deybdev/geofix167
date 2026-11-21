@@ -66,7 +66,7 @@ async function scenario({ count, emergency = false, fail = false, lostResponse =
     '../../services/residentService': {
       buildResidentReportPayload: value => value,
       submitReport: async payload => {
-        if (emergency) { assert.equal(payload.category, 'fire'); assert.equal(payload.urgency, 'CRITICAL'); }
+        if (emergency) { assert.equal(payload.category, 'Fire Incident'); assert.equal(payload.urgency, undefined); }
         creationRequests++; creationKeys.push(payload.idempotency_key);
         if (creationRequests === 1) { creates++; if (creationLost) throw new Error('Response lost'); }
         else assert.equal(payload.idempotency_key, creationKeys[0]);
@@ -88,11 +88,10 @@ async function scenario({ count, emergency = false, fail = false, lostResponse =
         saved.push({ upload_id: uploadId });
       },
     },
-  }, source => source.replace('  return (\n    <KeyboardAvoidingView', '  return { pickPhoto, send, selectType, selectPriority, handleMapSelect, goTo, step, photos, pendingNotice, photoNotice, successNotice, submitError, ui: (\n    <KeyboardAvoidingView').replace(/\);\s*}\s*$/, ') };\n}')).default;
+  }, source => source.replace('  return (\n    <KeyboardAvoidingView', '  return { pickPhoto, send, selectType, handleMapSelect, goTo, step, photos, pendingNotice, photoNotice, successNotice, submitError, ui: (\n    <KeyboardAvoidingView').replace(/\);\s*}\s*$/, ') };\n}')).default;
   const render = () => { index = 0; return screen({ guestMode }); };
   let view = render();
   view.selectType(emergency ? 'emergency' : 'infrastructure');
-  view = render(); if (emergency) view.selectPriority(1);
   view = render();
   if (emergency) { nodes(view.ui).find(n => n.props?.item?.id === 'fire').props.onPress(); view = render(); }
   const first = nodes(view.ui).find(n => n.props?.label === 'Take Photo');
@@ -152,7 +151,6 @@ async function scenario({ count, emergency = false, fail = false, lostResponse =
   if (emergency) {
     assert.equal(navigations[0][0], 'Track');
     assert.equal(navigations[0][1].reportId, 'returned-id');
-    assert.equal(navigations[0][1].priority, 1);
     assert.equal(navigations[0][1].location.lat, 14.7);
     await view.send(); assert.equal(creates, 1);
   } else {

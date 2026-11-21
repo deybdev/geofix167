@@ -31,6 +31,7 @@ import {
 import tw from 'twrnc';
 
 import MapViewer from '../../components/map/MapViewer';
+import { useAuth } from '../../context/AuthContext';
 import {
   generateHospitalQrHandover,
   getNearestHospitals,
@@ -184,6 +185,7 @@ function buildInitialPatients(assignment) {
 export default function ResponderMap() {
   const navigation = useNavigation();
   const route = useRoute();
+  const { user } = useAuth();
 
   const [activeAssignment, setActiveAssignment] = useState(route.params?.assignment || null);
   const [currentLocation, setCurrentLocation] = useState(null);
@@ -331,7 +333,7 @@ export default function ResponderMap() {
   useEffect(() => {
     if (activeAssignment || caseClosedOnMap) return undefined;
     let mounted = true;
-    getResponderDispatches()
+    getResponderDispatches(undefined, user?.role)
       .then((list) => {
         if (!mounted) return;
         const found = list.find((d) =>
@@ -346,7 +348,7 @@ export default function ResponderMap() {
     return () => {
       mounted = false;
     };
-  }, [activeAssignment, caseClosedOnMap]);
+  }, [activeAssignment, caseClosedOnMap, user]);
 
   const patientPoint = useMemo(() => {
     if (activeAssignment && hasCoordinates(activeAssignment)) {
@@ -610,6 +612,10 @@ export default function ResponderMap() {
           navigationUserLocation={currentLocation}
           highwayShields={getHighwayShields(routePoints)}
           showBackButton={false}
+          showBasemapControl={false}
+          hideMapLabel
+          showMapInfoButton={false}
+          showZoomControls={false}
           showBoundary={!isNavigating}
           highlightBoundary={!isNavigating}
           compact={false}

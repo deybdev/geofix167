@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react';
-import { Alert, Pressable, Text, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
 import {
   ClipboardList,
   Clock3,
@@ -9,32 +9,55 @@ import {
   MessageCircle,
   UserRound,
 } from 'lucide-react-native';
-import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import tw from 'twrnc';
 
 import { useAuth } from '../context/AuthContext';
-import { getMapLocationPermissionParams } from '../services/locationPermissionService';
-import { getResponderDispatches } from '../services/responderDispatchService';
+
+const COLORS = {
+  brandDark: '#0B2E22',
+  brand: '#1F7A4D',
+  inactive: '#94A3B8',
+};
 
 const NAV_ITEMS = [
-  { route: 'Home', label: 'Home', Icon: House },
-  { route: 'Assignments', label: 'Assignments', Icon: ClipboardList },
-  { route: 'Map', label: 'Map', Icon: Map },
+  { route: 'Home', label: 'Dashboard', Icon: House },
   { route: 'History', label: 'History', Icon: Clock3 },
+  { route: 'Map', label: 'Map', Icon: Map },
   { route: 'Profile', label: 'Profile', Icon: UserRound },
 ];
+
+const MESSAGES_ITEM = {
+  route: 'Messages',
+  label: 'Messages',
+  Icon: MessageCircle,
+};
 
 const NAV_ITEMS_BY_ROLE = {
   bdrrmo: [
     { route: 'Home', label: 'Home', Icon: House },
     { route: 'Dispatch', label: 'Dispatch', Icon: ClipboardList },
     { route: 'Map', label: 'Map', Icon: Map },
-    { route: 'Messages', label: 'Messages', Icon: MessageCircle },
+    MESSAGES_ITEM,
     { route: 'Profile', label: 'Profile', Icon: UserRound },
   ],
-  police: [...NAV_ITEMS.slice(0, 3), { route: 'Messages', label: 'Messages', Icon: MessageCircle }, ...NAV_ITEMS.slice(3)],
-  fire: [...NAV_ITEMS.slice(0, 3), { route: 'Messages', label: 'Messages', Icon: MessageCircle }, ...NAV_ITEMS.slice(3)],
+
+  police: [
+    NAV_ITEMS[0], // Dashboard
+    MESSAGES_ITEM,
+    NAV_ITEMS[2], // Map
+    NAV_ITEMS[1], // History
+    NAV_ITEMS[3], // Profile
+  ],
+
+  fire: [
+    NAV_ITEMS[0], // Dashboard
+    MESSAGES_ITEM,
+    NAV_ITEMS[2], // Map
+    NAV_ITEMS[1], // History
+    NAV_ITEMS[3], // Profile
+  ],
 };
 
 const ROLE_LABELS = {
@@ -43,33 +66,51 @@ const ROLE_LABELS = {
   fire: 'BFP',
 };
 
+
+function getInitials(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return 'R';
+  return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
+}
+
+function NavTab({ item, isActive, onPress }) {
+  const { label, Icon } = item;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${label} tab`}
+      accessibilityState={{ selected: isActive }}
+      style={({ pressed }) => [tw`flex-1 items-center justify-center py-1`, { opacity: pressed ? 0.7 : 1 }]}
+    >
+      <View
+        style={[
+          tw`h-8 w-14 items-center justify-center rounded-full`,
+          isActive ? tw`bg-green-100` : null,
+        ]}
+      >
+        <Icon size={21} color={isActive ? COLORS.brand : COLORS.inactive} strokeWidth={isActive ? 2.4 : 2} />
+      </View>
+      <Text
+        numberOfLines={1}
+        style={tw`mt-1 text-center text-[10px] ${isActive ? 'font-bold text-[#1F7A4D]' : 'font-medium text-slate-400'}`}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
 export default function ResponderLayout({ children }) {
   const { user, signOut } = useAuth();
   const navigation = useNavigation();
   const { name: currentRoute } = useRoute();
   const [loggingOut, setLoggingOut] = useState(false);
-  const [activeAssignment, setActiveAssignment] = useState(null);
+  const [onDuty, setOnDuty] = useState(true);
   const role = String(user?.role || '').toLowerCase();
   const navItems = NAV_ITEMS_BY_ROLE[role] || NAV_ITEMS;
 
-  async function openActiveAssignmentMap() {
-    if (!activeAssignment) return;
-    const locationParams = await getMapLocationPermissionParams();
-    navigation.navigate('Map', { assignment: activeAssignment, ...locationParams });
-  }
-
-  useFocusEffect(useCallback(() => {
-    if (currentRoute === 'Map') return undefined;
-    let active = true;
-    getResponderDispatches()
-      .then((dispatches) => {
-        if (!active) return;
-        setActiveAssignment(dispatches.find((assignment) =>
-          ['ACCEPTED', 'EN_ROUTE', 'ON_SCENE'].includes(assignment.status)) ?? null);
-      })
-      .catch(() => {});
-    return () => { active = false; };
-  }, [currentRoute]));
 
   const confirmSignOut = () => {
     Alert.alert('Sign out', 'Are you sure you want to sign out?', [
@@ -93,86 +134,95 @@ export default function ResponderLayout({ children }) {
 
   return (
     <SafeAreaView style={tw`flex-1 bg-slate-50`} edges={['top', 'bottom']}>
-      <View style={tw`flex-row items-center justify-between bg-[#0B2E22] px-5 py-4`}>
-        <View>
-          <Text style={tw`text-xs font-bold uppercase tracking-widest text-green-200`}>
-            GeoFix 167
-          </Text>
-          <Text style={tw`mt-1 text-lg font-bold text-white`}>
-            {ROLE_LABELS[role] || 'Responder'}
-          </Text>
-          <Text style={tw`mt-0.5 text-xs text-green-100`}>
-            {user?.full_name || 'Responder'}
-          </Text>
-        </View>
-        <Pressable
-          onPress={confirmSignOut}
-          disabled={loggingOut}
-          accessibilityRole="button"
-          accessibilityLabel="Sign out"
-          style={({ pressed }) => [
-            tw`h-11 w-11 items-center justify-center rounded-xl bg-white/10`,
-            { opacity: pressed || loggingOut ? 0.6 : 1 },
-          ]}
-        >
-          <LogOut size={20} color="#fff" />
-        </Pressable>
-      </View>
-      <View style={tw`flex-1`}>
-        {currentRoute !== 'Map' && activeAssignment ? (
-          <Pressable
-            onPress={() => void openActiveAssignmentMap()}
-            accessibilityRole="button"
-            accessibilityLabel="View active response in map"
-            style={({ pressed }) => [
-              tw`mx-3 mt-2 flex-row items-center justify-between rounded-xl border border-green-200 bg-green-50 px-3 py-2.5`,
-              { opacity: pressed ? 0.8 : 1 },
-            ]}
+      {currentRoute !== 'Map' ? (
+        <>
+          {/* Header */}
+          <View
+            style={tw`flex-row items-center bg-[#0B2E22] px-4 pb-4 pt-3 rounded-b-3xl`}
           >
-            <View style={tw`flex-1 pr-3`}>
-              <Text style={tw`text-[10px] font-extrabold uppercase tracking-wider text-green-800`}>Active response</Text>
-              <Text numberOfLines={1} style={tw`mt-0.5 text-xs font-semibold text-slate-800`}>
-                {activeAssignment.incident_title || activeAssignment.incident_category || 'Incident assignment'}
+            <View style={tw`h-11 w-11 items-center justify-center rounded-full bg-green-400/20`}>
+              <Text style={tw`text-sm font-extrabold text-green-100`}>
+                {getInitials(user?.full_name)}
               </Text>
             </View>
-            <View style={tw`flex-row items-center gap-1`}>
-              <Map size={14} color="#1F7A4D" />
-              <Text style={tw`text-xs font-bold text-green-800`}>View in map</Text>
-            </View>
-          </Pressable>
-        ) : null}
-        <View style={tw`flex-1`}>{children}</View>
-      </View>
-      <View style={tw`flex-row border-t border-slate-200 bg-white px-1 pt-2`}>
-        {navItems.map(({ route, label, Icon }) => {
-          const isActive = currentRoute === route;
 
-          return (
+            <View style={tw`ml-3 flex-1`}>
+              <Text numberOfLines={1} style={tw`mt-0.5 text-base font-bold text-white`}>
+                {user?.full_name || 'Responder'}
+              </Text>
+              <Text style={tw`mt-0.5 text-xs font-medium text-green-200`}>
+                {ROLE_LABELS[role] || 'Responder'}
+              </Text>
+            </View>
+
             <Pressable
-              key={route}
-              onPress={() => navigation.navigate(route)}
+              onPress={() => setOnDuty((current) => !current)}
               accessibilityRole="button"
-              accessibilityLabel={`${label} tab`}
-              accessibilityState={{ selected: isActive }}
+              accessibilityLabel={onDuty ? 'Set responder off duty' : 'Set responder on duty'}
+              accessibilityState={{ selected: onDuty }}
               style={({ pressed }) => [
-                tw`flex-1 items-center justify-center rounded-xl py-2`,
-                { opacity: pressed ? 0.65 : 1 },
+                tw`mr-2 flex-row items-center rounded-full border px-2.5 py-2`,
+                {
+                  backgroundColor: onDuty ? 'rgba(74, 222, 128, 0.18)' : 'rgba(148, 163, 184, 0.18)',
+                  borderColor: onDuty ? 'rgba(74, 222, 128, 0.55)' : 'rgba(148, 163, 184, 0.45)',
+                  opacity: pressed ? 0.7 : 1,
+                },
               ]}
             >
-              <Icon size={20} color={isActive ? '#1F7A4D' : '#64748B'} />
-              <Text
-                numberOfLines={1}
-                style={
-                  isActive
-                    ? tw`mt-1 text-center text-[10px] font-bold text-[#1F7A4D]`
-                    : tw`mt-1 text-center text-[10px] font-medium text-slate-500`
-                }
-              >
-                {label}
+              <View
+                style={[
+                  tw`mr-1.5 h-2 w-2 rounded-full`,
+                  { backgroundColor: onDuty ? '#4ADE80' : '#94A3B8' },
+                ]}
+              />
+              <Text style={tw`text-[10px] font-extrabold text-white`}>
+                {onDuty ? 'ON DUTY' : 'OFF DUTY'}
               </Text>
             </Pressable>
-          );
-        })}
+
+            <Pressable
+              onPress={confirmSignOut}
+              disabled={loggingOut}
+              accessibilityRole="button"
+              accessibilityLabel="Sign out"
+              hitSlop={8}
+              style={({ pressed }) => [
+                tw`h-11 w-11 items-center justify-center rounded-full bg-white/10`,
+                { opacity: pressed || loggingOut ? 0.6 : 1 },
+              ]}
+            >
+              {loggingOut ? <ActivityIndicator size="small" color="#fff" /> : <LogOut size={19} color="#fff" />}
+            </Pressable>
+          </View>
+        </>
+      ) : null}
+
+      {/* Content */}
+      <View style={tw`flex-1`}>
+        <View style={tw`flex-1`}>{children}</View>
+      </View>
+
+      {/* Bottom navigation */}
+      <View
+        style={[
+          tw`flex-row rounded-t-3xl bg-white px-2 pb-1 pt-2`,
+          {
+            shadowColor: '#0F172A',
+            shadowOpacity: 0.08,
+            shadowRadius: 12,
+            shadowOffset: { width: 0, height: -3 },
+            elevation: 12,
+          },
+        ]}
+      >
+        {navItems.map((item) => (
+          <NavTab
+            key={item.route}
+            item={item}
+            isActive={currentRoute === item.route}
+            onPress={() => navigation.navigate(item.route)}
+          />
+        ))}
       </View>
     </SafeAreaView>
   );

@@ -81,49 +81,12 @@ const MAP_HEIGHT = 280;
 const HOTLINE = '668-338-3141';
 const NATIONAL_EMERGENCY = '911';
 
-// Emergency reports get an extra Priority step; infrastructure skips it.
 const getSteps = (type) => [
   { key: 'type', label: 'Type' },
-  ...(type === 'emergency' ? [{ key: 'priority', label: 'Priority' }] : []),
   { key: 'details', label: 'Details' },
   { key: 'location', label: 'Location' },
   { key: 'evidence', label: 'Evidence' },
   { key: 'review', label: 'Review' },
-];
-
-const PRIORITIES = [
-  {
-    id: 1,
-    label: 'Priority 1 – Immediate',
-    description: 'Life is at risk right now. Needs instant response.',
-    main: '#DC2626',
-    dark: '#991B1B',
-    tint: '#FEF2F2',
-  },
-  {
-    id: 2,
-    label: 'Priority 2 – Urgent',
-    description: 'Serious situation that needs a fast response.',
-    main: '#EA580C',
-    dark: '#9A3412',
-    tint: '#FFF7ED',
-  },
-  {
-    id: 3,
-    label: 'Priority 3 – Normal',
-    description: 'Needs attention, but no one is in immediate danger.',
-    main: '#CA8A04',
-    dark: '#854D0E',
-    tint: '#FEFCE8',
-  },
-  {
-    id: 4,
-    label: 'Priority 4 – Low',
-    description: 'Minor concern that can be handled when available.',
-    main: '#2563EB',
-    dark: '#1E40AF',
-    tint: '#EFF6FF',
-  },
 ];
 
 // Colors follow the report type: green for infrastructure, red for emergency.
@@ -175,6 +138,27 @@ const CHECKLISTS = {
     { id: 'electrical_wire', label: 'Dangling Electrical Wire', icon: Zap },
     { id: 'other', label: 'Other', icon: Ellipsis },
   ],
+};
+
+const CATEGORY_BY_SELECTION = {
+  emergency: {
+    fire: 'Fire Incident',
+    medical: 'Medical Emergency',
+    crime: 'Crime / Public Disturbance',
+    accident: 'Road Accident',
+    flood: 'Incident / Emergency',
+    other: 'Incident / Emergency',
+  },
+  infrastructure: {
+    road: 'Road Damage / Pothole',
+    streetlight: 'Streetlight',
+    drainage: 'Drainage / Flooding',
+    garbage: 'Sanitation / Garbage Collection',
+    water_leak: 'Water Hazard / Leak',
+    fallen_tree: 'Structural',
+    electrical_wire: 'Electrical / Power Hazard',
+    other: 'Structural',
+  },
 };
 
 // MapViewer falls back to demo incidents when it receives none. A single
@@ -240,21 +224,24 @@ function isInsideBarangay(lat, lng) {
    SMALL COMPONENTS
 ------------------------------------------ */
 
-function StepHeader({ step, steps, theme, onBack }) {
+function StepHeader({ step, steps, theme, onBack, topInset }) {
   return (
-    <View style={tw`px-4 pb-4 pt-3`}>
+    <View
+      style={[
+        tw`px-4 pb-4`,
+        { paddingTop: topInset + 15 },
+      ]}
+    >
       <View style={tw`flex-row items-center`}>
-        {step > 0 ? (
-          <Pressable
-            onPress={onBack}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel="Previous step"
-            style={tw`mr-2 h-9 w-9 items-center justify-center rounded-full bg-slate-100`}
-          >
-            <ChevronLeft size={20} color="#334155" />
-          </Pressable>
-        ) : null}
+        <Pressable
+          onPress={onBack}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel={step > 0 ? 'Previous step' : 'Back'}
+          style={tw`mr-2 h-9 w-9 items-center justify-center rounded-full bg-slate-100`}
+        >
+          <ChevronLeft size={20} color="#334155" />
+        </Pressable>
 
         <View style={tw`flex-1`}>
           <Text style={tw`text-xl font-extrabold text-slate-900`}>Report an Incident</Text>
@@ -310,7 +297,7 @@ function TypeCard({ type, selected, onPress }) {
       accessibilityState={{ selected }}
       accessibilityLabel={`${type.label} report`}
       style={({ pressed }) => [
-        tw`mb-3 flex-row items-center rounded-3xl p-4`,
+        tw`mb-3 flex-row items-center rounded-3xl p-5`,
         {
           backgroundColor: selected ? type.tint : '#FFFFFF',
           borderWidth: 2,
@@ -334,19 +321,6 @@ function TypeCard({ type, selected, onPress }) {
         </Text>
         <Text style={tw`mt-0.5 text-xs leading-4 text-slate-600`}>{type.description}</Text>
         <Text style={tw`mt-1 text-[11px] font-medium text-slate-400`}>{type.examples}</Text>
-      </View>
-
-      <View
-        style={[
-          tw`ml-2 h-6 w-6 items-center justify-center rounded-full`,
-          {
-            backgroundColor: selected ? type.main : '#FFFFFF',
-            borderWidth: selected ? 0 : 2,
-            borderColor: COLORS.border,
-          },
-        ]}
-      >
-        {selected && <Check size={14} color="#FFFFFF" strokeWidth={3} />}
       </View>
     </Pressable>
   );
@@ -397,85 +371,6 @@ function CheckRow({ item, theme, checked, onPress }) {
         style={[tw`flex-1 text-sm font-semibold`, { color: checked ? theme.dark : '#334155' }]}
       >
         {item.label}
-      </Text>
-    </Pressable>
-  );
-}
-
-function PriorityCard({ priority, selected, onPress }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      accessibilityLabel={priority.label}
-      style={({ pressed }) => [
-        tw`mb-3 flex-row items-center rounded-3xl p-4`,
-        {
-          backgroundColor: selected ? priority.tint : '#FFFFFF',
-          borderWidth: 2,
-          borderColor: selected ? priority.main : COLORS.border,
-          opacity: pressed ? 0.85 : 1,
-        },
-      ]}
-    >
-      <View
-        style={[
-          tw`h-12 w-12 items-center justify-center rounded-2xl`,
-          { backgroundColor: selected ? priority.main : priority.tint },
-        ]}
-      >
-        <Text
-          style={[tw`text-xl font-extrabold`, { color: selected ? '#FFFFFF' : priority.main }]}
-        >
-          {priority.id}
-        </Text>
-      </View>
-
-      <View style={tw`ml-4 flex-1`}>
-        <Text
-          style={[tw`text-base font-extrabold`, { color: selected ? priority.dark : '#0F172A' }]}
-        >
-          {priority.label}
-        </Text>
-        <Text style={tw`mt-0.5 text-xs leading-4 text-slate-600`}>{priority.description}</Text>
-      </View>
-
-      <View
-        style={[
-          tw`ml-2 h-6 w-6 items-center justify-center rounded-full`,
-          {
-            backgroundColor: selected ? priority.main : '#FFFFFF',
-            borderWidth: selected ? 0 : 2,
-            borderColor: COLORS.border,
-          },
-        ]}
-      >
-        {selected && <Check size={14} color="#FFFFFF" strokeWidth={3} />}
-      </View>
-    </Pressable>
-  );
-}
-
-function Chip({ label, selected, theme, onPress }) {
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      style={({ pressed }) => [
-        tw`mb-2 mr-2 flex-row items-center rounded-full px-3.5 py-2`,
-        {
-          backgroundColor: selected ? theme.main : '#FFFFFF',
-          borderWidth: 1.5,
-          borderColor: selected ? theme.main : COLORS.border,
-          opacity: pressed ? 0.8 : 1,
-        },
-      ]}
-    >
-      {selected && <Check size={13} color="#FFFFFF" strokeWidth={3} style={tw`mr-1`} />}
-      <Text style={[tw`text-xs font-semibold`, { color: selected ? '#FFFFFF' : '#334155' }]}>
-        {label}
       </Text>
     </Pressable>
   );
@@ -614,7 +509,6 @@ export default function Report({ guestMode = false, route }) {
   const [reportType, setReportType] = useState(
     route?.params?.reportType === 'emergency' ? 'emergency' : null
   ); // 'emergency' | 'infrastructure'
-  const [priority, setPriority] = useState(null); // 1-4, emergency only
   const [checks, setChecks] = useState([]); // quick-detail check ids
   const [description, setDescription] = useState('');
   const [guestAlias, setGuestAlias] = useState('');
@@ -646,7 +540,6 @@ export default function Report({ guestMode = false, route }) {
 
   const errors = {
     type: reportType ? null : 'Please choose the type of report.',
-    priority: priority ? null : 'Please choose a priority level.',
     details: detailsError,
     location: location ? null : 'Tap the map or use your current location.',
     evidence: photoError,
@@ -679,6 +572,16 @@ export default function Report({ guestMode = false, route }) {
     if (step > 0) goTo(step - 1);
   };
 
+  const handleHeaderBack = () => {
+    if (submittingRef.current) return;
+    if (step > 0) {
+      goBack();
+      return;
+    }
+    if (navigation.canGoBack()) navigation.goBack();
+    else navigation.navigate('Resident');
+  };
+
   const goNext = () => {
     if (currentError) {
       setAttempted(true);
@@ -707,19 +610,13 @@ export default function Report({ guestMode = false, route }) {
 
   /* ---------- selections ---------- */
 
-  // Choosing a type or a priority moves straight on, no Next needed.
+  // Choosing a type moves straight to the quick details.
   const selectType = (type) => {
     if (type !== reportType) {
       setReportType(type);
-      setPriority(null);
       setChecks([]); // check items differ per type
     }
     goTo(1);
-  };
-
-  const selectPriority = (id) => {
-    setPriority(id);
-    goTo(2);
   };
 
   const toggleCheck = (id) =>
@@ -837,7 +734,6 @@ export default function Report({ guestMode = false, route }) {
     setPhotoNotice('');
     setStep(0);
     setReportType(null);
-    setPriority(null);
     setChecks([]);
     setDescription('');
     setGuestAlias('');
@@ -864,9 +760,11 @@ export default function Report({ guestMode = false, route }) {
 
     try {
       const selectedChecks = checks.length ? `Selected details: ${checks.join(', ')}` : '';
+      const selectedCategory = CATEGORY_BY_SELECTION[reportType]?.[checks[0]] || (
+        reportType === 'emergency' ? 'Incident / Emergency' : 'Structural'
+      );
       const residentPayload = buildResidentReportPayload({
-        category: checks[0] || 'other',
-        urgency: ({ 1: 'CRITICAL', 2: 'HIGH', 3: 'MEDIUM', 4: 'LOW' })[priority] || 'MEDIUM',
+        category: selectedCategory,
         isEmergency: reportType === 'emergency',
         description: [description.trim(), selectedChecks].filter(Boolean).join('\n'),
         position: location,
@@ -880,8 +778,7 @@ export default function Report({ guestMode = false, route }) {
         guest_alias: guestAlias.trim(),
         title: reportType === 'emergency' ? 'Emergency incident' : 'Infrastructure concern',
         classification: reportType === 'emergency' ? 'sudden' : 'maintenance',
-        incident_category: reportType === 'emergency' ? 'Incident / Emergency' : 'Road Damage',
-        priority_level: priority === 4 ? 'LOW' : priority === 3 ? 'MEDIUM' : 'HIGH',
+        incident_category: selectedCategory,
       });
       else {
         const session = await submitResidentEvidence(submissionRef.current, {
@@ -902,7 +799,6 @@ export default function Report({ guestMode = false, route }) {
         navigation.replace('Track', {
           reportId: submissionRef.current.report.public_id,
           location: { lat: location.lat, lng: location.lng },
-          priority,
         });
         return;
       }
@@ -954,28 +850,6 @@ export default function Report({ guestMode = false, route }) {
         selected={reportType === 'infrastructure'}
         onPress={() => selectType('infrastructure')}
       />
-    </>
-  );
-
-  const renderPriorityStep = () => (
-    <>
-      <StepTitle
-        title="How urgent is it?"
-        subtitle="Choose the priority level that matches the situation."
-      />
-
-      <EmergencyNotice />
-
-      {PRIORITIES.map((item) => (
-        <PriorityCard
-          key={item.id}
-          priority={item}
-          selected={priority === item.id}
-          onPress={() => selectPriority(item.id)}
-        />
-      ))}
-
-      <FieldError message={showError} />
     </>
   );
 
@@ -1210,7 +1084,6 @@ export default function Report({ guestMode = false, route }) {
 
   const renderReviewStep = () => {
     const TypeIcon = theme.icon;
-    const priorityInfo = PRIORITIES.find((item) => item.id === priority) ?? null;
 
     return (
       <>
@@ -1219,21 +1092,6 @@ export default function Report({ guestMode = false, route }) {
         {isEmergency && <EmergencyNotice />}
 
         <SummaryCard label="Report" onEdit={() => goTo(0)}>
-          {priorityInfo && (
-            <Pressable
-              onPress={() => goTo(stepIndex('priority'))}
-              accessibilityRole="button"
-              accessibilityLabel="Edit priority"
-              style={[
-                tw`mb-3 flex-row items-center self-start rounded-full px-3 py-1.5`,
-                { backgroundColor: priorityInfo.tint },
-              ]}
-            >
-              <Text style={[tw`text-xs font-extrabold`, { color: priorityInfo.dark }]}>
-                {priorityInfo.label}
-              </Text>
-            </Pressable>
-          )}
           <View style={tw`flex-row items-center`}>
             <View
               style={[
@@ -1317,8 +1175,6 @@ export default function Report({ guestMode = false, route }) {
     switch (stepKey) {
       case 'type':
         return renderTypeStep();
-      case 'priority':
-        return renderPriorityStep();
       case 'details':
         return renderDetailsStep();
       case 'location':
@@ -1350,7 +1206,13 @@ export default function Report({ guestMode = false, route }) {
       style={tw`flex-1 bg-white`}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <StepHeader step={step} steps={steps} theme={theme} onBack={goBack} />
+      <StepHeader
+        step={step}
+        steps={steps}
+        theme={theme}
+        onBack={handleHeaderBack}
+        topInset={insets.top}
+      />
 
       <ScrollView
         ref={scrollRef}
@@ -1371,8 +1233,8 @@ export default function Report({ guestMode = false, route }) {
         </ScrollView>
       )}
 
-      {/* FOOTER (hidden on Type and Priority, which advance on tap) */}
-      {stepKey !== 'type' && stepKey !== 'priority' && (
+      {/* FOOTER (hidden on Type, which advances on tap) */}
+      {stepKey !== 'type' && (
       <View
         style={[
           tw`flex-row px-4 pt-3`,
