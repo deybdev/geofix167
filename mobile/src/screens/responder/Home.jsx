@@ -24,10 +24,7 @@ import {
 import tw from 'twrnc';
 
 import { useAuth } from '../../context/AuthContext';
-import {
-  addPoliceTestIncident,
-  getResponderDispatches,
-} from '../../services/responderDispatchService';
+import { getResponderDispatches } from '../../services/responderDispatchService';
 
 const GREEN = '#1F7A4D';
 
@@ -50,6 +47,7 @@ export default function ResponderHome() {
   });
   const alarmStatus = useAudioPlaylistStatus(alarmPlayer);
   const alarmActiveRef = useRef(false);
+  const seenIncomingIdsRef = useRef(new Set());
 
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -66,6 +64,7 @@ export default function ResponderHome() {
 
     return () => {
       alarmActiveRef.current = false;
+      Vibration.cancel();
     };
   }, [alarmPlayer]);
 
@@ -95,6 +94,25 @@ export default function ResponderHome() {
       });
 
       setItems(activeDispatches);
+
+      const newIncoming = activeDispatches.find(
+        (item) => item.status === 'DISPATCHED' && !seenIncomingIdsRef.current.has(item.id),
+      );
+      if (newIncoming) {
+        seenIncomingIdsRef.current.add(newIncoming.id);
+        setIncomingNotice(newIncoming);
+        Vibration.vibrate([0, 500, 200, 500], true);
+        alarmActiveRef.current = true;
+        if (alarmStatus.isLoaded) {
+          void alarmPlayer.seekTo(0)
+            .then(() => {
+              if (alarmActiveRef.current) alarmPlayer.play();
+            })
+            .catch(() => {});
+        } else {
+          alarmPlayer.play();
+        }
+      }
     } catch (err) {
       setError(err.message || 'Unable to load active assignments.');
     } finally {
@@ -132,25 +150,6 @@ export default function ResponderHome() {
       if (alarmStatus.isLoaded) await alarmPlayer.seekTo(0);
     } catch {
       // The audio player can be released while navigating; ignore stale cleanup calls.
-    }
-  }
-
-  function sendTestIncomingIncident() {
-    if (String(user?.role || '').toLowerCase() !== 'police') return;
-
-    const incident = addPoliceTestIncident();
-    setItems((current) => [incident, ...current]);
-    setIncomingNotice(incident);
-    Vibration.vibrate([0, 500, 200, 500], true);
-    alarmActiveRef.current = true;
-    if (alarmStatus.isLoaded) {
-      void alarmPlayer.seekTo(0)
-        .then(() => {
-          if (alarmActiveRef.current) alarmPlayer.play();
-        })
-        .catch(() => {});
-    } else {
-      alarmPlayer.play();
     }
   }
 
@@ -217,21 +216,6 @@ export default function ResponderHome() {
             </Text>
           </View>
         </View>
-
-        {String(user?.role || '').toLowerCase() === 'police' ? (
-          <TouchableOpacity
-            onPress={sendTestIncomingIncident}
-            activeOpacity={0.85}
-            accessibilityRole="button"
-            accessibilityLabel="Test incoming Emergency report"
-            style={tw`mt-4 flex-row items-center justify-center rounded-2xl bg-red-600 px-4 py-3.5`}
-          >
-            <BellRing size={18} color="#FFFFFF" />
-            <Text style={tw`ml-2 text-sm font-extrabold text-white`}>
-              Test Incoming Emergency Report
-            </Text>
-          </TouchableOpacity>
-        ) : null}
 
         {/* ERROR */}
         {error ? (
