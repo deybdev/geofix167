@@ -60,7 +60,7 @@ export default function ResponderHome() {
       playsInSilentMode: true,
       shouldPlayInBackground: true,
       interruptionMode: 'doNotMix',
-    }).catch(() => {});
+    }).catch(() => { });
 
     return () => {
       alarmActiveRef.current = false;
@@ -108,7 +108,7 @@ export default function ResponderHome() {
             .then(() => {
               if (alarmActiveRef.current) alarmPlayer.play();
             })
-            .catch(() => {});
+            .catch(() => { });
         } else {
           alarmPlayer.play();
         }
