@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { requireAuth, requireRole } from "../middleware/auth";
 import type { AppEnv, UserRole } from "../types/env";
+import { parseMaintenanceMeta } from "./admin-maintenance.route";
 import { ensureIncidentReportSnapshot } from "../services/incidentReportSnapshot.service";
 
 const route = new Hono<AppEnv>();
@@ -202,7 +203,8 @@ route.get("/", async (c) => {
         COALESCE(NULLIF(trim(u.first_name || ' ' || u.last_name), ''), gs.display_name, 'Guest') AS reporter_name,
         COALESCE(r.callback_mobile_number, gs.contact_mobile_number, '') AS reporter_phone,
         COALESCE(r.description_sanitized, r.description_original, '') AS incident_description,
-        COALESCE(r.is_emergency, 1) AS is_emergency
+        COALESCE(r.is_emergency, 1) AS is_emergency,
+        ta.notes AS raw_notes
       FROM tanod_assignments ta
       JOIN incident_reports r ON r.incident_id = ta.incident_id
       LEFT JOIN users u ON u.user_id = r.reported_by_user_id
@@ -211,9 +213,55 @@ route.get("/", async (c) => {
       WHERE ta.tanod_user_id = ?
       ORDER BY ta.assigned_at DESC
       LIMIT 100
-    `).bind(currentUser.id).all();
+    `).bind(currentUser.id).all<Record<string, unknown>>();
 
-    return c.json({ dispatches: [...dispatches, ...(tanodResult.results ?? [])] });
+    const photoRows = await c.env.geofix167_db.prepare(`
+      SELECT incident_id, incident_media_id AS id
+      FROM incident_media
+      WHERE media_type = 'PHOTO'
+      ORDER BY created_at, incident_media_id
+    `).all<{ incident_id: string; id: string }>().catch(() => ({ results: [] }));
+
+    const photosByIncident = new Map<string, string[]>();
+    for (const p of photoRows.results ?? []) {
+      const list = photosByIncident.get(p.incident_id) ?? [];
+      list.push(p.id);
+      photosByIncident.set(p.incident_id, list);
+    }
+
+    const mappedTanod = (tanodResult.results ?? []).map((row) => {
+      const meta = parseMaintenanceMeta(String(row.raw_notes || ""));
+      const isMaintenance = Number(row.is_emergency) === 0 || Boolean(meta);
+      const inspectionPhotos = meta?.inspection_photo_ids ?? [];
+      const repairPhotos = meta?.repair_photo_ids ?? [];
+      const allPhotos = photosByIncident.get(String(row.incident_id)) ?? [];
+      const reporterPhotos = allPhotos.filter(
+        (pid) => !inspectionPhotos.includes(pid) && !repairPhotos.includes(pid),
+      );
+      const computedStatus = meta?.repair_done
+        ? "COMPLETED"
+        : meta?.inspection_done && row.status === "ACCEPTED"
+          ? "EN_ROUTE"
+          : String(row.status);
+
+      return {
+        ...row,
+        status: computedStatus,
+        is_maintenance: isMaintenance,
+        urgency: meta?.urgency || row.urgency,
+        inspection_deadline: meta?.deadline ?? null,
+        admin_notes: meta?.admin_notes ?? "",
+        inspection_done: Boolean(meta?.inspection_done),
+        inspection_note: meta?.inspection_note ?? "",
+        inspection_photo_ids: inspectionPhotos,
+        repair_done: Boolean(meta?.repair_done),
+        repair_note: meta?.repair_note ?? "",
+        repair_photo_ids: repairPhotos,
+        reporter_photo_ids: reporterPhotos,
+      };
+    }).filter((item) => (!status ? true : item.status === status.data));
+
+    return c.json({ dispatches: [...dispatches, ...mappedTanod] });
   }
 
   return c.json({ dispatches });
@@ -427,6 +475,193 @@ route.post("/:dispatchId/qr-handover", async (c) => {
     proof_media_id: mediaId,
     patient_count: Array.isArray(body.patients) ? body.patients.length : 0,
   }, 201);
+});
+
+async function storeBase64IncidentPhoto(
+  c: { env: AppEnv["Bindings"] },
+  incidentId: string,
+  userId: string,
+  base64Data?: string,
+  mimeType?: string,
+  filenamePrefix = "maintenance",
+): Promise<string | null> {
+  if (!base64Data) return null;
+  try {
+    const cleanBase64 = base64Data.replace(/^data:image\/\w+;base64,/, "");
+    const binaryStr = atob(cleanBase64);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i += 1) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
+    const mime = mimeType === "image/png" ? "image/png" : "image/jpeg";
+    const ext = mime === "image/png" ? "png" : "jpg";
+    const mediaId = crypto.randomUUID();
+    const storageKey = `reports/${incidentId}/${mediaId}.${ext}`;
+    const shaBuf = await crypto.subtle.digest("SHA-256", bytes.buffer);
+    const shaHex = Array.from(new Uint8Array(shaBuf))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+
+    if (c.env.geofix167_uploads) {
+      await c.env.geofix167_uploads.put(storageKey, bytes.buffer, {
+        httpMetadata: { contentType: mime },
+        customMetadata: { incidentId },
+      });
+    }
+
+    await c.env.geofix167_db.prepare(`
+      INSERT INTO incident_media
+        (incident_media_id, incident_id, uploaded_by_user_id, media_type, storage_key,
+         content_type, byte_size, original_filename, upload_key, content_sha256, media_url, created_at)
+      VALUES (?, ?, ?, 'PHOTO', ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `).bind(
+      mediaId,
+      incidentId,
+      userId,
+      storageKey,
+      mime,
+      bytes.byteLength,
+      `${filenamePrefix}-${mediaId.slice(0, 6)}.${ext}`,
+      crypto.randomUUID(),
+      shaHex,
+      `/api/media/${mediaId}`,
+    ).run();
+
+    return mediaId;
+  } catch (err) {
+    console.error("Failed to store maintenance photo:", err);
+    return null;
+  }
+}
+
+route.post("/:dispatchId/maintenance-inspection", async (c) => {
+  const dispatchId = c.req.param("dispatchId");
+  const body = (await c.req.json().catch(() => null)) as {
+    incident_id?: string;
+    note?: string;
+    photo_base64?: string;
+    photo_mime?: string;
+  } | null;
+
+  if (!dispatchId || !body?.incident_id) {
+    return c.json({ error: "dispatchId and incident_id are required." }, 400);
+  }
+
+  const currentUser = c.get("user");
+  const db = c.env.geofix167_db;
+  const existing = await db.prepare(`
+    SELECT tanod_assignment_id, notes FROM tanod_assignments WHERE tanod_assignment_id = ?
+  `).bind(dispatchId).first<{ tanod_assignment_id: string; notes: string | null }>();
+
+  if (!existing) return c.json({ error: "Maintenance assignment not found." }, 404);
+
+  const mediaId = await storeBase64IncidentPhoto(
+    c,
+    body.incident_id,
+    currentUser.id,
+    body.photo_base64,
+    body.photo_mime,
+    "tanod-inspection",
+  );
+
+  const meta = parseMaintenanceMeta(existing.notes) || {
+    type: "MAINTENANCE" as const,
+    urgency: "Standard",
+    deadline: Date.now() + 3 * 86400000,
+    admin_notes: "",
+    inspection_done: false,
+    inspection_note: "",
+    inspection_photo_ids: [],
+    admin_check_approved: false,
+    repair_done: false,
+    repair_note: "",
+    repair_photo_ids: [],
+  };
+
+  meta.inspection_done = true;
+  meta.inspection_at = new Date().toISOString();
+  meta.inspection_note = String(body.note || "").trim();
+  if (mediaId) {
+    meta.inspection_photo_ids = [...meta.inspection_photo_ids, mediaId];
+  }
+
+  await db.prepare(`
+    UPDATE tanod_assignments
+    SET assignment_status_id = 4, notes = ?
+    WHERE tanod_assignment_id = ?
+  `).bind(JSON.stringify(meta), dispatchId).run();
+
+  return c.json({
+    ok: true,
+    inspection_done: true,
+    media_id: mediaId,
+    inspection_photo_ids: meta.inspection_photo_ids,
+  });
+});
+
+route.post("/:dispatchId/maintenance-repair", async (c) => {
+  const dispatchId = c.req.param("dispatchId");
+  const body = (await c.req.json().catch(() => null)) as {
+    incident_id?: string;
+    note?: string;
+    photo_base64?: string;
+    photo_mime?: string;
+  } | null;
+
+  if (!dispatchId || !body?.incident_id) {
+    return c.json({ error: "dispatchId and incident_id are required." }, 400);
+  }
+
+  const currentUser = c.get("user");
+  const db = c.env.geofix167_db;
+  const existing = await db.prepare(`
+    SELECT tanod_assignment_id, notes FROM tanod_assignments WHERE tanod_assignment_id = ?
+  `).bind(dispatchId).first<{ tanod_assignment_id: string; notes: string | null }>();
+
+  if (!existing) return c.json({ error: "Maintenance assignment not found." }, 404);
+
+  const mediaId = await storeBase64IncidentPhoto(
+    c,
+    body.incident_id,
+    currentUser.id,
+    body.photo_base64,
+    body.photo_mime,
+    "tanod-repair",
+  );
+
+  const meta = parseMaintenanceMeta(existing.notes) || {
+    type: "MAINTENANCE" as const,
+    urgency: "Standard",
+    deadline: Date.now() + 3 * 86400000,
+    admin_notes: "",
+    inspection_done: true,
+    inspection_note: "",
+    inspection_photo_ids: [],
+    admin_check_approved: false,
+    repair_done: false,
+    repair_note: "",
+    repair_photo_ids: [],
+  };
+
+  meta.repair_done = true;
+  meta.repair_at = new Date().toISOString();
+  meta.repair_note = String(body.note || "").trim();
+  if (mediaId) {
+    meta.repair_photo_ids = [...meta.repair_photo_ids, mediaId];
+  }
+
+  await db.prepare(`
+    UPDATE tanod_assignments
+    SET notes = ?
+    WHERE tanod_assignment_id = ?
+  `).bind(JSON.stringify(meta), dispatchId).run();
+
+  return c.json({
+    ok: true,
+    repair_done: true,
+    media_id: mediaId,
+    repair_photo_ids: meta.repair_photo_ids,
+  });
 });
 
 export default route;

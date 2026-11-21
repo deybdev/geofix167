@@ -56,3 +56,15 @@ export async function getNearestHospitals(lat, lng) {
   });
   return Array.isArray(data.hospitals) ? data.hospitals : [];
 }
+
+export async function submitMaintenanceInspection(dispatchId, payload = {}) {
+  const { data } = await api.post(`/responder/dispatches/${dispatchId}/maintenance-inspection`, payload);
+  if (!data.ok) throw new Error('Could not submit inspection proof.');
+  return data;
+}
+
+export async function submitMaintenanceRepair(dispatchId, payload = {}) {
+  const { data } = await api.post(`/responder/dispatches/${dispatchId}/maintenance-repair`, payload);
+  if (!data.ok) throw new Error('Could not submit proof of repair.');
+  return data;
+}

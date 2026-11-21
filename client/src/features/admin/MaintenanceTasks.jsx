@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Camera, CheckCircle2, Clock, Download, FileText, FileUp, History, Link2,
-  Lock, MapPinned, Plus, RotateCcw, Search, Share2, ShieldCheck, TriangleAlert, UserCheck,
+  Camera, CheckCircle2, Clock, Download, Eye, EyeOff, FileText, FileUp, History, Languages, Link2,
+  Lock, MapPinned, Plus, RotateCcw, Search, Share2, ShieldCheck, Trash2, TriangleAlert, UserCheck,
   Video, Wrench, X,
 } from "lucide-react";
 import { toast } from "../../shared/components/ui/toast";
@@ -13,18 +13,34 @@ import reportCatalog from "../../../../server/src/shared/reportCatalog.json";
 /* Constants                                                               */
 /* ----------------------------------------------------------------------- */
 
-const TEAMS = ["Barangay Sanitizers", "Engineering Crew B", "Maintenance Team A", "Barangay Public Works", "Meralco Dispatch"];
-const PRIORITIES = ["High", "Medium", "Low"];
+const FALLBACK_TANODS = [
+  { id: "tanod-1", display_name: "Tanod R. Villa", responder_name: "R. Villa", availability_status: "AVAILABLE", beat: "Zone 1 — Rizal St / Quezon Ave" },
+  { id: "tanod-2", display_name: "Tanod J. Pascual", responder_name: "J. Pascual", availability_status: "AVAILABLE", beat: "Zone 2 — Magsaysay Blvd" },
+  { id: "tanod-3", display_name: "Tanod A. Bueno", responder_name: "A. Bueno", availability_status: "BUSY", beat: "Zone 3 — Roxas Blvd" },
+];
+
+const TEAMS = [
+  "Tanod R. Villa",
+  "Tanod J. Pascual",
+  "Tanod A. Bueno",
+  "Barangay Sanitizers",
+  "Engineering Crew B",
+  "Maintenance Team A",
+  "Barangay Public Works",
+];
+const PRIORITIES = ["Urgent", "Standard", "High", "Medium", "Low"];
+const URGENCY_OPTIONS = ["Urgent", "Standard"];
 const ZONES = ["Zone 1 — Rizal St / Quezon Ave", "Zone 2 — Magsaysay Blvd", "Zone 3 — Roxas Blvd", "Zone 4 — Bonifacio St / Del Pilar Rd"];
 const CATEGORIES = reportCatalog.categories.maintenance;
 
 /* Strict lifecycle: only these transitions are allowed, forward one step. */
 const STAGE_ORDER = ["Pending", "Assigned", "In Progress", "Awaiting Verification", "Verified Fixed"];
-const STAGE_ACTIONS = { Pending: "Assign crew", Assigned: "Begin work", "In Progress": "Mark work complete" };
 
 const ACTIVE_STATUSES = ["Pending", "Assigned", "In Progress"];
 
 const PRIORITY_BADGE = {
+  Urgent: "bg-[#fdecea] text-[#dc2626]",
+  Standard: "bg-[#fff1c6] text-[#e69500]",
   High: "bg-[#fdecea] text-[#dc2626]",
   Medium: "bg-[#fff1c6] text-[#e69500]",
   Low: "bg-[#eef2f4] text-[#60738f]",
@@ -60,10 +76,28 @@ function toDateInput(t) {
 /* Privacy-safe summary for the public accomplishment log: street-level
    location only; reporter names, addresses and identifiers are stripped. */
 function privacySummary(task) {
-  return `${task.category} task at ${task.location} (${task.zone}) completed by ${task.team}. Reporter details and exact household addresses are intentionally excluded.`;
+  return `${task.category} task at ${task.location}${task.zone ? ` (${task.zone})` : ""} completed by ${task.team}. Reporter details and exact household addresses are intentionally excluded.`;
 }
 
 const isOverdue = (task, now) => task.status !== "Verified Fixed" && now > (task.deadline ?? Infinity);
+
+const FLAG_PATTERNS = [
+  /\bg+\s*ag+[oa]\b/gi, /\bputang(?:\s+ina)?\b/gi, /\bwalang\s+hiya\b/gi,
+  /\bpunyeta\b/gi, /\btarantado\b/gi, /\bbobo\b/gi,
+  /\bstupid\b/gi, /\bidiot(?:ic)?\b/gi, /\bfu+c?k+(?:ing)?\b/gi, /\bsh+i+t*\b/gi,
+];
+
+function languageScan(text) {
+  const flaggedTerms = [];
+  let sanitized = String(text ?? "");
+  for (const re of FLAG_PATTERNS) {
+    sanitized = sanitized.replace(re, (m) => {
+      flaggedTerms.push(m);
+      return "*".repeat(Math.min(8, Math.max(3, m.length)));
+    });
+  }
+  return { flaggedTerms, sanitized: sanitized.replace(/\s{3,}/g, "  ").trim() };
+}
 
 /* ----------------------------------------------------------------------- */
 /* Seed data                                                               */
@@ -74,17 +108,19 @@ const initialTasks = () => [
     id: "TASK-167-01", issue: "Pothole Repair — Rizal Street", source: "report", originReportId: "GF-005",
     reporter: { name: "Rain Santiago", type: "guest", token: "GV-7D92K1" },
     category: "Road Damage", location: "Rizal Street", zone: ZONES[0],
-    lat: 14.6538, lng: 121.0325,
+    lat: 14.7347, lng: 121.0118,
     geotag: { source: "Device GPS", accuracy: "±4 m", landmark: "Rizal St frontage, Barangay 167" },
     evidence: ["photo"],
+    inspectionPhotos: ["site-check-rizal.jpg"],
+    repairPhotos: ["patch-photos.zip"],
     narration: "Potholes widened by this week's rains; two-wheelers swerve into the next lane to avoid them.",
-    team: TEAMS[3], priority: "Medium", dateSubmitted: daysAgo(7), deadline: daysAgo(1),
+    team: "Tanod R. Villa", priority: "Standard", dateSubmitted: daysAgo(7), deadline: daysAgo(1),
     status: "Verified Fixed",
     metrics: { submittedAt: daysAgo(7), assignedAt: daysAgo(6), startedAt: daysAgo(5), verifiedAt: daysAgo(2) },
-    reassignments: [{ from: TEAMS[2], to: TEAMS[3], at: fmtWhen(daysAgo(6)), by: "Admin — N. Villanueva" }],
+    reassignments: [],
     workNotes: [
-      { at: fmtWhen(daysAgo(2)), by: "Crew — Bgry Public Works", note: "Cold asphalt patch compacted; cone cleared area after 48h cure." },
-      { at: fmtWhen(daysAgo(4)), by: "Crew — Bgry Public Works", note: "Site delay: downpour washed out the first pass; crew resumed 07:30 the next morning." },
+      { at: fmtWhen(daysAgo(2)), by: "Tanod R. Villa", note: "Cold asphalt patch compacted; cone cleared area after 48h cure." },
+      { at: fmtWhen(daysAgo(4)), by: "Tanod R. Villa", note: "On-site check complete; materials requested from barangay engineering." },
     ],
     closure: { proof: "patch-photos.zip", closedBy: "Admin — N. Villanueva", closedAt: fmtWhen(daysAgo(2)), outcome: "Potholes filled with cold asphalt and layered; surface regraded to drain.", remarks: "Whole section patched and reopened to traffic after inspection." },
     notified: true,
@@ -97,43 +133,34 @@ const initialTasks = () => [
     lat: 14.7321, lng: 121.0192,
     geotag: { source: "Device GPS", accuracy: "±6 m", landmark: "Quezon Ave, Barangay 167" },
     evidence: ["photo"],
+    inspectionPhotos: [],
+    repairPhotos: [],
     narration: "Pole 14 leans after the storm; one lamp dark, wiring sagged toward the sidewalk.",
-    team: TEAMS[1], priority: "High", dateSubmitted: daysAgo(3), deadline: daysAgo(1),
+    team: "Tanod J. Pascual", priority: "Urgent", dateSubmitted: daysAgo(3), deadline: daysAgo(-2),
     status: "In Progress",
     metrics: { submittedAt: daysAgo(3), assignedAt: daysAgo(2), startedAt: daysAgo(1) },
     reassignments: [],
     workNotes: [
-      { at: fmtWhen(daysAgo(1)), by: "Crew — Engineering Crew B", note: "Braces installed overnight; Meralco coordination booked for line re-termination." },
+      { at: fmtWhen(daysAgo(1)), by: "Tanod J. Pascual", note: "Dispatched to inspect site and document needed materials for budget approval." },
     ],
   },
   {
-    id: "TASK-167-03", issue: "Canal Desilting — Market Stretch", source: "manual", originReportId: null,
-    reporter: null,
+    id: "TASK-167-03", issue: "Canal Desilting — Market Stretch", source: "report", originReportId: "GF-003",
+    reporter: { name: "Ellyz Gomez", type: "resident" },
     category: "Waterways", location: "Magsaysay Boulevard", zone: ZONES[1],
     lat: 14.7269, lng: 121.0174,
-    geotag: { source: "Internal survey", accuracy: "±3 m", landmark: "Magsaysay Blvd canal mouth" },
-    evidence: [],
-    narration: "Scheduled preventive work order before the monsoon window.",
-    team: TEAMS[0], priority: "Medium", dateSubmitted: daysAgo(2), deadline: daysAgo(-2),
+    geotag: { source: "Device GPS", accuracy: "±3 m", landmark: "Magsaysay Blvd canal mouth" },
+    evidence: ["photo"],
+    inspectionPhotos: ["canal-arrival-check.jpg"],
+    repairPhotos: [],
+    narration: "Canal grate across from the market is blocked; needs inspection and desilting crew.",
+    team: "Tanod R. Villa", priority: "Standard", dateSubmitted: daysAgo(2), deadline: daysAgo(-2),
     status: "Awaiting Verification",
     metrics: { submittedAt: daysAgo(2), assignedAt: daysAgo(2), startedAt: daysAgo(1) },
     reassignments: [],
     workNotes: [
-      { at: fmtWhen(daysAgo(1)), by: "Crew — Barangay Sanitizers", note: "Equipment deployed: pump rig PR-4 and grab truck. 2.5 m³ silt hauled." },
+      { at: fmtWhen(daysAgo(1)), by: "Tanod R. Villa", note: "Site checked and initial arrival photos uploaded. Desilting completed; awaiting final admin verification." },
     ],
-  },
-  {
-    id: "TASK-167-04", issue: "Scheduled Streetsweep — Market Frontage", source: "manual", originReportId: null,
-    reporter: null,
-    category: "Sanitation", location: "Magsaysay Boulevard", zone: ZONES[1],
-    lat: 14.7271, lng: 121.0178,
-    geotag: { source: "Internal survey", accuracy: "±5 m", landmark: "Public market frontage" },
-    evidence: [],
-    narration: "Weekly preventive sweep; does not originate from a resident report.",
-    team: TEAMS[0], priority: "Low", dateSubmitted: daysAgo(1), deadline: daysAgo(-1),
-    status: "Pending",
-    metrics: { submittedAt: daysAgo(1) },
-    reassignments: [], workNotes: [],
   },
   {
     id: "TASK-167-05", issue: "Tilting Basketball Ring — Covered Court", source: "report", originReportId: "GF-006",
@@ -142,19 +169,20 @@ const initialTasks = () => [
     lat: 14.7300, lng: 121.0150,
     geotag: { source: "Device GPS", accuracy: "±7 m", landmark: "Covered court, Bonifacio St" },
     evidence: ["photo"],
+    inspectionPhotos: ["court-ring-inspection.jpg"],
+    repairPhotos: [],
     narration: "Ring mount rusted through and tilts over the free-throw lane; kids still play under it.",
-    team: TEAMS[3], priority: "High", dateSubmitted: daysAgo(5), deadline: daysAgo(0),
+    team: "Tanod J. Pascual", priority: "Urgent", dateSubmitted: daysAgo(5), deadline: daysAgo(0),
     status: "Awaiting Verification",
     metrics: { submittedAt: daysAgo(5), assignedAt: daysAgo(4), startedAt: daysAgo(2) },
     reassignments: [],
     workNotes: [
-      { at: fmtWhen(daysAgo(2)), by: "Crew — Bgry Public Works", note: "Mount plate replaced and ring re-leveled to 3.05 m; awaiting paint cure before sign-off." },
+      { at: fmtWhen(daysAgo(2)), by: "Tanod J. Pascual", note: "Mount plate replaced and ring re-leveled to 3.05 m; awaiting final repair proof sign-off." },
     ],
   },
 ];
 
-/* Non-emergency reports sitting in the ingestion queue, routed straight to
-   the maintenance queue with no external department accounts or approvals. */
+/* Non-emergency reports sitting in the ingestion queue from Guests & Residents */
 const initialQueue = () => [
   {
     queueId: "Q-01", reportId: "GF-008", issue: "Garbage pile beside the covered court",
@@ -179,7 +207,7 @@ const initialQueue = () => [
 const seededAudit = () => [
   { key: "s1", taskId: "TASK-167-01", actor: "Admin — N. Villanueva", system: false, at: fmtWhen(daysAgo(2)), action: "Resolution verified with proof", detail: "Proof patch-photos.zip recorded; reporter notified with a read-only status update." },
   { key: "s2", taskId: "TASK-167-01", actor: "Admin — N. Villanueva", system: false, at: fmtWhen(daysAgo(2)), action: "Accomplishment summary published", detail: "Privacy-safe summary posted to the public accomplishment log." },
-  { key: "s3", taskId: "TASK-167-03", actor: "Admin — N. Villanueva", system: false, at: fmtWhen(daysAgo(1)), action: "Status change", detail: "In Progress → Awaiting Verification." },
+  { key: "s3", taskId: "TASK-167-03", actor: "Admin — N. Villanueva", system: false, at: fmtWhen(daysAgo(1)), action: "Inspection check completed", detail: "In Progress → Awaiting Verification after Tanod inspection evidence was logged." },
 ];
 
 /* ----------------------------------------------------------------------- */
@@ -195,7 +223,7 @@ function Chip({ children, className = "" }) {
 }
 
 function PriorityBadge({ priority }) {
-  return <Chip className={PRIORITY_BADGE[priority] ?? PRIORITY_BADGE.Low}>{priority}</Chip>;
+  return <Chip className={PRIORITY_BADGE[priority] ?? PRIORITY_BADGE.Standard}>{priority}</Chip>;
 }
 
 function StatusBadge({ status }) {
@@ -302,7 +330,7 @@ function StatCard({ label, value, icon: Icon, alert = false, hint, onClick }) {
   );
 }
 
-function IntakeCard({ item, onIngest }) {
+function IntakeCard({ item, onReview }) {
   return (
     <article className="flex flex-col gap-2 rounded-xl border border-[#e0e7eb] bg-white p-4 transition hover:border-(--gf-green) hover:shadow-sm">
       <div className="flex items-start justify-between gap-2">
@@ -324,19 +352,331 @@ function IntakeCard({ item, onIngest }) {
       <div className="flex flex-wrap items-center gap-1.5">
         {item.reporter.type === "guest"
           ? <Chip className="bg-[#eef2fb] text-[#4c6fbf]"><Link2 size={8} />{item.reporter.token ? `Guest link ${item.reporter.token}` : `Guest · ${item.reporter.name || "Reporter"}`}</Chip>
-          : <Chip className="bg-(--gf-green-tint) text-(--gf-green)"><ShieldCheck size={8} />Verified Resident</Chip>}
+          : <Chip className="bg-(--gf-green-tint) text-(--gf-green)"><ShieldCheck size={8} />Verified Resident · {item.reporter.name}</Chip>}
         {item.outsideBarangay && <Chip className="bg-[#fdecea] text-[#dc2626]">Outside Barangay 167</Chip>}
         <EvidenceChips evidence={item.evidence} small />
         <span className="ml-auto text-[8px] font-medium text-[#a8b6c6]">{item.submitted}</span>
       </div>
       <button
         type="button"
-        onClick={() => onIngest(item.queueId)}
+        onClick={() => onReview(item)}
         className="mt-auto w-full rounded-md bg-(--gf-green) px-3 py-2 text-[10px] font-bold text-white transition hover:bg-(--gf-green-dark) focus-visible:outline-2 focus-visible:outline-(--gf-green)"
       >
-        Ingest to Work Order
+        Review
       </button>
     </article>
+  );
+}
+
+/* ----------------------------------------------------------------------- */
+/* Stage 1: Intake Review / Triage Drawer (No Evidence Closure shown here) */
+/* ----------------------------------------------------------------------- */
+
+function IntakeReviewDrawer({ item, tanods, onClose, onConfirmIngest, logAudit }) {
+  const [urgency, setUrgency] = useState("Standard");
+  const [showRaw, setShowRaw] = useState(false);
+  const language = useMemo(() => languageScan(item.narration ?? ""), [item.narration]);
+  const availableTanod = useMemo(
+    () => tanods.find((t) => t.availability_status === "AVAILABLE") || tanods[0],
+    [tanods],
+  );
+  const [selectedTanodId, setSelectedTanodId] = useState(availableTanod?.id || "");
+  const [deadlineDate, setDeadlineDate] = useState(() => toDateInput(Date.now() + 3 * 86400000));
+
+  function toggleRaw() {
+    const next = !showRaw;
+    setShowRaw(next);
+    if (next && logAudit) {
+      logAudit({
+        taskId: item.reportId,
+        actor: "Admin — N. Villanueva",
+        system: false,
+        action: "Unfiltered text view",
+        detail: "Admin viewed the original un-sanitized maintenance report text during intake review.",
+      });
+    }
+  }
+
+  useEffect(() => {
+    const onKey = (event) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [onClose]);
+
+  const selectedTanod = tanods.find((t) => t.id === selectedTanodId) || null;
+  const hasCoordinates = Number.isFinite(Number(item.lat)) && Number.isFinite(Number(item.lng));
+  const canIngest = Boolean(
+    urgency
+    && selectedTanod
+    && selectedTanod.availability_status === "AVAILABLE"
+    && deadlineDate
+    && deadlineDate.trim().length > 0,
+  );
+
+  function handleIngest() {
+    if (!canIngest) return;
+    const deadlineTs = new Date(`${deadlineDate}T12:00:00`).getTime();
+    onConfirmIngest(item.queueId, {
+      urgency,
+      tanod: selectedTanod,
+      deadline: Number.isFinite(deadlineTs) ? deadlineTs : Date.now() + 3 * 86400000,
+    });
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        aria-label="Close review drawer"
+        onClick={onClose}
+        className="fixed inset-0 z-[80] cursor-default border-0 bg-slate-900/40 backdrop-blur-[2px] [animation:gf-fade-in_0.18s_ease-out]"
+      />
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Review maintenance report ${item.reportId}`}
+        className="fixed inset-y-0 right-0 z-[90] flex w-full flex-col border-l border-[#e2e8eb] bg-white shadow-[-18px_0_40px_rgba(15,23,42,0.25)] [animation:gf-drawer-in_0.22s_ease-out] sm:w-[40%] sm:min-w-[500px] sm:max-w-[680px]"
+      >
+        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-[#edf0f2] bg-(--gf-green-soft) px-5 py-4">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-[14px] font-bold text-(--gf-green)">{item.reportId}</h2>
+              <Chip className="bg-[#fff1c6] text-[#e69500]">Intake Review</Chip>
+              <Chip className="bg-[#eef2f4] text-[#60738f]">{item.category}</Chip>
+            </div>
+            <p className="mt-0.5 truncate text-[10px] text-[#60738f]">{item.issue} • {item.location}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="rounded-full p-1.5 text-[#60738f] transition hover:bg-white hover:text-(--gf-green)"
+          >
+            <X size={16} />
+          </button>
+        </header>
+
+        <div className="gf-drawer-body">
+          <DrawerSection title="Intake Report & Reporter" icon={ShieldCheck}>
+            <div>
+              <InfoRow label="Report ID">{item.reportId}</InfoRow>
+              <InfoRow label="Category">{item.category}</InfoRow>
+              <InfoRow label="Reporter">
+                <span className="inline-flex items-center gap-1">
+                  {item.reporter.type === "guest"
+                    ? <Chip className="bg-[#eef2fb] text-[#4c6fbf]"><Link2 size={8} />Guest</Chip>
+                    : <Chip className="bg-(--gf-green-tint) text-(--gf-green)"><ShieldCheck size={8} />Verified Resident</Chip>}
+                  {item.reporter.name}
+                </span>
+              </InfoRow>
+              {item.reporter?.token && (
+                <InfoRow label="Guest token">
+                  <span className="font-mono">{item.reporter.token}</span>
+                </InfoRow>
+              )}
+              <InfoRow label="Submitted">{item.submitted}</InfoRow>
+            </div>
+            {item.narration && (
+              <p className="mt-2 rounded-md border border-[#e0e7eb] bg-white px-2.5 py-2 text-[10px] text-[#60738f]">
+                <span className="font-bold text-[#263246]">Report description:</span> {language.sanitized}
+              </p>
+            )}
+          </DrawerSection>
+
+          <DrawerSection title="Report Language (Auto-Sanitized)" icon={Languages}>
+            <div className="gf-note gf-note--soft" style={{ alignItems: "center" }}>
+              <Languages size={14} style={{ flexShrink: 0, color: "var(--gf-green)" }} />
+              <span>
+                Submission was never blocked or delayed.{" "}
+                {language.flaggedTerms.length
+                  ? "Flagged terms were masked for all staff views:"
+                  : "No flagged language detected."}
+              </span>
+            </div>
+            {language.flaggedTerms.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {language.flaggedTerms.map((term, i) => (
+                  <span key={`${term}-${i}`} className="gf-badge gf-badge--alert">
+                    {term.trim()} → masked
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="mt-2 rounded-lg border border-[#e0e7eb] bg-white p-3 text-[10px] leading-4 text-[#42506a]">
+              <p className="mb-1 text-[8px] font-bold uppercase text-[#7184a0]">Sanitized copy (default view)</p>
+              <p>{language.sanitized}</p>
+            </div>
+            <div className="mt-1.5 rounded-lg border border-dashed border-[#e7c9c9] bg-[#fffafa] p-3 text-[10px] leading-4 text-[#7a3040]">
+              <p className="mb-1 flex items-center gap-1 text-[8px] font-bold uppercase text-[#b04646]">
+                <button
+                  type="button"
+                  onClick={toggleRaw}
+                  aria-pressed={showRaw}
+                  className="flex items-center gap-1 uppercase"
+                  style={{ fontSize: 8 }}
+                >
+                  {showRaw ? <EyeOff size={9} /> : <Eye size={9} />}
+                  {showRaw ? "Hide" : "Show"} unfiltered view (admin only)
+                </button>
+              </p>
+              {showRaw ? (
+                <p>{item.narration}</p>
+              ) : (
+                <p className="text-[#b9c6d2]">
+                  Hidden. Every unfiltered view is written to the immutable audit trail.
+                </p>
+              )}
+            </div>
+          </DrawerSection>
+
+          <DrawerSection title="Geotagged Location & Intake Media" icon={MapPinned}>
+            <div className="gf-note gf-note--soft">
+              <MapPinned size={14} style={{ flexShrink: 0, color: "var(--gf-green)" }} />
+              <span><strong>{item.geotag.source}</strong> • accuracy {item.geotag.accuracy} • landmark: {item.geotag.landmark}</span>
+            </div>
+            {hasCoordinates ? (
+              <div className="mt-2 overflow-hidden rounded-lg border border-[#dfe7ea]">
+                <div className="h-[200px]">
+                  <MapViewer
+                    compact
+                    incidents={[{ id: item.reportId, title: item.issue, category: "infrastructure", status: "Pending", lat: Number(item.lat), lng: Number(item.lng) }]}
+                    selectedIncident={{ id: item.reportId, lat: Number(item.lat), lng: Number(item.lng) }}
+                  />
+                </div>
+                <div className="flex items-center justify-between px-3 py-2 text-[9px] font-bold text-[#60738f]">
+                  <span>{item.location}, Barangay 167</span>
+                  <span>{Number(item.lat).toFixed(4)} N, {Number(item.lng).toFixed(4)} E</span>
+                </div>
+              </div>
+            ) : (
+              <div className="gf-note gf-note--soft mt-2">
+                <MapPinned size={14} />
+                <span>Location note: {item.location}</span>
+              </div>
+            )}
+            <div className="mt-2"><EvidenceChips evidence={item.evidence} /></div>
+          </DrawerSection>
+
+          <DrawerSection title="Urgency & Classification" icon={Wrench}>
+            <div className="grid grid-cols-2 gap-2">
+              {URGENCY_OPTIONS.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  aria-pressed={urgency === option}
+                  onClick={() => setUrgency(option)}
+                  className={`gf-option ${urgency === option ? "gf-option--active" : ""}`}
+                >
+                  {option === "Urgent" ? <TriangleAlert size={13} /> : <Wrench size={13} />}
+                  <span>{option}</span>
+                </button>
+              ))}
+            </div>
+          </DrawerSection>
+
+          <DrawerSection title="Assign Tanod & Inspection Deadline" icon={UserCheck} last>
+            <div className="grid gap-3">
+              <label className="grid gap-1 text-[9px] font-bold uppercase tracking-wide text-[#7184a0]">
+                Assign Tanod (with Availability Status) *
+                <select
+                  aria-label="Assign Tanod"
+                  className="h-9 w-full rounded-md border border-[#dfe7ea] bg-white px-2.5 text-[10px] font-semibold text-[#263246] outline-none focus:border-(--gf-green)"
+                  value={selectedTanodId}
+                  onChange={(e) => setSelectedTanodId(e.target.value)}
+                >
+                  <option value="">— Select a Tanod account —</option>
+                  {tanods.map((t) => (
+                    <option
+                      key={t.id}
+                      value={t.id}
+                      disabled={t.availability_status !== "AVAILABLE"}
+                    >
+                      {t.display_name || t.responder_name} — {t.availability_status}
+                      {t.beat ? ` (${t.beat})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="grid gap-1.5">
+                {tanods.map((t) => {
+                  const isAvailable = t.availability_status === "AVAILABLE";
+                  const isSelected = t.id === selectedTanodId;
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      disabled={!isAvailable}
+                      onClick={() => setSelectedTanodId(t.id)}
+                      className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left text-[10px] transition ${
+                        isSelected
+                          ? "border-(--gf-green) bg-(--gf-green-soft)"
+                          : "border-[#e0e7eb] bg-white hover:border-(--gf-green)"
+                      } ${!isAvailable ? "cursor-not-allowed opacity-55" : ""}`}
+                    >
+                      <div>
+                        <span className="font-bold text-[#263246]">{t.display_name || t.responder_name}</span>
+                        {t.beat && <span className="ml-1.5 text-[9px] text-[#60738f]">• {t.beat}</span>}
+                      </div>
+                      <Chip className={isAvailable ? "bg-(--gf-green-tint-2) text-(--gf-green)" : "bg-[#fdecea] text-[#dc2626]"}>
+                        {t.availability_status}
+                      </Chip>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <label className="grid gap-1 text-[9px] font-bold uppercase tracking-wide text-[#7184a0]">
+                On-Site Inspection Deadline *
+                <input
+                  type="date"
+                  aria-label="On-site inspection deadline"
+                  value={deadlineDate}
+                  onChange={(e) => setDeadlineDate(e.target.value)}
+                  className="h-9 rounded-md border border-[#dfe7ea] bg-white px-2.5 text-[10px] font-semibold text-(--gf-green) outline-none focus:border-(--gf-green)"
+                />
+                <span className="text-[8px] font-normal normal-case text-[#7184a0]">
+                  Target date by which the assigned Tanod must inspect the maintenance report on-site.
+                </span>
+              </label>
+            </div>
+          </DrawerSection>
+        </div>
+
+        <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-[#edf0f2] bg-(--gf-green-soft) px-5 py-3">
+          {!canIngest ? (
+            <span className="flex items-center gap-1 text-[9px] font-semibold text-[#dc2626]">
+              <TriangleAlert size={11} />Select urgency, an AVAILABLE Tanod, and a deadline to ingest.
+            </span>
+          ) : (
+            <span className="text-[9px] font-semibold text-(--gf-green)">
+              Ready to dispatch to {selectedTanod?.display_name || selectedTanod?.responder_name}.
+            </span>
+          )}
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md border border-[#dfe7ea] bg-white px-3 py-2 text-[10px] font-bold text-[#60738f] transition hover:text-(--gf-green)"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={!canIngest}
+              onClick={handleIngest}
+              className="rounded-md bg-(--gf-green) px-3.5 py-2 text-[10px] font-bold text-white transition hover:bg-(--gf-green-dark) disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Ingest to Work Order
+            </button>
+          </div>
+        </footer>
+      </aside>
+    </>
   );
 }
 
@@ -344,7 +684,7 @@ function IntakeCard({ item, onIngest }) {
 /* Work-order data table (shared by tabs 2, 3, 4)                          */
 /* ----------------------------------------------------------------------- */
 
-const TABLE_HEADINGS = ["Task ID", "Issue", "Location", "Assigned Team", "Priority", "Deadline", "Status", "Action"];
+const TABLE_HEADINGS = ["Task ID", "Issue", "Location", "Assigned Tanod", "Priority", "Deadline", "Status", "Action"];
 
 function TaskTable({ tasks, emptyLabel, actionLabel, onOpen, nowTs }) {
   return (
@@ -384,14 +724,21 @@ function TaskTable({ tasks, emptyLabel, actionLabel, onOpen, nowTs }) {
                   {fmtDue(task.deadline)}
                   {overdue && <div className="mt-0.5"><Chip className="bg-[#fdecea] text-[#dc2626]">overdue</Chip></div>}
                 </td>
-                <td className="px-3 py-3"><StatusBadge status={task.status} /></td>
+                <td className="px-3 py-3">
+                  <div className="flex flex-wrap items-center gap-1">
+                    <StatusBadge status={task.status} />
+                    {task.fastTrackPending && (
+                      <Chip className="bg-[#fff1c6] text-[#e69500]">Pending Verification</Chip>
+                    )}
+                  </div>
+                </td>
                 <td className="px-3 py-3">
                   <button
                     type="button"
                     onClick={() => onOpen(task.id)}
                     className="rounded-md bg-(--gf-green) px-2.5 py-1.5 text-[9px] font-bold text-white transition hover:bg-(--gf-green-dark) focus-visible:outline-2 focus-visible:outline-(--gf-green)"
                   >
-                    {actionLabel}
+                    {task.fastTrackPending ? "Manage (Pending)" : actionLabel}
                   </button>
                 </td>
               </tr>
@@ -407,11 +754,10 @@ function TaskTable({ tasks, emptyLabel, actionLabel, onOpen, nowTs }) {
 }
 
 /* ----------------------------------------------------------------------- */
-/* Task management slide-over drawer                                       */
+/* Task management slide-over drawer (Stages 2, 3, 4)                      */
 /* ----------------------------------------------------------------------- */
 
-function TaskDrawer({ task, onClose, onNextStage, onCloseTask, onReassign, onUpdate, onAddNote, onPublish, onOpenAudit }) {
-  const [proof, setProof] = useState(null);
+function TaskDrawer({ task, onClose, onCompleteCheck, onCloseTask, onUpdateInspectionPhotos, onUpdateRepairPhotos, onAddNote, onPublish, onOpenAudit }) {
   const [publishIntent, setPublishIntent] = useState(true);
   const [noteDraft, setNoteDraft] = useState("");
 
@@ -426,23 +772,24 @@ function TaskDrawer({ task, onClose, onNextStage, onCloseTask, onReassign, onUpd
     };
   }, [onClose]);
 
+  const isActiveOrder = ACTIVE_STATUSES.includes(task.status);
   const verifying = task.status === "Awaiting Verification";
   const resolved = task.status === "Verified Fixed";
-  const stageAction = STAGE_ACTIONS[task.status];
 
-  function changeTeam(value) {
-    if (value && value !== task.team) onReassign(task.id, value);
-  }
+  const inspectionPhotos = task.inspectionPhotos || [];
+  const repairPhotos = task.repairPhotos || [];
 
-  function changePriority(value) {
-    if (value !== task.priority) onUpdate(task.id, { priority: value }, `Priority set to ${value} from the task drawer.`);
-  }
+  const canCompleteCheck = Boolean(
+    task.team
+    && task.priority
+    && inspectionPhotos.length > 0,
+  );
 
-  function changeDeadline(event) {
-    if (!event.target.value) return;
-    const next = new Date(`${event.target.value}T12:00:00`).getTime();
-    if (next !== task.deadline) onUpdate(task.id, { deadline: next }, `Deadline updated to ${fmtDue(next)} from the task drawer.`);
-  }
+  const canApproveRepair = Boolean(
+    task.team
+    && task.priority
+    && repairPhotos.length > 0,
+  );
 
   function addNote() {
     if (!noteDraft.trim()) return;
@@ -450,18 +797,44 @@ function TaskDrawer({ task, onClose, onNextStage, onCloseTask, onReassign, onUpd
     setNoteDraft("");
   }
 
-  function approve() {
-    if (!proof) return;
-    onCloseTask(task.id, {
-      proof,
-      closedBy: "Admin — N. Villanueva",
-      closedAt: stamp(true),
-      outcome: "Admin reviewed the uploaded proof of repair and confirmed the site is restored.",
-      remarks: "Approved from the task drawer after proof review.",
-    }, publishIntent);
+  function handleAddInspectionFiles(event) {
+    const files = Array.from(event.target.files || []).map((f) => f.name);
+    if (!files.length) return;
+    onUpdateInspectionPhotos(task.id, [...inspectionPhotos, ...files]);
+    event.target.value = "";
   }
 
-  const dateInputId = `drawer-deadline-${task.id}`;
+  function handleRemoveInspectionPhoto(index) {
+    onUpdateInspectionPhotos(
+      task.id,
+      inspectionPhotos.filter((_, i) => i !== index),
+    );
+  }
+
+  function handleAddRepairFiles(event) {
+    const files = Array.from(event.target.files || []).map((f) => f.name);
+    if (!files.length) return;
+    onUpdateRepairPhotos(task.id, [...repairPhotos, ...files]);
+    event.target.value = "";
+  }
+
+  function handleRemoveRepairPhoto(index) {
+    onUpdateRepairPhotos(
+      task.id,
+      repairPhotos.filter((_, i) => i !== index),
+    );
+  }
+
+  function approve() {
+    if (!canApproveRepair) return;
+    onCloseTask(task.id, {
+      proof: repairPhotos.join(", "),
+      closedBy: "Admin — N. Villanueva",
+      closedAt: stamp(true),
+      outcome: "Admin reviewed the uploaded finalizing proof of repair and confirmed the site is restored.",
+      remarks: "Approved from the task drawer after final repair proof review.",
+    }, publishIntent);
+  }
 
   return (
     <>
@@ -546,107 +919,221 @@ function TaskDrawer({ task, onClose, onNextStage, onCloseTask, onReassign, onUpd
               <MapPinned size={14} style={{ flexShrink: 0, color: "var(--gf-green)" }} />
               <span><strong>{task.geotag.source}</strong> • accuracy {task.geotag.accuracy} • landmark: {task.geotag.landmark}</span>
             </div>
-            <div className="mt-2 overflow-hidden rounded-lg border border-[#dfe7ea]">
-              <div className="h-[200px]">
-                <MapViewer
-                  compact
-                  incidents={[{ id: task.id, title: task.issue, category: "infrastructure", status: task.status, lat: task.lat, lng: task.lng }]}
-                  selectedIncident={{ id: task.id, lat: task.lat, lng: task.lng }}
-                />
+            {Number.isFinite(Number(task.lat)) && Number.isFinite(Number(task.lng)) && (
+              <div className="mt-2 overflow-hidden rounded-lg border border-[#dfe7ea]">
+                <div className="h-[200px]">
+                  <MapViewer
+                    compact
+                    incidents={[{ id: task.id, title: task.issue, category: "infrastructure", status: task.status, lat: Number(task.lat), lng: Number(task.lng) }]}
+                    selectedIncident={{ id: task.id, lat: Number(task.lat), lng: Number(task.lng) }}
+                  />
+                </div>
+                <div className="flex items-center justify-between px-3 py-2 text-[9px] font-bold text-[#60738f]">
+                  <span>{task.location}, Barangay 167</span>
+                  <span>{Number(task.lat).toFixed(4)} N, {Number(task.lng).toFixed(4)} E</span>
+                </div>
               </div>
-              <div className="flex items-center justify-between px-3 py-2 text-[9px] font-bold text-[#60738f]">
-                <span>{task.location}, Barangay 167</span>
-                <span>{task.lat.toFixed(4)} N, {task.lng.toFixed(4)} E</span>
-              </div>
-            </div>
+            )}
             <div className="mt-2"><EvidenceChips evidence={task.evidence} /></div>
           </DrawerSection>
 
-          <DrawerSection title="Assignment Controls" icon={Wrench}>
-            <div className="grid gap-2 sm:grid-cols-3">
-              <label className="grid gap-1 text-[9px] font-bold uppercase tracking-wide text-[#7184a0]">
-                Assigned Team
-                <select
-                  aria-label="Change assigned team"
-                  className="h-8 w-full appearance-none rounded-md border border-[#dfe7ea] bg-white px-2 pr-7 text-[10px] font-semibold text-(--gf-green) outline-none focus:border-(--gf-green)"
-                  value={task.team || ""}
-                  onChange={(e) => changeTeam(e.target.value)}
-                >
-                  <option value="">— unassigned —</option>
-                  {TEAMS.map((t) => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </label>
-              <label className="grid gap-1 text-[9px] font-bold uppercase tracking-wide text-[#7184a0]">
-                Priority
-                <select
-                  aria-label="Change priority"
-                  className="h-8 w-full appearance-none rounded-md border border-[#dfe7ea] bg-white px-2 pr-7 text-[10px] font-semibold text-(--gf-green) outline-none focus:border-(--gf-green)"
-                  value={task.priority}
-                  onChange={(e) => changePriority(e.target.value)}
-                >
-                  {PRIORITIES.map((p) => <option key={p}>{p}</option>)}
-                </select>
-              </label>
-              <label className="grid gap-1 text-[9px] font-bold uppercase tracking-wide text-[#7184a0]">
-                Deadline
+          <DrawerSection title="Assignment Controls (Locked)" icon={Wrench}>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid gap-1 text-[9px] font-bold uppercase tracking-wide text-[#7184a0]">
+                <span className="flex items-center gap-1"><Lock size={10} />Assigned Tanod</span>
+                <div className="flex h-8 items-center justify-between rounded-md border border-[#dfe7ea] bg-[#f8fafb] px-2.5 text-[10px] font-bold text-(--gf-green)">
+                  <span>{task.team || "Tanod R. Villa"}</span>
+                  <Chip className="bg-[#eef2f4] text-[#60738f]">Locked</Chip>
+                </div>
+              </div>
+              <div className="grid gap-1 text-[9px] font-bold uppercase tracking-wide text-[#7184a0]">
+                <span className="flex items-center gap-1"><Lock size={10} />Priority</span>
+                <div className="flex h-8 items-center justify-between rounded-md border border-[#dfe7ea] bg-[#f8fafb] px-2.5 text-[10px] font-bold text-[#263246]">
+                  <PriorityBadge priority={task.priority || "Standard"} />
+                  <Chip className="bg-[#eef2f4] text-[#60738f]">Locked</Chip>
+                </div>
+              </div>
+            </div>
+          </DrawerSection>
+
+          {isActiveOrder && (
+            <DrawerSection title="Multimedia Evidence (Tanod Arrival & On-Site Inspection)" icon={Camera}>
+              {(task.inspectionDone || inspectionPhotos.length > 0) && (
+                <div className="mb-2.5 rounded-lg border border-(--gf-green-border) bg-(--gf-green-soft) p-2.5">
+                  <p className="flex items-center gap-1.5 text-[10px] font-bold text-(--gf-green)">
+                    <CheckCircle2 size={13} />
+                    Inspection by Tanod is successful
+                  </p>
+                  {task.inspectionNote && (
+                    <p className="mt-1 text-[9px] text-[#263246]">
+                      <strong>Tanod Note:</strong> {task.inspectionNote}
+                    </p>
+                  )}
+                </div>
+              )}
+              {task.fastTrackPending && (
+                <div className="mb-2.5 rounded-lg border border-[#f5d488] bg-[#fff9e6] p-2.5">
+                  <p className="flex items-center gap-1.5 text-[10px] font-bold text-[#b45309]">
+                    <TriangleAlert size={13} />
+                    Pending: Tanod also submitted Proof of Repair ahead of Admin check review
+                  </p>
+                  <p className="mt-0.5 text-[9px] text-[#78350f]">
+                    Verify the inspection proof below and click <strong>Complete Check</strong> to pass this directly to <strong>Awaiting Verification</strong> and then <strong>Resolved & Logged</strong>.
+                  </p>
+                </div>
+              )}
+              <p className="mb-2 text-[9px] text-[#60738f]">
+                Proof that the assigned Tanod arrived and inspected the area (useful for repairs requiring budget or long-term materials). Admin can freely add or modify inspection photos below.
+              </p>
+              <label
+                htmlFor={`inspection-proof-${task.id}`}
+                className={`flex cursor-pointer flex-col items-center gap-1 rounded-lg border-2 border-dashed p-4 text-center transition ${
+                  inspectionPhotos.length ? "border-(--gf-green) bg-(--gf-green-soft)" : "border-[#d5dee3] bg-[#f8fafb] hover:border-(--gf-green)"
+                }`}
+              >
+                <FileUp size={18} className="text-(--gf-green)" />
+                <span className="text-[10px] font-bold text-[#263246]">Add / Modify On-Site Inspection Photos</span>
+                <span className="text-[9px] text-[#60738f]">Required to unlock the Complete Check button.</span>
                 <input
-                  id={dateInputId}
-                  type="date"
-                  aria-label="Change deadline"
-                  value={toDateInput(task.deadline)}
-                  onChange={changeDeadline}
-                  className="h-8 rounded-md border border-[#dfe7ea] bg-white px-2 text-[10px] font-semibold text-(--gf-green) outline-none focus:border-(--gf-green)"
+                  id={`inspection-proof-${task.id}`}
+                  type="file"
+                  multiple
+                  accept="image/*,video/*"
+                  className="sr-only"
+                  onChange={handleAddInspectionFiles}
                 />
               </label>
-            </div>
-            {task.reassignments.length > 0 && (
-              <ul className="mt-2 grid gap-1">
-                {task.reassignments.map((r, i) => (
-                  <li key={`${r.to}-${i}`} className="rounded-md border border-[#e0e7eb] bg-white px-2.5 py-1.5 text-[9px] text-[#60738f]">
-                    <strong className="text-[#263246]">{r.from} → {r.to}</strong> • {r.at} • by {r.by}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </DrawerSection>
+
+              {inspectionPhotos.length > 0 ? (
+                <div className="mt-2 grid gap-2">
+                  {task.incidentId && task.serverInspectionPhotoIds?.length > 0 && (
+                    <div className="grid grid-cols-2 gap-2">
+                      {task.serverInspectionPhotoIds.map((photoId, idx) => (
+                        <a
+                          key={photoId}
+                          href={`/api/reports/${encodeURIComponent(task.incidentId)}/photos/${encodeURIComponent(photoId)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="relative block h-[110px] overflow-hidden rounded-lg border border-[#dfe7ea] bg-slate-100"
+                        >
+                          <img
+                            src={`/api/reports/${encodeURIComponent(task.incidentId)}/photos/${encodeURIComponent(photoId)}`}
+                            alt={`Tanod inspection proof ${idx + 1}`}
+                            loading="lazy"
+                            className="h-full w-full object-cover"
+                          />
+                          <span className="absolute bottom-1 left-1 rounded bg-slate-900/75 px-1.5 py-0.5 text-[8px] font-bold text-white">
+                            Tanod Inspection #{idx + 1}
+                          </span>
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                  {inspectionPhotos.map((fileName, idx) => (
+                    <div
+                      key={`${fileName}-${idx}`}
+                      className="flex items-center justify-between gap-2 rounded-md border border-(--gf-green-border) bg-(--gf-green-soft) px-2.5 py-1.5"
+                    >
+                      <span className="flex min-w-0 items-center gap-1.5 text-[9px] font-bold text-(--gf-green)">
+                        <Camera size={12} />
+                        <span className="truncate">Inspection Photo #{idx + 1}: {fileName}</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveInspectionPhoto(idx)}
+                        className="flex shrink-0 items-center gap-0.5 text-[9px] font-bold text-[#60738f] hover:text-[#dc2626]"
+                      >
+                        <Trash2 size={10} />Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-2 flex items-center gap-1 text-[9px] font-semibold text-[#dc2626]">
+                  <TriangleAlert size={11} />Complete Check stays locked until arrival & inspection evidence is added.
+                </p>
+              )}
+            </DrawerSection>
+          )}
 
           <DrawerSection title="Lifecycle & Resolution" icon={CheckCircle2}>
             <StageRail status={task.status} />
-            {stageAction && (
-              <p className="mt-2 text-[9px] text-[#7184a0]">
-                Lifecycle advances one strict step at a time: <strong className="text-[#263246]">{task.status} → {STAGE_ORDER[STAGE_ORDER.indexOf(task.status) + 1]}</strong>. Reopening earlier states is not permitted.
-              </p>
-            )}
             {verifying && (
               <div className="mt-3 grid gap-2">
+                <p className="text-[9px] text-[#60738f]">
+                  Upload or modify the <strong>finalizing / proof of repair photos</strong> below (kept separate from the earlier on-site inspection photos).
+                </p>
                 <label
-                  htmlFor="drawer-proof"
-                  className={`flex cursor-pointer flex-col items-center gap-1 rounded-lg border-2 border-dashed p-5 text-center transition ${proof ? "border-(--gf-green) bg-(--gf-green-soft)" : "border-[#d5dee3] bg-[#f8fafb] hover:border-(--gf-green)"}`}
+                  htmlFor={`repair-proof-${task.id}`}
+                  className={`flex cursor-pointer flex-col items-center gap-1 rounded-lg border-2 border-dashed p-5 text-center transition ${
+                    repairPhotos.length ? "border-(--gf-green) bg-(--gf-green-soft)" : "border-[#d5dee3] bg-[#f8fafb] hover:border-(--gf-green)"
+                  }`}
                 >
                   <FileUp size={20} className="text-(--gf-green)" />
-                  <span className="text-[10px] font-bold text-[#263246]">Upload Proof of Repair (Photo/Video)</span>
-                  <span className="text-[9px] text-[#60738f]">Verification stays blocked until proof is attached.</span>
+                  <span className="text-[10px] font-bold text-[#263246]">Upload / Edit Final Proof of Repair (Photos)</span>
+                  <span className="text-[9px] text-[#60738f]">Separate from inspection photos. Verification stays locked until repair proof is attached.</span>
                   <input
-                    id="drawer-proof"
+                    id={`repair-proof-${task.id}`}
                     type="file"
+                    multiple
                     accept="image/*,video/*"
                     className="sr-only"
-                    onChange={(event) => setProof(event.target.files?.[0]?.name ?? null)}
+                    onChange={handleAddRepairFiles}
                   />
                 </label>
-                {proof ? (
-                  <div className="flex items-center justify-between gap-2 rounded-md border border-(--gf-green-border) bg-(--gf-green-soft) px-2.5 py-1.5">
-                    <span className="flex min-w-0 items-center gap-1 text-[9px] font-bold text-(--gf-green)">
-                      <CheckCircle2 size={12} shrink-0 />
-                      <span className="truncate">{proof}</span>
-                    </span>
-                    <button type="button" onClick={() => setProof(null)} className="flex shrink-0 items-center gap-0.5 text-[9px] font-bold text-[#60738f] hover:text-[#dc2626]">
-                      <X size={10} />Remove
-                    </button>
+
+                {repairPhotos.length > 0 ? (
+                  <div className="grid gap-2">
+                    {task.incidentId && task.serverRepairPhotoIds?.length > 0 && (
+                      <div className="grid grid-cols-2 gap-2">
+                        {task.serverRepairPhotoIds.map((photoId, idx) => (
+                          <a
+                            key={photoId}
+                            href={`/api/reports/${encodeURIComponent(task.incidentId)}/photos/${encodeURIComponent(photoId)}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="relative block h-[110px] overflow-hidden rounded-lg border border-[#dfe7ea] bg-slate-100"
+                          >
+                            <img
+                              src={`/api/reports/${encodeURIComponent(task.incidentId)}/photos/${encodeURIComponent(photoId)}`}
+                              alt={`Tanod repair proof ${idx + 1}`}
+                              loading="lazy"
+                              className="h-full w-full object-cover"
+                            />
+                            <span className="absolute bottom-1 left-1 rounded bg-slate-900/75 px-1.5 py-0.5 text-[8px] font-bold text-white">
+                              Tanod Repair Proof #{idx + 1}
+                            </span>
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                    {task.repairNote && (
+                      <p className="rounded-md border border-(--gf-green-border) bg-(--gf-green-soft) px-2.5 py-1.5 text-[9px] text-[#263246]">
+                        <strong>Tanod Repair Note:</strong> {task.repairNote}
+                      </p>
+                    )}
+                    {repairPhotos.map((fileName, idx) => (
+                      <div
+                        key={`${fileName}-${idx}`}
+                        className="flex items-center justify-between gap-2 rounded-md border border-(--gf-green-border) bg-(--gf-green-soft) px-2.5 py-1.5"
+                      >
+                        <span className="flex min-w-0 items-center gap-1.5 text-[9px] font-bold text-(--gf-green)">
+                          <CheckCircle2 size={12} />
+                          <span className="truncate">Final Repair Photo #{idx + 1}: {fileName}</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveRepairPhoto(idx)}
+                          className="flex shrink-0 items-center gap-0.5 text-[9px] font-bold text-[#60738f] hover:text-[#dc2626]"
+                        >
+                          <Trash2 size={10} />Remove
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 ) : (
                   <p className="flex items-center gap-1 text-[9px] font-semibold text-[#dc2626]">
-                    <TriangleAlert size={11} />Approval is disabled until proof of repair is uploaded.
+                    <TriangleAlert size={11} />Approval is disabled until final proof of repair is uploaded.
                   </p>
                 )}
                 <Switch checked={publishIntent} onChange={setPublishIntent} label="Publish to Public Accomplishment Log?" />
@@ -656,7 +1143,7 @@ function TaskDrawer({ task, onClose, onNextStage, onCloseTask, onReassign, onUpd
               <div className="mt-3 grid gap-2">
                 <div>
                   <InfoRow label="Closure mode">{task.closure.proof ? "Proof uploaded" : "Fallback — documented"}</InfoRow>
-                  <InfoRow label="Proof">{task.closure.proof ?? "—"}</InfoRow>
+                  <InfoRow label="Final Repair Proof">{task.closure.proof ?? "—"}</InfoRow>
                   <InfoRow label="Outcome summary">{task.closure.outcome}</InfoRow>
                   <InfoRow label="Remarks">{task.closure.remarks}</InfoRow>
                   <InfoRow label="Closed by">{task.closure.closedBy} • {task.closure.closedAt}</InfoRow>
@@ -680,7 +1167,7 @@ function TaskDrawer({ task, onClose, onNextStage, onCloseTask, onReassign, onUpd
                 rows={2}
                 value={noteDraft}
                 onChange={(e) => setNoteDraft(e.target.value)}
-                placeholder="Add a work note — materials, equipment, site delays…"
+                placeholder="Add a work note — inspection findings, budget needed, materials, site delays…"
                 className="min-w-0 flex-1 rounded-md border border-[#d5dee3] px-2 py-1.5 text-[10px] outline-none focus:border-(--gf-green)"
               />
               <button
@@ -710,19 +1197,15 @@ function TaskDrawer({ task, onClose, onNextStage, onCloseTask, onReassign, onUpd
 
         {/* Drawer footer */}
         <footer className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-[#edf0f2] bg-(--gf-green-soft) px-5 py-3">
-          {verifying && !proof && (
+          {isActiveOrder && !canCompleteCheck && (
             <span className="mr-auto flex items-center gap-1 text-[9px] font-semibold text-[#dc2626]">
-              <TriangleAlert size={10} />Proof-gated: upload a photo or video to unlock approval.
+              <TriangleAlert size={10} />Locked: attach on-site arrival & inspection photo(s) to complete check.
             </span>
           )}
-          {stageAction && !verifying && !resolved && (
-            <button
-              type="button"
-              onClick={() => onNextStage(task.id)}
-              className="rounded-md bg-(--gf-green) px-3 py-2 text-[10px] font-bold text-white transition hover:bg-(--gf-green-dark)"
-            >
-              {stageAction}
-            </button>
+          {verifying && !canApproveRepair && (
+            <span className="mr-auto flex items-center gap-1 text-[9px] font-semibold text-[#dc2626]">
+              <TriangleAlert size={10} />Proof-gated: upload final repair photo(s) to unlock approval.
+            </span>
           )}
           {resolved && !task.published && (
             <button
@@ -741,10 +1224,20 @@ function TaskDrawer({ task, onClose, onNextStage, onCloseTask, onReassign, onUpd
           >
             Close
           </button>
+          {isActiveOrder && (
+            <button
+              type="button"
+              disabled={!canCompleteCheck}
+              onClick={() => onCompleteCheck(task.id)}
+              className="flex items-center gap-1 rounded-md bg-(--gf-green) px-3 py-2 text-[10px] font-bold text-white transition hover:bg-(--gf-green-dark) disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <CheckCircle2 size={11} />Complete Check
+            </button>
+          )}
           {verifying && (
             <button
               type="button"
-              disabled={!proof}
+              disabled={!canApproveRepair}
               onClick={approve}
               className="flex items-center gap-1 rounded-md bg-(--gf-green) px-3 py-2 text-[10px] font-bold text-white transition hover:bg-(--gf-green-dark) disabled:cursor-not-allowed disabled:opacity-40"
             >
@@ -762,9 +1255,19 @@ function TaskDrawer({ task, onClose, onNextStage, onCloseTask, onReassign, onUpd
 /* ----------------------------------------------------------------------- */
 
 function WorkOrderModal({ onClose, onCreate }) {
-  const [draft, setDraft] = useState({ issue: "", category: CATEGORIES[0], zone: ZONES[1], team: TEAMS[0], priority: "Medium", deadline: "", notes: "" });
+  const [draft, setDraft] = useState({ issue: "", category: CATEGORIES[0], zone: ZONES[1], team: TEAMS[0], priority: "Standard", deadline: "", notes: "" });
+
+  const canCreate = Boolean(
+    draft.issue.trim()
+    && draft.category
+    && draft.zone
+    && draft.team
+    && draft.priority
+    && draft.deadline,
+  );
 
   function create() {
+    if (!canCreate) return;
     onCreate({
       issue: draft.issue.trim(),
       category: draft.category,
@@ -772,36 +1275,36 @@ function WorkOrderModal({ onClose, onCreate }) {
       zone: draft.zone,
       team: draft.team,
       priority: draft.priority,
-      deadline: draft.deadline ? new Date(`${draft.deadline}T12:00:00`).getTime() : daysAgo(-7),
+      deadline: new Date(`${draft.deadline}T12:00:00`).getTime(),
       notes: draft.notes.trim(),
     });
-    setDraft({ issue: "", category: CATEGORIES[0], zone: ZONES[1], team: TEAMS[0], priority: "Medium", deadline: "", notes: "" });
+    setDraft({ issue: "", category: CATEGORIES[0], zone: ZONES[1], team: TEAMS[0], priority: "Standard", deadline: "", notes: "" });
   }
 
   return (
     <ModalShell title="Create Manual Work Order" subtitle="Internal maintenance task — does not originate from a resident report" onClose={onClose} width="max-w-[520px]"
       footer={<footer className="gf-modal-foot">
         <button type="button" onClick={onClose} className="gf-btn gf-btn--cancel">Cancel</button>
-        <button type="button" disabled={!draft.issue.trim()} onClick={create} className="gf-btn gf-btn--primary">Create & Assign</button>
+        <button type="button" disabled={!canCreate} onClick={create} className="gf-btn gf-btn--primary disabled:cursor-not-allowed disabled:opacity-40">Create & Assign</button>
       </footer>}>
       <div className="gf-modal-body">
-        <label className="grid gap-1 text-[10px] font-medium text-[#4c4c4c]">Issue title
+        <label className="grid gap-1 text-[10px] font-medium text-[#4c4c4c]">Issue title *
           <input value={draft.issue} onChange={(e) => setDraft((d) => ({ ...d, issue: e.target.value }))} placeholder="e.g. Scheduled street sweep — school frontage" className="rounded-md border border-[#d5dee3] px-2 py-2 text-[10px] outline-none focus:border-(--gf-green)" />
         </label>
         <div className="grid grid-cols-2 gap-2">
-          <label className="grid gap-1 text-[10px] font-medium text-[#4c4c4c]">Category
+          <label className="grid gap-1 text-[10px] font-medium text-[#4c4c4c]">Category *
             <select className="gf-select" style={{ color: "#42506a", height: 34 }} value={draft.category} onChange={(e) => setDraft((d) => ({ ...d, category: e.target.value }))}>{CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select>
           </label>
-          <label className="grid gap-1 text-[10px] font-medium text-[#4c4c4c]">Location zone
+          <label className="grid gap-1 text-[10px] font-medium text-[#4c4c4c]">Location zone *
             <select className="gf-select" style={{ color: "#42506a", height: 34 }} value={draft.zone} onChange={(e) => setDraft((d) => ({ ...d, zone: e.target.value }))}>{ZONES.map((z) => <option key={z}>{z}</option>)}</select>
           </label>
-          <label className="grid gap-1 text-[10px] font-medium text-[#4c4c4c]">Internal team
+          <label className="grid gap-1 text-[10px] font-medium text-[#4c4c4c]">Assign Tanod *
             <select className="gf-select" style={{ color: "#42506a", height: 34 }} value={draft.team} onChange={(e) => setDraft((d) => ({ ...d, team: e.target.value }))}>{TEAMS.map((t) => <option key={t}>{t}</option>)}</select>
           </label>
-          <label className="grid gap-1 text-[10px] font-medium text-[#4c4c4c]">Priority
-            <select className="gf-select" style={{ color: "#42506a", height: 34 }} value={draft.priority} onChange={(e) => setDraft((d) => ({ ...d, priority: e.target.value }))}>{PRIORITIES.map((p) => <option key={p}>{p}</option>)}</select>
+          <label className="grid gap-1 text-[10px] font-medium text-[#4c4c4c]">Priority *
+            <select className="gf-select" style={{ color: "#42506a", height: 34 }} value={draft.priority} onChange={(e) => setDraft((d) => ({ ...d, priority: e.target.value }))}>{URGENCY_OPTIONS.map((p) => <option key={p}>{p}</option>)}</select>
           </label>
-          <label className="grid gap-1 text-[10px] font-medium text-[#4c4c4c]">Target deadline
+          <label className="grid gap-1 text-[10px] font-medium text-[#4c4c4c]">Target deadline *
             <input type="date" value={draft.deadline} onChange={(e) => setDraft((d) => ({ ...d, deadline: e.target.value }))} className="rounded-md border border-[#d5dee3] px-2 py-2 text-[10px] outline-none focus:border-(--gf-green)" />
           </label>
           <label className="grid gap-1 text-[10px] font-medium text-[#4c4c4c]">Initial notes (optional)
@@ -810,7 +1313,7 @@ function WorkOrderModal({ onClose, onCreate }) {
         </div>
         <div className="gf-note gf-note--soft">
           <Wrench size={14} style={{ flexShrink: 0, color: "var(--gf-green)" }} />
-          <span>Manual work orders enter the queue as <strong>Pending</strong> with source “manual” — no external department accounts or multi-level approvals are involved.</span>
+          <span>Manual work orders enter Active Work Orders with locked Tanod & priority once created.</span>
         </div>
       </div>
     </ModalShell>
@@ -871,6 +1374,8 @@ const TABS = [
 export default function MaintenanceTasks() {
   const [tasks, setTasks] = useState(initialTasks);
   const [queue, setQueue] = useState(initialQueue);
+  const [tanods, setTanods] = useState(FALLBACK_TANODS);
+  const [reviewingIntakeItem, setReviewingIntakeItem] = useState(null);
   const [dismissedIntakeIds, setDismissedIntakeIds] = useState(() => new Set());
   const [tab, setTab] = useState("intake");
   const [query, setQuery] = useState("");
@@ -885,7 +1390,27 @@ export default function MaintenanceTasks() {
 
   useEffect(() => {
     let active = true;
-    const loadGuestIntake = async () => {
+    const loadTanodUnits = async () => {
+      try {
+        const response = await fetch("/api/admin/dispatch/units", { credentials: "include", cache: "no-store" });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!active || !Array.isArray(data.units)) return;
+        const tanodUnits = data.units.filter((u) => u.resource_type === "TANOD");
+        if (tanodUnits.length > 0) {
+          setTanods(tanodUnits);
+        }
+      } catch {
+        // Keep fallback tanod list
+      }
+    };
+    void loadTanodUnits();
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const loadMaintenanceIntake = async () => {
       try {
         const response = await fetch("/api/admin/maintenance/intake", { credentials: "include", cache: "no-store" });
         if (!response.ok) throw new Error("Maintenance intake could not be loaded.");
@@ -901,7 +1426,10 @@ export default function MaintenanceTasks() {
             serverBacked: true,
             reportId: report.report_id,
             issue: report.title || `${report.category || "Maintenance"} report`,
-            reporter: { name: report.reporter_name || "Guest", type: "guest" },
+            reporter: {
+              name: report.reporter_name || "Guest",
+              type: report.reporter_type === "resident" ? "resident" : "guest",
+            },
             location,
             zone: "",
             lat: report.latitude == null ? null : Number(report.latitude),
@@ -924,13 +1452,97 @@ export default function MaintenanceTasks() {
           ...current.filter((item) => !item.serverBacked && !serverReportIds.has(item.reportId)),
         ]);
       } catch (error) {
-        console.error("Unable to load guest maintenance reports:", error);
+        console.error("Unable to load maintenance reports:", error);
       }
     };
-    void loadGuestIntake();
-    const timer = window.setInterval(loadGuestIntake, 5000);
+    void loadMaintenanceIntake();
+    const timer = window.setInterval(loadMaintenanceIntake, 5000);
     return () => { active = false; window.clearInterval(timer); };
   }, [dismissedIntakeIds]);
+
+  useEffect(() => {
+    let active = true;
+    const loadServerMaintenanceTasks = async () => {
+      try {
+        const res = await fetch("/api/admin/maintenance/tasks", { credentials: "include", cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!active || !Array.isArray(data.tasks)) return;
+
+        setTasks((current) => {
+          const byAssignmentId = new Map(current.filter((t) => t.assignmentId).map((t) => [t.assignmentId, t]));
+          const byId = new Map(current.map((t) => [t.id, t]));
+          const syncedIds = new Set();
+
+          const serverMapped = data.tasks.map((st) => {
+            const existing = byAssignmentId.get(st.assignment_id) || byId.get(st.id);
+            if (existing) syncedIds.add(existing.id);
+            const serverInspectionLabels = (st.inspection_photo_ids || []).map((pid) => `tanod-inspection-${String(pid).slice(0, 6)}.jpg`);
+            const serverRepairLabels = (st.repair_photo_ids || []).map((pid) => `tanod-repair-${String(pid).slice(0, 6)}.jpg`);
+            const mergedInspection = existing?.inspectionPhotos?.length
+              ? Array.from(new Set([...serverInspectionLabels, ...existing.inspectionPhotos]))
+              : serverInspectionLabels;
+            const mergedRepair = existing?.repairPhotos?.length
+              ? Array.from(new Set([...serverRepairLabels, ...existing.repairPhotos]))
+              : serverRepairLabels;
+            const submittedMs = Date.parse(st.submitted_at) || NOW();
+
+            const notesList = existing?.workNotes ? [...existing.workNotes] : [];
+            if (st.inspection_note && !notesList.some((n) => n.note === st.inspection_note)) {
+              notesList.unshift({ at: fmtWhen(st.inspection_at || NOW()), by: st.team, note: st.inspection_note });
+            }
+            if (st.repair_note && !notesList.some((n) => n.note === st.repair_note)) {
+              notesList.unshift({ at: fmtWhen(st.repair_at || NOW()), by: st.team, note: st.repair_note });
+            }
+
+            return {
+              ...(existing || {}),
+              id: existing?.id || st.id,
+              assignmentId: st.assignment_id,
+              incidentId: st.incident_id,
+              issue: st.issue,
+              source: "report",
+              originReportId: st.originReportId,
+              reporter: st.reporter,
+              category: st.category,
+              location: st.location,
+              zone: existing?.zone || ZONES[0],
+              lat: st.lat,
+              lng: st.lng,
+              geotag: existing?.geotag || { source: "GPS pin", accuracy: "±5 m", landmark: st.location },
+              evidence: existing?.evidence || ["photo"],
+              inspectionDone: Boolean(st.inspection_done),
+              inspectionNote: st.inspection_note || "",
+              serverInspectionPhotoIds: st.inspection_photo_ids || [],
+              inspectionPhotos: mergedInspection,
+              repairDone: Boolean(st.repair_done),
+              repairNote: st.repair_note || "",
+              serverRepairPhotoIds: st.repair_photo_ids || [],
+              repairPhotos: mergedRepair,
+              fastTrackPending: Boolean(st.fast_track_pending),
+              narration: st.narration,
+              team: st.team,
+              priority: st.priority,
+              dateSubmitted: existing?.dateSubmitted || submittedMs,
+              deadline: st.deadline,
+              status: existing?.status === "Verified Fixed" ? "Verified Fixed" : st.status,
+              metrics: existing?.metrics || { submittedAt: submittedMs, assignedAt: submittedMs, startedAt: submittedMs },
+              reassignments: existing?.reassignments || [],
+              workNotes: notesList,
+            };
+          });
+
+          const remaining = current.filter((t) => !t.assignmentId && !syncedIds.has(t.id));
+          return [...serverMapped, ...remaining];
+        });
+      } catch {
+        // Ignore transient poll errors
+      }
+    };
+    void loadServerMaintenanceTasks();
+    const timer = window.setInterval(loadServerMaintenanceTasks, 5000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, []);
 
   const logAudit = useCallback((entry) => {
     setAuditLog((log) => [{ key: `${log.length + 1}-${NOW()}-${entry.taskId}`, at: stamp(true), ...entry }, ...log]);
@@ -940,72 +1552,168 @@ export default function MaintenanceTasks() {
     setTasks((current) => current.map((task) => (task.id === id ? { ...task, ...changes } : task)));
   }
 
-  function onUpdate(id, changes, detail) {
-    updateTask(id, changes);
-    if (detail) logAudit({ taskId: id, actor: "Admin — N. Villanueva", action: "Task updated", detail });
-  }
-
-  /* 1 — Direct non-emergency ingestion: one click, no external dept accounts,
-     no multi-level approval. Geotag, landmark and media carry over. */
-  function ingest(queueId) {
+  /* 1 — Review & Ingest from Intake Queue into Active Work Orders */
+  function confirmIngest(queueId, { urgency, tanod, deadline }) {
     const item = queue.find((q) => q.queueId === queueId);
     if (!item) return;
     const id = nextTaskId(tasks);
     const time = NOW();
+    const tanodName = tanod?.display_name || tanod?.responder_name || "Assigned Tanod";
+    const initialAdminNote = `Dispatched to ${tanodName} (${urgency}) with on-site inspection deadline ${fmtDue(deadline)}.`;
+    if (item.incidentId) {
+      fetch("/api/admin/maintenance/ingest", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          incident_id: item.incidentId,
+          unit_id: tanod?.id,
+          tanod_name: tanodName,
+          task_code: id,
+          urgency,
+          deadline,
+          admin_notes: initialAdminNote,
+        }),
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data?.assignment_id) {
+            updateTask(id, { assignmentId: data.assignment_id, incidentId: item.incidentId });
+          }
+        })
+        .catch((err) => console.error("Failed to dispatch maintenance task to Tanod:", err));
+    }
     const task = {
-      id, issue: item.issue, source: "report", originReportId: item.reportId,
-      reporter: item.reporter, category: item.category,
-      location: item.location, zone: item.zone, lat: item.lat, lng: item.lng,
-      geotag: item.geotag, evidence: item.evidence, narration: item.narration,
-      team: "", priority: "Medium", dateSubmitted: time,
-      deadline: time + 7 * 86400000,
-      status: "Pending", metrics: { submittedAt: time },
-      reassignments: [], workNotes: [],
+      id,
+      incidentId: item.incidentId || null,
+      issue: item.issue,
+      source: "report",
+      originReportId: item.reportId,
+      reporter: item.reporter,
+      category: item.category,
+      location: item.location,
+      zone: item.zone || ZONES[0],
+      lat: item.lat,
+      lng: item.lng,
+      geotag: item.geotag,
+      evidence: item.evidence,
+      inspectionPhotos: [],
+      repairPhotos: [],
+      narration: languageScan(item.narration).sanitized,
+      team: tanodName,
+      priority: urgency,
+      dateSubmitted: time,
+      deadline,
+      status: "In Progress",
+      metrics: { submittedAt: time, assignedAt: time, startedAt: time },
+      reassignments: [],
+      workNotes: [
+        { at: fmtWhen(time), by: "Admin — N. Villanueva", note: `Dispatched to ${tanodName} (${urgency}) with on-site inspection deadline ${fmtDue(deadline)}.` },
+      ],
     };
     setTasks((current) => [task, ...current]);
     setQueue((current) => current.filter((q) => q.queueId !== queueId));
     if (item.serverBacked) setDismissedIntakeIds((current) => new Set(current).add(item.incidentId));
-    logAudit({ taskId: id, actor: "System — Routing", system: true, action: "Ingested from intake", detail: `${item.reportId} auto-routed straight into the maintenance queue with geotag, landmark and ${item.evidence.length} media file(s). No external approvals required.` });
-    toast.add({ type: "info", title: `Ingested ${item.reportId}`, description: `${id} created with geotag and evidence — assign a crew to start the lifecycle.` });
+    setReviewingIntakeItem(null);
+    setTab("active");
+    logAudit({
+      taskId: id,
+      actor: "Admin — N. Villanueva",
+      system: false,
+      action: "Reviewed & ingested to work order",
+      detail: `${item.reportId} assigned to ${tanodName} (${urgency}) with inspection deadline ${fmtDue(deadline)}.`,
+    });
+    toast.add({
+      type: "success",
+      title: `Work order ${id} created`,
+      description: `Assigned to ${tanodName} (${urgency}) — now in Active Work Orders.`,
+    });
   }
 
   /* 2 — Manual work-order creation. */
   function createWorkOrder(draft) {
     const id = nextTaskId(tasks);
+    const time = NOW();
     const task = {
       id, issue: draft.issue, source: "manual", originReportId: null, reporter: null,
       category: draft.category, location: draft.location, zone: draft.zone,
       lat: 14.7285, lng: 121.0168 + Math.random() * 0.002,
       geotag: { source: "Internal survey", accuracy: "±5 m", landmark: `${draft.location} — admin-placed pin` },
-      evidence: [], narration: draft.notes || "Internal preventive/scheduled work order.",
-      team: draft.team, priority: draft.priority, dateSubmitted: NOW(),
-      deadline: draft.deadline, status: "Pending", metrics: { submittedAt: NOW() },
+      evidence: [],
+      inspectionPhotos: [],
+      repairPhotos: [],
+      narration: draft.notes || "Internal preventive/scheduled work order.",
+      team: draft.team, priority: draft.priority, dateSubmitted: time,
+      deadline: draft.deadline, status: "In Progress",
+      metrics: { submittedAt: time, assignedAt: time, startedAt: time },
       reassignments: [],
       workNotes: draft.notes ? [{ at: stamp(true), by: "Admin — N. Villanueva", note: draft.notes }] : [],
     };
     setTasks((current) => [task, ...current]);
     setCreateOpen(false);
-    logAudit({ taskId: id, actor: "Admin — N. Villanueva", action: "Manual work order created", detail: `${draft.issue} — ${draft.team}, ${draft.priority} priority, deadline ${fmtDue(draft.deadline)}. Not sourced from a resident report.` });
-    toast.add({ type: "success", title: "Work order created", description: `${id} filed as Pending for ${draft.team}.` });
+    logAudit({ taskId: id, actor: "Admin — N. Villanueva", action: "Manual work order created", detail: `${draft.issue} — ${draft.team}, ${draft.priority} priority, deadline ${fmtDue(draft.deadline)}.` });
+    toast.add({ type: "success", title: "Work order created", description: `${id} filed under Active Work Orders for ${draft.team}.` });
   }
 
-  /* 3 — Strict lifecycle transitions. */
-  function nextStage(id) {
+  /* 3 — Complete Check (Active Work Orders -> Awaiting Verification) */
+  function completeCheck(id) {
     const task = tasks.find((t) => t.id === id);
-    const to = STAGE_ORDER[STAGE_ORDER.indexOf(task.status) + 1];
-    if (!to) return;
-    const metrics = {
-      assignedAt: to === "Assigned" && !task.metrics.assignedAt ? NOW() : task.metrics.assignedAt,
-      startedAt: to === "In Progress" && !task.metrics.startedAt ? NOW() : task.metrics.startedAt,
-    };
-    updateTask(id, { status: to, metrics: { ...task.metrics, ...metrics } });
-    logAudit({ taskId: id, actor: "Admin — N. Villanueva", action: "Status change", detail: `${task.status} → ${to}${to === "In Progress" ? " — progress monitoring live" : ""}.` });
-    toast.add({ type: "info", title: `Task ${id}`, description: `Lifecycle advanced: ${task.status} → ${to}.` });
+    if (!task || !task.inspectionPhotos?.length) return;
+    if (task.assignmentId) {
+      fetch(`/api/admin/maintenance/tasks/${encodeURIComponent(task.assignmentId)}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ admin_check_approved: true }),
+      }).catch((err) => console.error("Failed to persist complete check:", err));
+    }
+    updateTask(id, { status: "Awaiting Verification", fastTrackPending: false });
+    setSelectedId(null);
+    setTab("verify");
+    logAudit({
+      taskId: id,
+      actor: "Admin — N. Villanueva",
+      action: "On-site check completed",
+      detail: `Tanod arrival & inspection evidence (${task.inspectionPhotos.join(", ")}) verified. Moved to Awaiting Verification.`,
+    });
+    toast.add({
+      type: "info",
+      title: `${id} check complete`,
+      description: "Moved to Awaiting Verification for final repair proof & closure.",
+    });
   }
 
-  /* 4 — Proof-gated closure; optionally publishes the privacy-safe summary. */
+  function updateInspectionPhotos(id, photos) {
+    updateTask(id, { inspectionPhotos: photos });
+    logAudit({
+      taskId: id,
+      actor: "Admin — N. Villanueva",
+      action: "Inspection photos updated",
+      detail: `On-site inspection evidence set to: ${photos.length ? photos.join(", ") : "none"}.`,
+    });
+  }
+
+  function updateRepairPhotos(id, photos) {
+    updateTask(id, { repairPhotos: photos });
+    logAudit({
+      taskId: id,
+      actor: "Admin — N. Villanueva",
+      action: "Final repair photos updated",
+      detail: `Finalizing repair proof set to: ${photos.length ? photos.join(", ") : "none"}.`,
+    });
+  }
+
+  /* 4 — Proof-gated closure (Awaiting Verification -> Resolved & Logged) */
   function closeTask(id, closure, publishIntent = false) {
     const task = tasks.find((t) => t.id === id);
+    if (task?.assignmentId) {
+      fetch(`/api/admin/maintenance/tasks/${encodeURIComponent(task.assignmentId)}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ verified_fixed: true }),
+      }).catch((err) => console.error("Failed to persist verified fixed:", err));
+    }
     const at = stamp(true);
     const updates = {
       status: "Verified Fixed",
@@ -1015,32 +1723,24 @@ export default function MaintenanceTasks() {
     };
     if (publishIntent) updates.published = { at, summary: privacySummary(task) };
     updateTask(id, updates);
-    logAudit({ taskId: id, actor: closure.closedBy, action: "Resolution verified with proof", detail: `Proof ${closure.proof} uploaded — outcome: ${closure.outcome}` });
+    setSelectedId(null);
+    setTab("resolved");
+    logAudit({ taskId: id, actor: closure.closedBy, action: "Resolution verified with proof", detail: `Final repair proof (${closure.proof}) uploaded — outcome: ${closure.outcome}` });
     logAudit({ taskId: id, actor: "System — Notifications", system: true, action: "Reporter notified", detail: `Read-only status update pushed${task.reporter?.type === "guest" ? ` to guest link ${task.reporter.token}` : ` to ${task.reporter?.name}`}.` });
     if (publishIntent) logAudit({ taskId: id, actor: "Admin — N. Villanueva", action: "Accomplishment summary published", detail: "Privacy-safe summary pushed to the public accomplishment log — reporter identifiers and exact addresses stripped." });
-    toast.add({ type: "success", title: `${id} verified fixed`, description: publishIntent ? "Proof recorded; privacy-safe summary published to the public log." : "Proof recorded; the reporter was notified automatically." });
-  }
-
-  function reassign(id, reassignTo) {
-    const task = tasks.find((t) => t.id === id);
-    const firstAssignment = !task.team;
-    updateTask(id, {
-      team: reassignTo,
-      status: firstAssignment && task.status === "Pending" ? "Assigned" : task.status,
-      metrics: firstAssignment && !task.metrics.assignedAt ? { ...task.metrics, assignedAt: NOW() } : task.metrics,
-      reassignments: [...task.reassignments, { from: task.team || "— unassigned —", to: reassignTo, at: stamp(true), by: "Admin — N. Villanueva" }],
-    });
-    logAudit({
-      taskId: id,
-      actor: "Admin — N. Villanueva",
-      action: firstAssignment ? "Task assigned" : "Team reassigned",
-      detail: firstAssignment ? `${reassignTo} picked up the task; lifecycle advanced Pending → Assigned.` : `${task.team} → ${reassignTo}`,
-    });
-    toast.add({ type: "info", title: firstAssignment ? "Crew assigned" : "Team reassigned", description: `${id} → ${reassignTo}.` });
+    toast.add({ type: "success", title: `${id} verified fixed`, description: publishIntent ? "Final repair proof recorded; privacy-safe summary published to Resolved & Logged." : "Final repair proof recorded; moved to Resolved & Logged." });
   }
 
   function addNote(id, note) {
     const task = tasks.find((t) => t.id === id);
+    if (task?.assignmentId) {
+      fetch(`/api/admin/maintenance/tasks/${encodeURIComponent(task.assignmentId)}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ admin_notes: note }),
+      }).catch((err) => console.error("Failed to sync admin note to Tanod:", err));
+    }
     updateTask(id, { workNotes: [{ at: stamp(true), by: "Admin — N. Villanueva", note }, ...task.workNotes] });
     logAudit({ taskId: id, actor: "Admin — N. Villanueva", action: "Work note added", detail: note });
   }
@@ -1096,9 +1796,9 @@ export default function MaintenanceTasks() {
     <div className="space-y-3">
       {/* 1 — KPI summary banner */}
       <section aria-label="Maintenance KPI summary" className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Pending Intake" value={stats.intake} icon={FileText} hint="auto-routed reports awaiting work orders" onClick={() => setTab("intake")} />
-        <StatCard label="Active Tasks" value={stats.active} icon={Wrench} hint="ongoing repairs in the field" onClick={() => setTab("active")} />
-        <StatCard label="Awaiting Verification" value={stats.verifying} icon={ShieldCheck} hint="crew done — needs admin proof-review" onClick={() => setTab("verify")} />
+        <StatCard label="Pending Intake" value={stats.intake} icon={FileText} hint="guest & resident reports awaiting review" onClick={() => setTab("intake")} />
+        <StatCard label="Active Tasks" value={stats.active} icon={Wrench} hint="ongoing Tanod site checks & repairs" onClick={() => setTab("active")} />
+        <StatCard label="Awaiting Verification" value={stats.verifying} icon={ShieldCheck} hint="site checked — needs final repair proof" onClick={() => setTab("verify")} />
         <StatCard label="Overdue Tasks" value={stats.overdue} icon={Clock} hint="past deadline — escalate now" alert onClick={() => setTab("active")} />
       </section>
 
@@ -1134,13 +1834,19 @@ export default function MaintenanceTasks() {
           {tab === "intake" ? (
             queue.length ? (
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {queue.map((item) => <IntakeCard key={item.queueId} item={item} onIngest={ingest} />)}
+                {queue.map((item) => (
+                  <IntakeCard
+                    key={item.queueId}
+                    item={item}
+                    onReview={(target) => setReviewingIntakeItem(target)}
+                  />
+                ))}
               </div>
             ) : (
               <div className="flex flex-col items-center gap-2 py-12 text-center">
                 <ShieldCheck size={28} className="text-(--gf-green)" />
                 <p className="text-[11px] font-bold text-[#263246]">Intake queue is clear</p>
-                <p className="text-[10px] text-[#60738f]">No non-emergency reports are awaiting ingestion right now.</p>
+                <p className="text-[10px] text-[#60738f]">No non-emergency reports are awaiting review right now.</p>
               </div>
             )
           ) : (
@@ -1153,7 +1859,7 @@ export default function MaintenanceTasks() {
                     aria-label="Search tasks"
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Search tasks, teams, zones, origin reports..."
+                    placeholder="Search tasks, Tanods, zones, origin reports..."
                     className="w-full text-[10px] outline-none placeholder:text-[#a0b0c0]"
                   />
                 </label>
@@ -1170,8 +1876,8 @@ export default function MaintenanceTasks() {
               </div>
 
               <p className="mb-2 text-[9px] font-semibold text-[#7184a0]">
-                {tab === "active" && `Showing ${filtered.length} pending / in-progress work order(s)`}
-                {tab === "verify" && `Showing ${filtered.length} submission(s) awaiting admin proof-review`}
+                {tab === "active" && `Showing ${filtered.length} active work order(s)`}
+                {tab === "verify" && `Showing ${filtered.length} work order(s) awaiting final repair proof verification`}
                 {tab === "resolved" && `Showing ${filtered.length} verified, logged resolution(s)`}
               </p>
 
@@ -1183,7 +1889,7 @@ export default function MaintenanceTasks() {
                 emptyLabel={tab === "active"
                   ? "No active work orders match the selected filters."
                   : tab === "verify"
-                    ? "Nothing to verify — crews have no pending completion claims."
+                    ? "Nothing to verify — no pending repair verifications."
                     : "No resolved tasks logged yet."}
               />
             </>
@@ -1191,15 +1897,26 @@ export default function MaintenanceTasks() {
         </div>
       </section>
 
+      {reviewingIntakeItem && (
+        <IntakeReviewDrawer
+          key={reviewingIntakeItem.queueId}
+          item={reviewingIntakeItem}
+          tanods={tanods}
+          onClose={() => setReviewingIntakeItem(null)}
+          onConfirmIngest={confirmIngest}
+          logAudit={logAudit}
+        />
+      )}
+
       {selectedTask && (
         <TaskDrawer
           key={selectedTask.id}
           task={selectedTask}
           onClose={() => setSelectedId(null)}
-          onNextStage={nextStage}
+          onCompleteCheck={completeCheck}
           onCloseTask={closeTask}
-          onReassign={reassign}
-          onUpdate={onUpdate}
+          onUpdateInspectionPhotos={updateInspectionPhotos}
+          onUpdateRepairPhotos={updateRepairPhotos}
           onAddNote={addNote}
           onPublish={publish}
           onOpenAudit={(taskId) => { setSelectedId(null); setAudit({ open: true, taskId }); }}

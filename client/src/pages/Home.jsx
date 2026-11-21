@@ -20,7 +20,7 @@ export default function HomePage() {
         <div className="site-container landing-hero__inner">
           <div className="landing-hero__copy">
             <p className="text-xs font-semibold uppercase tracking-[.2em] text-emerald-200">Barangay 167 · Caloocan City</p>
-            <h1 className="landing-display mt-5">A better way to care for our community.</h1>
+            <h1 className="landing-display mt-5">A better way to care for our <span className="text-emerald-200">community.</span></h1>
             <p className="mt-5 max-w-2xl text-base leading-relaxed text-emerald-50/90 sm:text-lg">GeoFix 167 connects residents and barangay responders through clear reporting, coordinated services, and visible community progress.</p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link to={PATHS.publicMap} className="inline-flex items-center gap-2 rounded-lg bg-[#fffefa] px-5 py-3 text-sm font-semibold text-[#174b37] transition-colors hover:bg-[#edf3ec]">Explore live map <MapPinned size={17} /></Link>
