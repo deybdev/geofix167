@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import MapViewer from "../../shared/components/MapViewer";
+import MapPage from "../../shared/components/MapPage";
 import IncidentSheet from "./components/IncidentSheet";
 import { loadSampleIncidents } from "./sampleIncident";
 
@@ -16,22 +16,20 @@ export default function ResidentMap() {
   }, []);
 
   return (
-    <section className="relative -m-6 h-screen overflow-hidden">
-      <MapViewer
-        incidents={incidents}
-        selectedLocation={selectedLocation}
-        onLocationSelect={(location) => {
-          setSelectedIncident(null);
-          setSelectedLocation(location);
-        }}
-        selectedIncident={selectedIncident}
-        onIncidentSelect={setSelectedIncident}
-      />
-
+    <MapPage
+      incidents={incidents}
+      selectedLocation={selectedLocation}
+      onLocationSelect={(location) => {
+        setSelectedIncident(null);
+        setSelectedLocation(location);
+      }}
+      selectedIncident={selectedIncident}
+      onIncidentSelect={setSelectedIncident}
+    >
       <IncidentSheet
         incident={selectedIncident}
         onClose={() => setSelectedIncident(null)}
       />
-    </section>
+    </MapPage>
   );
 }

@@ -1,4 +1,4 @@
-import logo from "../../assets/images/logo.png";
+const logo = "/geofix167.png";
 
 export default function Logo({
   inverse = false,

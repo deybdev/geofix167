@@ -21,5 +21,6 @@ This is an example project made to be used as a quick start into building OpenAP
 ## Development
 
 1. Run `wrangler dev` to start a local instance of the API.
-2. Open `http://localhost:8787/` in your browser to see the Swagger interface where you can try the endpoints.
-3. Changes made in the `src/` folder will automatically trigger the server to reload, you only need to refresh the Swagger interface.
+2. Open `http://localhost:8787/` in your browser to open Wrangler's Local Explorer, where you can inspect the local D1 database and other bindings.
+3. The API endpoints are available under `http://localhost:8787/api/`.
+4. Changes made in the `src/` folder automatically trigger the server to reload.

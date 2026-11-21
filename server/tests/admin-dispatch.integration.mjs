@@ -1,0 +1,176 @@
+import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+import assert from 'node:assert/strict';
+
+const require = createRequire(import.meta.url);
+const testDir = dirname(fileURLToPath(import.meta.url));
+const serverRoot = resolve(testDir, '..');
+const { build } = require('esbuild');
+const bundle = await build({ entryPoints: [resolve(serverRoot, 'src/index.ts')], bundle: true, platform: 'node', format: 'esm', write: false });
+const { default: app } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString('base64')}`);
+const sql = new DatabaseSync(':memory:');
+sql.exec('PRAGMA foreign_keys = ON');
+sql.exec(`CREATE TABLE roles(role_id INTEGER PRIMARY KEY, code TEXT UNIQUE);
+CREATE TABLE account_statuses(status_id INTEGER PRIMARY KEY, status_code TEXT UNIQUE);
+CREATE TABLE users(user_id TEXT PRIMARY KEY, first_name TEXT, last_name TEXT, mobile_number TEXT, password_hash TEXT, role_id INTEGER, account_status_id INTEGER);
+CREATE TABLE user_sessions_and_devices(user_id TEXT, token_hash TEXT, expires_at TEXT, revoked_at TEXT);
+INSERT INTO roles VALUES(1,'admin'),(2,'resident'),(3,'tanod');
+INSERT INTO account_statuses VALUES(1,'ACTIVE');
+INSERT INTO users VALUES('admin','Admin','User','09123123123','hash',1,1),('resident','Resident','User','09246246246','hash',2,1),
+('usr_demo_responder_001','Renus','Manipon','09369369369','hash',3,1);`);
+for (const file of ['0005_guest_incidents.sql', '0006_review_alerts.sql', '0007_dispatch_support.sql', '0012_community_audit.sql', '0015_admin_dispatch.sql', '0017_report_attachments.sql', '0018_guest_report_intake.sql', '0019_resident_report_notifications.sql', '0020_guest_report_location_metadata.sql', '0021_guest_report_urgency.sql', '0022_normalize_maintenance_categories.sql', '0028_responder_dispatches.sql', '0029_dispatch_coordinates.sql', '0033_live_tracking.sql']) {
+  sql.exec(readFileSync(resolve(serverRoot, `src/migrations/${file}`), 'utf8'));
+}
+const sha256 = async (value) => Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))).toString('hex');
+for (const [id, role] of [['admin', 'admin'], ['resident', 'resident']]) {
+  const token = `${id}-session`;
+  sql.prepare('INSERT INTO user_sessions_and_devices (user_id, token_hash, expires_at) VALUES(?,?,?)').run(id, await sha256(token), '2099-01-01');
+}
+const db = {
+  prepare(query) {
+    const statement = sql.prepare(query);
+    let values = [];
+    return {
+      bind(...args) { values = args; return this; },
+      async first() { return statement.get(...values) ?? null; },
+      async all() { return { results: statement.all(...values) }; },
+      async run() { const result = statement.run(...values); return { meta: { changes: result.changes } }; },
+    };
+  },
+  async batch(statements) {
+    sql.exec('BEGIN');
+    try {
+      const results = [];
+      for (const statement of statements) results.push(await statement.run());
+      sql.exec('COMMIT');
+      return results;
+    } catch (error) { sql.exec('ROLLBACK'); throw error; }
+  },
+};
+const uploadedPhotos = new Map();
+const uploads = {
+  async put(key, value) { uploadedPhotos.set(key, value); },
+  async get(key) { return uploadedPhotos.get(key) ?? null; },
+  async delete(key) { uploadedPhotos.delete(key); },
+};
+const request = (path, method = 'GET', body, account) => {
+  const multipart = body instanceof FormData;
+  return app.request(`/api${path}`, {
+  method,
+  headers: { ...(multipart ? {} : { 'Content-Type': 'application/json' }), ...(account ? { Cookie: `geofix_session=${account}-session` } : {}) },
+  ...(body === undefined ? {} : { body: multipart ? body : JSON.stringify(body) }),
+  }, { geofix167_db: db, geofix167_uploads: uploads, FRONTEND_ORIGIN: 'http://localhost:5173' });
+};
+const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aOc8AAAAASUVORK5CYII=', 'base64');
+const guestReportForm = (report) => {
+  const form = new FormData();
+  form.append('report', JSON.stringify(report));
+  form.append('photos', new File([png], 'incident.png', { type: 'image/png' }));
+  return form;
+};
+
+assert.equal((await request('/admin/dispatch/reports')).status, 401, 'anonymous admin request must be rejected');
+assert.equal((await request('/admin/dispatch/reports', 'GET', undefined, 'resident')).status, 403, 'non-admin request must be rejected');
+const unitsResponse = await request('/admin/dispatch/units', 'GET', undefined, 'admin');
+assert.equal(unitsResponse.status, 200);
+const seededUnits = (await unitsResponse.json()).units;
+assert.equal(seededUnits.length, 3, 'demo responder and extra demo units are seeded');
+assert.ok(seededUnits.every((unit) => unit.availability_status === 'AVAILABLE'));
+
+const reportIds = [];
+for (let index = 0; index < 5; index += 1) {
+  const response = await request('/reports', 'POST', guestReportForm({
+    reporter_type: 'GUEST', guest_alias: 'Test Guest', title: 'Drainage report', classification: 'maintenance', incident_category: 'Drainage / Flooding', priority_level: 'MEDIUM',
+    description: `Dispatch integration report ${index}`, latitude: 14.73, longitude: 121.01,
+  }));
+  assert.equal(response.status, 201, response.status === 201 ? undefined : await response.text());
+  reportIds.push((await response.json()).report.incident_id);
+}
+const emergencyReportId = 'sudden-emergency-review';
+sql.prepare(`INSERT INTO incident_reports
+  (incident_id, reported_by_user_id, incident_status_id, category, priority_code, is_emergency, title, description_original)
+  VALUES(?, 'resident', 1, 'Incident / Emergency', 'P2', 1, 'Sudden emergency report', '')`).run(emergencyReportId);
+
+// Compare complete rows, including timestamps, so rejected dispatches cannot
+// silently change a report, consume a unit, or append either kind of event.
+const dispatchSnapshot = () => Object.fromEntries([
+  'incident_reports', 'responder_resources', 'tanod_assignments',
+  'tanod_assignment_events', 'incident_status_events', 'external_support_requests', 'support_request_events',
+].map(table => [table, sql.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
+const assertRejectedDispatch = async (reportId, unitId, account, status, message) => {
+  const before = dispatchSnapshot();
+  const response = await request(`/admin/dispatch/reports/${reportId}/dispatch`, 'POST', { unit_id: unitId }, account);
+  assert.equal(response.status, status);
+  if (message) assert.equal((await response.json()).error, message);
+  assert.deepEqual(dispatchSnapshot(), before, 'rejected dispatch must have no database side effects');
+};
+
+const emergencyReview = await request(`/admin/dispatch/reports/${emergencyReportId}/verify`, 'POST', { decision: 'VERIFIED' }, 'admin');
+assert.equal(emergencyReview.status, 200);
+assert.equal((await emergencyReview.json()).status, 'FORWARDED_TO_BDRRMO');
+assert.equal(sql.prepare(`SELECT s.code AS status FROM incident_reports r
+  JOIN incident_statuses s ON s.incident_status_id = r.incident_status_id WHERE r.incident_id = ?`).get(emergencyReportId).status, 'FORWARDED_TO_BDRRMO');
+const listedEmergency = (await (await request('/admin/dispatch/reports', 'GET', undefined, 'admin')).json()).reports
+  .find((report) => report.id === emergencyReportId);
+assert.equal(listedEmergency.status_code, 'FORWARDED_TO_BDRRMO', 'forwarded emergency remains visible with its status');
+await assertRejectedDispatch(emergencyReportId, 'unit_usr_demo_responder_001', 'admin', 409,
+  'Sudden incident reports are forwarded to BDRRMO and cannot be dispatched to Tanod.');
+const emergencySupportBefore = dispatchSnapshot();
+const emergencySupport = await request(`/admin/dispatch/reports/${emergencyReportId}/request-drrmo`, 'POST', {}, 'admin');
+assert.equal(emergencySupport.status, 409);
+assert.equal((await emergencySupport.json()).error, 'Sudden incident reports are forwarded to BDRRMO and cannot request maintenance overflow support.');
+assert.deepEqual(dispatchSnapshot(), emergencySupportBefore, 'emergency review cannot create a maintenance overflow request');
+
+for (const statusId of [1, 2]) {
+  sql.prepare('UPDATE incident_reports SET incident_status_id = ? WHERE incident_id = ?').run(statusId, reportIds[0]);
+  await assertRejectedDispatch(reportIds[0], seededUnits[0].id, 'admin', 409, 'Only verified reports can be dispatched.');
+}
+
+for (let index = 0; index < 3; index += 1) {
+  const verified = await request(`/admin/dispatch/reports/${reportIds[index]}/verify`, 'POST', { decision: 'VERIFIED' }, 'admin');
+  assert.equal(verified.status, 200);
+  if (index === 0) {
+    await assertRejectedDispatch(reportIds[index], seededUnits[index].id, undefined, 401);
+    await assertRejectedDispatch(reportIds[index], seededUnits[index].id, 'resident', 403);
+  }
+  const before = dispatchSnapshot();
+  const dispatched = await request(`/admin/dispatch/reports/${reportIds[index]}/dispatch`, 'POST', { unit_id: seededUnits[index].id }, 'admin');
+  assert.equal(dispatched.status, 201);
+  const after = dispatchSnapshot();
+  assert.equal(after.tanod_assignments.length, before.tanod_assignments.length + 1);
+  assert.equal(after.tanod_assignment_events.length, before.tanod_assignment_events.length + 1);
+  assert.equal(after.incident_status_events.length, before.incident_status_events.length + 1);
+  const report = sql.prepare(`SELECT s.code AS status FROM incident_reports r JOIN incident_statuses s ON s.incident_status_id = r.incident_status_id WHERE r.incident_id = ?`).get(reportIds[index]);
+  assert.equal(report.status, 'DISPATCHED');
+}
+const busyUnits = (await (await request('/admin/dispatch/units', 'GET', undefined, 'admin')).json()).units;
+assert.ok(busyUnits.every((unit) => unit.availability_status === 'BUSY'));
+// Isolate unit availability from report eligibility: this report is VERIFIED.
+assert.equal((await request(`/admin/dispatch/reports/${reportIds[3]}/verify`, 'POST', { decision: 'VERIFIED' }, 'admin')).status, 200);
+for (const offlineStatus of ['UNAVAILABLE', 'OUT_OF_SERVICE']) {
+  sql.prepare('UPDATE responder_resources SET availability_status = ? WHERE responder_resource_id = ?').run(offlineStatus, seededUnits[0].id);
+  await assertRejectedDispatch(reportIds[3], seededUnits[0].id, 'admin', 409, 'That unit is offline or out of service.');
+}
+sql.prepare("UPDATE responder_resources SET availability_status = 'BUSY' WHERE responder_resource_id = ?").run(seededUnits[0].id);
+assert.equal((await request(`/admin/dispatch/reports/${reportIds[4]}/verify`, 'POST', { decision: 'VERIFIED' }, 'admin')).status, 200);
+const additionalDispatch = await request(`/admin/dispatch/reports/${reportIds[4]}/dispatch`, 'POST', { unit_id: seededUnits[0].id }, 'admin');
+assert.equal(additionalDispatch.status, 201, 'deployed responders can receive another assignment');
+const additionalAssignment = await additionalDispatch.json();
+assert.equal(sql.prepare('SELECT assignment_status_id FROM tanod_assignments WHERE tanod_assignment_id = ?').get(additionalAssignment.assignment_id).assignment_status_id, 1,
+  'additional dispatch awaits responder acceptance');
+assert.equal(sql.prepare('SELECT count(*) AS count FROM tanod_assignments WHERE responder_resource_id = ?').get(seededUnits[0].id).count, 2,
+  'dispatch preserves the existing assignment');
+await assertRejectedDispatch(reportIds[4], seededUnits[0].id, 'admin', 409, 'Only verified reports can be dispatched.');
+
+const help = await request(`/admin/dispatch/reports/${reportIds[3]}/request-drrmo`, 'POST', { note: 'No units available' }, 'admin');
+assert.equal(help.status, 201);
+const awaiting = sql.prepare(`SELECT s.code AS status FROM incident_reports r JOIN incident_statuses s ON s.incident_status_id = r.incident_status_id WHERE r.incident_id = ?`).get(reportIds[3]);
+assert.equal(awaiting.status, 'AWAITING_DRRMO_SUPPORT');
+const requested = sql.prepare('SELECT COUNT(*) AS count FROM external_support_requests WHERE incident_id = ?').get(reportIds[3]);
+assert.equal(requested.count, 1);
+assert.equal((await request(`/admin/dispatch/reports/${reportIds[3]}/verify`, 'POST', { decision: 'REJECTED', reason: 'Invalid' }, 'admin')).status, 409, 'closed workflow states cannot be re-verified');
+assert.equal((await request('/admin/dispatch/reports', 'GET', undefined, 'resident')).status, 403);
+console.log('PASS admin dispatch integration: role guards, seeding, verification, atomic dispatch, unit availability, DRRMO request, and invalid transitions');

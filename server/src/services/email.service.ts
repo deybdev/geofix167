@@ -14,7 +14,7 @@ export const sendEmail = async (apiUrl: string, apiKey: string, payload: EmailPa
       "Accept": "application/json",
     },
     body: JSON.stringify({
-      sender: { name: "GeoFix 167", email: "llano167barangay@gmail.com" },
+      sender: { name: "GeoFix 167", email: "rainopinion0@gmail.com" },
       to: [{ email: payload.to }],
       subject: payload.subject,
       textContent: payload.textContent,

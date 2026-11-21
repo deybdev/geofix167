@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Camera, Check, MapPin, RotateCcw } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "../../shared/components/ui/button";
 import { PATHS } from "../../router/paths";
 import { useAddress } from "../../shared/hooks/useAddress";
@@ -28,7 +28,12 @@ function drawStamp(canvas, video, location, address, capturedDate) {
   canvas.height = h;
 
   const ctx = canvas.getContext("2d");
+
+  // Match the mirrored live preview so the capture looks like what the user saw
+  ctx.translate(w, 0);
+  ctx.scale(-1, 1);
   ctx.drawImage(video, 0, 0, w, h);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
 
   // Smaller text
   const baseFontSize = Math.max(11, w * 0.018);
@@ -64,11 +69,7 @@ function drawStamp(canvas, video, location, address, capturedDate) {
   ctx.fillStyle = "rgba(0,0,0,0.72)";
   ctx.fillRect(panelX, panelY, panelWidth, panelHeight);
 
-  // Horizontally mirrored text
-  ctx.save();
-  ctx.translate(panelWidth, 0);
-  ctx.scale(-1, 1);
-
+  // Text (drawn normally — the flip above only applies to the video frame)
   let y = panelY + pad;
 
   for (const line of lines) {
@@ -83,13 +84,12 @@ function drawStamp(canvas, video, location, address, capturedDate) {
     y += lineGap;
   }
 
-  ctx.restore();
-
   return canvas.toDataURL("image/jpeg", 0.9);
 }
 
 export default function PhotoCapture() {
   const navigate = useNavigate();
+  const routeLocation = useLocation();
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
@@ -173,8 +173,11 @@ export default function PhotoCapture() {
   }
 
   function confirmPhoto() {
-    navigate(PATHS.report, {
+    navigate(routeLocation.state?.returnPath ?? PATHS.report, {
+      // Carry through any state that came with us (e.g. the emergency
+      // flow markers) so the report page can restore where we were
       state: {
+        ...routeLocation.state,
         capturedPhoto,
         capturedAt: capturedAt?.toISOString(),
         coordinates: formatCoordinates(location),
@@ -206,7 +209,7 @@ export default function PhotoCapture() {
           <img
             src={capturedPhoto}
             alt="Captured evidence"
-            className="max-h-full -scale-x-100 w-full object-contain"
+            className="max-h-full w-full object-contain"
           />
         ) : (
           <video
@@ -229,7 +232,7 @@ export default function PhotoCapture() {
         {!capturedPhoto && (
           <div className="absolute bottom-4 left-4 right-4 rounded-xl bg-black/65 px-3 py-2.5 text-xs text-white backdrop-blur-sm">
             <p className="flex items-start gap-2">
-              <MapPin size={14} className="mt-0.5 shrink-0 text-emerald-300" />
+              <MapPin size={14} className="mt-0.5 shrink-0 text-primary" />
               <span>
                 <span className="block font-semibold leading-snug">
                   {locationLabel}
@@ -251,7 +254,7 @@ export default function PhotoCapture() {
       {/* Bottom controls */}
       {capturedPhoto ? (
         <div className="space-y-3 bg-white px-4 py-5">
-          <p className="rounded-full bg-emerald-100 px-3 py-2 text-center text-xs font-semibold text-emerald-700">
+          <p className="rounded-full bg-primary/10 px-3 py-2 text-center text-xs font-semibold text-primary">
             ✓ Photo captured successfully
           </p>
           <div className="flex gap-2">
