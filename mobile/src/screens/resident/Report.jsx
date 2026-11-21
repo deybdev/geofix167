@@ -9,6 +9,7 @@ import {
   Pressable,
   Image,
   Alert,
+  Modal,
   ActivityIndicator,
   BackHandler,
   KeyboardAvoidingView,
@@ -16,7 +17,7 @@ import {
   Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import * as ImagePicker from 'expo-image-picker';
+import { Camera as ExpoCamera } from 'expo-camera';
 import * as Crypto from 'expo-crypto';
 import { File } from 'expo-file-system';
 import * as Location from 'expo-location';
@@ -34,7 +35,6 @@ import {
   Ellipsis,
   Flame,
   HeartPulse,
-  Image as ImageIcon,
   Lightbulb,
   LocateFixed,
   MapPin,
@@ -52,6 +52,7 @@ import {
 import tw from 'twrnc';
 
 import MapViewer from '../../components/map/MapViewer';
+import CameraCapture from '../../components/shared/CameraCapture';
 import AnimatedSuccessBanner from '../../components/shared/SuccessBanner';
 import {
   buildResidentReportPayload,
@@ -86,6 +87,7 @@ const getSteps = (type) => [
   ...(type === 'emergency' ? [{ key: 'priority', label: 'Priority' }] : []),
   { key: 'details', label: 'Details' },
   { key: 'location', label: 'Location' },
+  { key: 'evidence', label: 'Evidence' },
   { key: 'review', label: 'Review' },
 ];
 
@@ -605,6 +607,7 @@ export default function Report({ guestMode = false, route }) {
   const [photoNotice, setPhotoNotice] = useState('');
   const [successNotice, setSuccessNotice] = useState('');
   const captureRef = useRef(false);
+  const [cameraCapture, setCameraCapture] = useState(null);
   const [fade] = useState(() => new Animated.Value(1));
 
   const [step, setStep] = useState(0);
@@ -634,21 +637,19 @@ export default function Report({ guestMode = false, route }) {
   const stepKey = steps[step].key;
   const stepIndex = (key) => steps.findIndex((item) => item.key === key);
 
-  // Only the photo is required for residents. Guests also provide the name
-  // associated with their report.
-  const photoError =
-    photos.length > 0 ? null : guestMode
-      ? 'At least one photo is required. Take one or choose from your gallery.'
-      : 'At least one photo is required. Take a photo of the problem.';
+  const photoError = photos.length > 0
+    ? null
+    : 'At least one photo is required. Take a photo of the problem.';
   const detailsError = guestMode && !guestAlias.trim()
     ? 'Your name is required.'
-    : photoError;
+    : null;
 
   const errors = {
     type: reportType ? null : 'Please choose the type of report.',
     priority: priority ? null : 'Please choose a priority level.',
     details: detailsError,
     location: location ? null : 'Tap the map or use your current location.',
+    evidence: photoError,
     review: null,
   };
 
@@ -683,7 +684,11 @@ export default function Report({ guestMode = false, route }) {
       setAttempted(true);
       return;
     }
-    goTo(Math.min(step + 1, lastStep));
+    const target = Math.min(step + 1, lastStep);
+    goTo(target);
+    if (steps[target]?.key === 'evidence' && location && photos.length === 0) {
+      void openCamera();
+    }
   };
 
   useEffect(() => {
@@ -727,6 +732,8 @@ export default function Report({ guestMode = false, route }) {
   const handleMapSelect = ({ lat, lng }) => {
     setLocation({ lat, lng, source: 'map' });
     setLocationMessage(null);
+    goTo(stepIndex('evidence'));
+    void openCamera();
   };
 
   const useCurrentLocation = async () => {
@@ -755,6 +762,8 @@ export default function Report({ guestMode = false, route }) {
       }
 
       setLocation({ lat: coords.latitude, lng: coords.longitude, source: 'gps' });
+      goTo(stepIndex('evidence'));
+      void openCamera();
     } catch {
       setLocationMessage('Could not get your location. Tap the map to choose it manually.');
     } finally {
@@ -764,9 +773,8 @@ export default function Report({ guestMode = false, route }) {
 
   /* ---------- photo ---------- */
 
-  const pickPhoto = async (source) => {
+  const openCamera = async () => {
     if (captureRef.current || submittingRef.current || submissionRef.current.payload) return;
-    if (!guestMode) source = 'camera';
     setPhotoNotice('');
     const remaining = MAX_PHOTOS - photos.length;
 
@@ -777,71 +785,47 @@ export default function Report({ guestMode = false, route }) {
     }
 
     captureRef.current = true;
+    let opened = false;
     try {
-      const permission =
-        source === 'camera'
-          ? await ImagePicker.requestCameraPermissionsAsync()
-          : await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const permission = await ExpoCamera.requestCameraPermissionsAsync();
 
       if (!permission.granted) {
-        if (!guestMode) {
-          setPhotoNotice('Allow camera access in Settings to take evidence photos.');
-          return;
-        }
-        Alert.alert(
-          'Permission needed',
-          source === 'camera'
-            ? 'Allow camera access to take a photo, or choose one from your gallery.'
-            : 'Allow photo access to choose images, or take a new photo instead.'
-        );
+        setPhotoNotice('Allow camera access in Settings to take evidence photos.');
         return;
       }
 
-      const result =
-        source === 'camera'
-          ? await ImagePicker.launchCameraAsync({ quality: 0.7 })
-          : await ImagePicker.launchImageLibraryAsync({
-              quality: 0.7,
-              allowsMultipleSelection: true,
-              selectionLimit: remaining,
-            });
-
-      if (!result.canceled && result.assets?.length) {
-        const uris = result.assets.map((asset) => asset.uri).filter(Boolean);
-        if (!guestMode) {
-          for (const asset of result.assets.filter(asset => asset.uri)) {
-            if (!photoFilesRef.current.has(asset.uri)) {
-              photoFilesRef.current.set(asset.uri, prepareReportPhoto(asset, {
-                randomUUID: Crypto.randomUUID,
-                fileInfo: uri => new File(uri),
-              }));
-            }
-          }
-        }
-
-        setPhotos((current) =>
-          [...current, ...uris.filter((uri) => !current.includes(uri))].slice(0, MAX_PHOTOS)
-        );
-      }
-    } catch (error) {
-      if (guestMode) Alert.alert('Photo error', 'Could not load the photo. Please try again.');
-      else setPhotoNotice(error.message || 'Could not capture the photo. Please try again.');
+      setCameraCapture({ controller: new AbortController() });
+      opened = true;
+    } catch {
+      setPhotoNotice('Could not open the camera. Please try again.');
     } finally {
-      captureRef.current = false;
+      if (!opened) captureRef.current = false;
     }
+  };
+
+  const closeCamera = () => {
+    cameraCapture?.controller.abort();
+    setCameraCapture(null);
+    captureRef.current = false;
+  };
+
+  const acceptPhoto = (file) => {
+    if (!guestMode && !photoFilesRef.current.has(file.uri)) {
+      photoFilesRef.current.set(file.uri, prepareReportPhoto(file, {
+        randomUUID: Crypto.randomUUID,
+        fileInfo: uri => new File(uri),
+      }));
+    }
+
+    setPhotos((current) =>
+      [...current, file.uri].filter((uri, index, all) => all.indexOf(uri) === index).slice(0, MAX_PHOTOS)
+    );
+    setPhotoNotice('');
+    closeCamera();
   };
 
   const removePhoto = (index) =>
     setPhotos((current) => current.filter((_, i) => i !== index));
-
-  const choosePhotoSource = () => {
-    if (!guestMode) return pickPhoto('camera');
-    return Alert.alert('Photo evidence', 'Add a photo of the problem.', [
-      { text: 'Take Photo', onPress: () => pickPhoto('camera') },
-      { text: 'Choose from Gallery', onPress: () => pickPhoto('library') },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  };
 
   /* ---------- submit ---------- */
 
@@ -999,7 +983,7 @@ export default function Report({ guestMode = false, route }) {
     <>
       <StepTitle
         title="Quick details"
-        subtitle="Add up to 5 photos so the captain can validate your report, then tick what applies."
+        subtitle="Tick what applies and add any optional details."
       />
 
       {guestMode ? (
@@ -1013,81 +997,10 @@ export default function Report({ guestMode = false, route }) {
             autoCapitalize="words"
             style={tw`rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base text-slate-900`}
           />
-          {!guestAlias.trim() && attempted ? <FieldError message="Your name is required." /> : null}
         </View>
       ) : null}
 
-      <View style={tw`mb-2 flex-row items-center justify-between`}>
-        <Text style={tw`text-sm font-bold text-slate-900`}>
-          Photo evidence ({photos.length}/{MAX_PHOTOS})
-        </Text>
-        <View style={[tw`rounded-full px-2 py-0.5`, { backgroundColor: '#FEF3C7' }]}>
-          <Text style={[tw`text-[10px] font-bold`, { color: '#B45309' }]}>Required</Text>
-        </View>
-      </View>
-
-      {photos.length === 0 ? (
-        <View style={tw`flex-row`}>
-          <View style={guestMode ? tw`mr-3 flex-1` : tw`flex-1`}>
-            <OutlineButton icon={Camera} label="Take Photo" onPress={() => pickPhoto('camera')} />
-          </View>
-          {guestMode && <View style={tw`flex-1`}>
-            <OutlineButton icon={ImageIcon} label="Gallery" onPress={() => pickPhoto('library')} />
-          </View>}
-        </View>
-      ) : (
-        <View style={tw`-mx-1 flex-row flex-wrap`}>
-          {photos.map((uri, index) => (
-            <View key={`${uri}-${index}`} style={tw`w-1/3 p-1`}>
-              <View style={{ aspectRatio: 1 }}>
-                <Image
-                  source={{ uri }}
-                  resizeMode="cover"
-                  style={[tw`h-full w-full rounded-2xl`, { backgroundColor: COLORS.surface }]}
-                />
-                <Pressable
-                  onPress={() => removePhoto(index)}
-                  hitSlop={6}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Remove photo ${index + 1}`}
-                  style={[
-                    tw`absolute right-1.5 top-1.5 h-6 w-6 items-center justify-center rounded-full`,
-                    { backgroundColor: 'rgba(15,23,42,0.7)' },
-                  ]}
-                >
-                  <X size={14} color="#FFFFFF" />
-                </Pressable>
-              </View>
-            </View>
-          ))}
-
-          {photos.length < MAX_PHOTOS && (
-            <View style={tw`w-1/3 p-1`}>
-              <Pressable
-                onPress={choosePhotoSource}
-                accessibilityRole="button"
-                accessibilityLabel="Add another photo"
-                style={({ pressed }) => [
-                  tw`items-center justify-center rounded-2xl`,
-                  {
-                    aspectRatio: 1,
-                    borderWidth: 2,
-                    borderStyle: 'dashed',
-                    borderColor: COLORS.primary,
-                    backgroundColor: '#FFFFFF',
-                    opacity: pressed ? 0.6 : 1,
-                  },
-                ]}
-              >
-                <Camera size={22} color={COLORS.primary} />
-                <Text style={[tw`mt-1 text-xs font-bold`, { color: COLORS.primary }]}>Add</Text>
-              </Pressable>
-            </View>
-          )}
-        </View>
-      )}
       <FieldError message={showError} />
-      {!guestMode && !!photoNotice && <View accessibilityRole="alert" accessibilityLiveRegion="polite"><FieldError message={photoNotice} /></View>}
 
       <View style={tw`mb-2 mt-6 flex-row items-center justify-between`}>
         <Text style={tw`text-sm font-bold text-slate-900`}>What do you see?</Text>
@@ -1141,6 +1054,85 @@ export default function Report({ guestMode = false, route }) {
       >
         {description.length}/{MAX_DESCRIPTION}
       </Text>
+    </>
+  );
+
+  const renderEvidenceStep = () => (
+    <>
+        <StepTitle
+          title="Photo evidence"
+          subtitle="Take a clear photo of the incident using your camera."
+        />
+
+        <View style={tw`mb-2 flex-row items-center justify-between`}>
+          <Text style={tw`text-sm font-bold text-slate-900`}>
+            Photos ({photos.length}/{MAX_PHOTOS})
+          </Text>
+          <View style={[tw`rounded-full px-2 py-0.5`, { backgroundColor: '#FEF3C7' }]}>
+            <Text style={[tw`text-[10px] font-bold`, { color: '#B45309' }]}>Required</Text>
+          </View>
+        </View>
+
+        {photos.length === 0 ? (
+          <OutlineButton icon={Camera} label="Take Photo" onPress={openCamera} />
+        ) : (
+          <View style={tw`-mx-1 flex-row flex-wrap`}>
+            {photos.map((uri, index) => (
+              <View key={`${uri}-${index}`} style={tw`w-1/3 p-1`}>
+                <View style={{ aspectRatio: 1 }}>
+                  <Image
+                    source={{ uri }}
+                    resizeMode="cover"
+                    style={[tw`h-full w-full rounded-2xl`, { backgroundColor: COLORS.surface }]}
+                  />
+                  <Pressable
+                    onPress={() => removePhoto(index)}
+                    hitSlop={6}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove photo ${index + 1}`}
+                    style={[
+                      tw`absolute right-1.5 top-1.5 h-6 w-6 items-center justify-center rounded-full`,
+                      { backgroundColor: 'rgba(15,23,42,0.7)' },
+                    ]}
+                  >
+                    <X size={14} color="#FFFFFF" />
+                  </Pressable>
+                </View>
+              </View>
+            ))}
+
+            {photos.length < MAX_PHOTOS && (
+              <View style={tw`w-1/3 p-1`}>
+                <Pressable
+                  onPress={openCamera}
+                  accessibilityRole="button"
+                  accessibilityLabel="Take another photo"
+                  style={({ pressed }) => [
+                    tw`items-center justify-center rounded-2xl`,
+                    {
+                      aspectRatio: 1,
+                      borderWidth: 2,
+                      borderStyle: 'dashed',
+                      borderColor: COLORS.primary,
+                      backgroundColor: '#FFFFFF',
+                      opacity: pressed ? 0.6 : 1,
+                    },
+                  ]}
+                >
+                  <Camera size={22} color={COLORS.primary} />
+                  <Text style={[tw`mt-1 text-xs font-bold`, { color: COLORS.primary }]}>Take Photo</Text>
+                </Pressable>
+              </View>
+            )}
+          </View>
+        )}
+
+        <FieldError message={showError} />
+        {!!photoNotice && (
+          <View accessibilityRole="alert" accessibilityLiveRegion="polite">
+            <FieldError message={photoNotice} />
+          </View>
+        )}
     </>
   );
 
@@ -1258,20 +1250,6 @@ export default function Report({ guestMode = false, route }) {
         </SummaryCard>
 
         <SummaryCard label="Details" onEdit={() => goTo(stepIndex('details'))}>
-          {photos.length > 0 && (
-            <View style={tw`-mx-1 mb-2 flex-row flex-wrap`}>
-              {photos.map((uri, index) => (
-                <View key={`${uri}-${index}`} style={tw`w-1/3 p-1`}>
-                  <Image
-                    source={{ uri }}
-                    resizeMode="cover"
-                    style={[tw`w-full rounded-xl`, { aspectRatio: 1 }]}
-                  />
-                </View>
-              ))}
-            </View>
-          )}
-
           {checks.length > 0 ? (
             <View style={tw`flex-row flex-wrap`}>
               {checkList
@@ -1298,6 +1276,23 @@ export default function Report({ guestMode = false, route }) {
           {description.trim().length > 0 && (
             <Text style={tw`mt-2 text-sm leading-5 text-slate-800`}>{description.trim()}</Text>
           )}
+        </SummaryCard>
+
+        <SummaryCard label="Photo evidence" onEdit={() => goTo(stepIndex('evidence'))}>
+          <View style={tw`-mx-1 flex-row flex-wrap`}>
+            {photos.map((uri, index) => (
+              <View key={`${uri}-${index}`} style={tw`w-1/3 p-1`}>
+                <Image
+                  source={{ uri }}
+                  resizeMode="cover"
+                  style={[tw`w-full rounded-xl`, { aspectRatio: 1 }]}
+                />
+              </View>
+            ))}
+          </View>
+          <Text style={tw`text-xs text-slate-400`}>
+            {photos.length} photo{photos.length === 1 ? '' : 's'}
+          </Text>
         </SummaryCard>
 
         <SummaryCard label="Location" onEdit={() => goTo(stepIndex('location'))}>
@@ -1328,6 +1323,8 @@ export default function Report({ guestMode = false, route }) {
         return renderDetailsStep();
       case 'location':
         return renderLocationStep();
+      case 'evidence':
+        return renderEvidenceStep();
       default:
         return renderReviewStep();
     }
@@ -1433,6 +1430,18 @@ export default function Report({ guestMode = false, route }) {
             ))}
         </Pressable>
       </View>
+      )}
+
+      {cameraCapture && (
+        <Modal visible animationType="slide" onRequestClose={closeCamera}>
+          <CameraCapture
+            initialMode="picture"
+            allowVideo={false}
+            signal={cameraCapture.controller.signal}
+            onCapture={acceptPhoto}
+            onCancel={closeCamera}
+          />
+        </Modal>
       )}
     </KeyboardAvoidingView>
   );
