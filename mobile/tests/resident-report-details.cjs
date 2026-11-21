@@ -518,12 +518,20 @@ function pass(label) {
       granted: microphone
     })
   };
-  const captureModule = load('src/components/resident/ReportCapture.jsx', {
+  const captureModule = load('src/components/shared/CameraCapture.jsx', {
     'react': hooks,
     'react-native': native,
     'expo-camera': {
       Camera: cameraApi,
       CameraView: 'CameraView'
+    },
+    'lucide-react-native': {
+      Camera: 'Camera',
+      SwitchCamera: 'SwitchCamera',
+      Video: 'Video',
+      X: 'X',
+      Zap: 'Zap',
+      ZapOff: 'ZapOff'
     },
     'expo-file-system': {
       File: class {
@@ -541,6 +549,12 @@ function pass(label) {
     'twrnc': () => ({}),
     '../../utils/residentReport': util
   });
+  const photoOnlyCamera = runner(captureModule.default, {
+    allowVideo: false,
+    initialMode: 'video'
+  }).render();
+  assert.ok(nodes(photoOnlyCamera).some(node => node.props?.label === 'Take Photo'));
+  assert.equal(nodes(photoOnlyCamera).some(node => node.props?.label === 'Video'), false);
   let storedCaptures = [],
     uploadedReports = [];
   const mediaModule = load('src/components/resident/ReportMedia.jsx', {
@@ -552,7 +566,7 @@ function pass(label) {
     'expo-crypto': {
       randomUUID: () => 'pending-' + ++uuid
     },
-    './ReportCapture': {
+    '../shared/CameraCapture': {
       __esModule: true,
       default: captureModule.default
     },
