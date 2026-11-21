@@ -276,28 +276,96 @@ route.post("/", async (c) => {
     return c.json({ error: "Invalid dispatch request.", details: body.error.flatten() }, 400);
   }
 
-  const statements = body.data.target_roles.map((targetRole) => c.env.geofix167_db.prepare(`
-    INSERT INTO responder_dispatches
-      (responder_dispatch_id, incident_id, incident_title, incident_category,
-       incident_location, incident_latitude, incident_longitude,
-       dispatched_by_user_id, target_role, urgency, vehicle_name)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).bind(
-    crypto.randomUUID(),
-    body.data.incident_id,
-    body.data.incident_title,
-    body.data.incident_category,
-    body.data.incident_location || null,
-    body.data.incident_latitude ?? null,
-    body.data.incident_longitude ?? null,
-    c.get("user").id,
-    targetRole,
-    body.data.urgency,
-    body.data.vehicle_name || null,
-  ));
+  const db = c.env.geofix167_db;
+  const incidentId = body.data.incident_id;
+  const targetRoles = [...new Set(body.data.target_roles)];
+  const report = await db.prepare(`
+    SELECT r.incident_id, r.title, r.category, r.location_description,
+      r.latitude, r.longitude, r.is_emergency, r.incident_status_id, s.code AS status_code
+    FROM incident_reports r
+    JOIN incident_statuses s ON s.incident_status_id = r.incident_status_id
+    WHERE r.incident_id = ?
+    LIMIT 1
+  `).bind(incidentId).first<{
+    incident_id: string;
+    title: string;
+    category: string;
+    location_description: string | null;
+    latitude: number | null;
+    longitude: number | null;
+    is_emergency: number;
+    incident_status_id: number;
+    status_code: string;
+  }>();
 
-  await c.env.geofix167_db.batch(statements);
-  return c.json({ ok: true, status: "DISPATCHED" }, 201);
+  if (!report) {
+    return c.json({ error: "Incident report not found." }, 404);
+  }
+
+  const existingDispatch = await db.prepare(`
+    SELECT responder_dispatch_id
+    FROM responder_dispatches
+    WHERE incident_id = ?
+    LIMIT 1
+  `).bind(incidentId).first<{ responder_dispatch_id: string }>();
+
+  if (existingDispatch || report.status_code === "DISPATCHED") {
+    return c.json({ error: "This incident has already been dispatched." }, 409);
+  }
+
+  if (report.is_emergency !== 1 || report.status_code !== "FORWARDED_TO_BDRRMO") {
+    return c.json({ error: "Only emergency reports forwarded to BDRRMO can be dispatched." }, 409);
+  }
+
+  const statusEventId = crypto.randomUUID();
+  const title = report.title?.trim() || body.data.incident_title;
+  const category = report.category?.trim() || body.data.incident_category;
+  const location = report.location_description?.trim() || body.data.incident_location || null;
+  const latitude = report.latitude ?? body.data.incident_latitude ?? null;
+  const longitude = report.longitude ?? body.data.incident_longitude ?? null;
+
+  const statements = [
+    db.prepare(`
+      UPDATE incident_reports
+      SET incident_status_id = 13, updated_at = datetime('now')
+      WHERE incident_id = ? AND is_emergency = 1 AND incident_status_id = 5
+        AND NOT EXISTS (SELECT 1 FROM responder_dispatches WHERE incident_id = ?)
+    `).bind(incidentId, incidentId),
+    db.prepare(`
+      INSERT INTO incident_status_events
+        (incident_status_event_id, incident_id, from_incident_status_id, to_incident_status_id, changed_by_user_id, note)
+      SELECT ?, ?, 5, 13, ?, 'Emergency dispatched by BDRRMO'
+      WHERE changes() = 1
+    `).bind(statusEventId, incidentId, c.get("user").id),
+    ...targetRoles.map((targetRole) => db.prepare(`
+      INSERT INTO responder_dispatches
+        (responder_dispatch_id, incident_id, incident_title, incident_category,
+         incident_location, incident_latitude, incident_longitude,
+         dispatched_by_user_id, target_role, urgency, vehicle_name)
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+      WHERE EXISTS (SELECT 1 FROM incident_status_events WHERE incident_status_event_id = ?)
+    `).bind(
+      crypto.randomUUID(),
+      incidentId,
+      title,
+      category,
+      location,
+      latitude,
+      longitude,
+      c.get("user").id,
+      targetRole,
+      body.data.urgency,
+      body.data.vehicle_name || null,
+      statusEventId,
+    )),
+  ];
+
+  const results = await db.batch(statements);
+  if (!results[0]?.meta.changes) {
+    return c.json({ error: "This incident has already been dispatched." }, 409);
+  }
+
+  return c.json({ ok: true, incident_id: incidentId, status: "DISPATCHED" }, 201);
 });
 
 route.post("/:dispatchId/qr-handover", async (c) => {
