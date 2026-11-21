@@ -14,6 +14,7 @@ import notificationRoutes from "./routes/notification.route";
 import announcementRoutes, { publicAnnouncementRoutes } from "./routes/announcement.route";
 import responderMessagesRoutes from "./routes/responder-messages.route";
 import responderDispatchesRoutes from "./routes/responder-dispatches.route";
+import bdrrmoRoutes from "./routes/bdrrmo.route";
 import trackingRoutes from "./routes/tracking.route";
 import responderLocationRoutes from "./routes/responder-location.route";
 
@@ -43,6 +44,7 @@ app.route("/api/auth", authRoutes);
 app.route("/api/communication", communicationRoutes);
 app.route("/api/responder/messages", responderMessagesRoutes);
 app.route("/api/responder/dispatches", responderDispatchesRoutes);
+app.route("/api/bdrrmo", bdrrmoRoutes);
 app.route("/api/responder/location", responderLocationRoutes);
 app.route("/api/track", trackingRoutes);
 

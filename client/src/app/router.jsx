@@ -29,7 +29,7 @@ import AuthLayout from "../layouts/AuthLayout";
 
 import ResidentDashboard from "../features/resident/Home";
 import AdminDashboard from "../features/admin/AdminDashboard";
-import IncidentReports from "../features/admin/IncidentReports";
+import IncidentReports from "../features/admin/incident-reports";
 import MaintenanceTasks from "../features/admin/MaintenanceTasks";
 import ResolutionVerification from "../features/admin/ResolutionVerification";
 import AccomplishmentLog from "../features/admin/AccomplishmentLog";
@@ -41,16 +41,6 @@ import ResponderDashboard from "../features/responder/ResponderDashboard";
 import AdminDispatch from "../features/admin/AdminDispatch";
 import Announcements from "../features/admin/Announcements";
 import RegistrationReview from "../features/admin/RegistrationReview";
-import ComingSoon from "../features/admin/ComingSoon";
-import { getAdminNavigationItem } from "../router/adminNavigation";
-
-function adminPage(key, Page) {
-  const item = getAdminNavigationItem(key);
-  if (item?.comingSoon) {
-    return <ComingSoon title={item.label} description={item.comingSoonDescription} />;
-  }
-  return Page ? <Page /> : null;
-}
 
 export default function AppRouter() {
   return (
@@ -95,18 +85,18 @@ export default function AppRouter() {
             }
           >
             <Route path="/admin" element={<AdminLayout />}>
-              <Route index element={adminPage("dashboard", AdminDashboard)} />
+              <Route index element={<AdminDashboard />} />
               <Route path="incident-reports" element={<IncidentReports />} />
               <Route path="incident-reports/:id/report" element={<IncidentReportPrint />} />
               <Route path="dispatch" element={<AdminDispatch />} />
               <Route path="maintenance-tasks" element={<MaintenanceTasks />} />
               <Route path="resolution-verification" element={<ResolutionVerification />} />
               <Route path="announcements" element={<Announcements />} />
-              <Route path="accomplishment-log" element={adminPage("accomplishment-log", AccomplishmentLog)} />
-              <Route path="residents" element={adminPage("residents", Residents)} />
-              <Route path="registrations" element={adminPage("registrations", RegistrationReview)} />
-              <Route path="reports-analytics" element={adminPage("reports-analytics", ReportsAnalytics)} />
-              <Route path="settings" element={adminPage("settings", AdminSettings)} />
+              <Route path="accomplishment-log" element={<AccomplishmentLog />} />
+              <Route path="residents" element={<Residents />} />
+              <Route path="registrations" element={<RegistrationReview />} />
+              <Route path="reports-analytics" element={<ReportsAnalytics />} />
+              <Route path="settings" element={<AdminSettings />} />
             </Route>
           </Route>
 

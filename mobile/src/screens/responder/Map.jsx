@@ -26,6 +26,7 @@ import {
   Trash2,
   Volume2,
   VolumeX,
+  Wrench,
   X,
 } from 'lucide-react-native';
 import tw from 'twrnc';
@@ -33,11 +34,22 @@ import tw from 'twrnc';
 import MapViewer from '../../components/map/MapViewer';
 import { useAuth } from '../../context/AuthContext';
 import {
+  completeAgencyDispatch,
   generateHospitalQrHandover,
   getNearestHospitals,
   getResponderDispatches,
+  markArrivedOnScene,
   postResponderLocation,
+  requestFieldBackup,
+  submitMaintenanceInspection,
+  submitMaintenanceRepair,
 } from '../../services/responderDispatchService';
+import {
+  enqueueOfflineSubmission,
+  flushOfflineQueue,
+  getOfflineQueue,
+  isNetworkError,
+} from '../../services/offlineResolutionQueue';
 
 function hasCoordinates(item) {
   return Boolean(item)
@@ -183,11 +195,15 @@ function buildInitialPatients(assignment) {
 }
 
 export default function ResponderMap() {
+  const { user } = useAuth();
+  const userRole = String(user?.role || '').toLowerCase();
+  const isAgencyRole = userRole === 'police' || userRole === 'fire';
   const navigation = useNavigation();
   const route = useRoute();
   const { user } = useAuth();
 
   const [activeAssignment, setActiveAssignment] = useState(route.params?.assignment || null);
+  const [backupSent, setBackupSent] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(null);
   const currentLocationRef = useRef(null);
   const [locationPermissionGranted, setLocationPermissionGranted] = useState(false);
@@ -209,6 +225,34 @@ export default function ResponderMap() {
   const [qrResult, setQrResult] = useState(null);
   const [selectedPin, setSelectedPin] = useState(null);
   const [caseClosedOnMap, setCaseClosedOnMap] = useState(false);
+  const [maintenanceModalMode, setMaintenanceModalMode] = useState(null);
+  const [maintenanceNote, setMaintenanceNote] = useState('');
+  const [maintenancePhoto, setMaintenancePhoto] = useState(null);
+  const [maintenanceError, setMaintenanceError] = useState('');
+  const [hospitalOptions, setHospitalOptions] = useState([]);
+  const [showHospitalPicker, setShowHospitalPicker] = useState(false);
+  const [offlineQueueCount, setOfflineQueueCount] = useState(0);
+  const [syncingOffline, setSyncingOffline] = useState(false);
+
+  const syncOfflineSubmissions = useCallback(async () => {
+    setSyncingOffline(true);
+    try {
+      const result = await flushOfflineQueue({
+        agency_resolution: (item) => completeAgencyDispatch(item.dispatchId, item.payload),
+        tanod_qr_handover: (item) => generateHospitalQrHandover(item.dispatchId, item.payload),
+      });
+      setOfflineQueueCount(result.remaining);
+    } catch {
+      const q = await getOfflineQueue();
+      setOfflineQueueCount(q.length);
+    } finally {
+      setSyncingOffline(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void syncOfflineSubmissions();
+  }, [syncOfflineSubmissions]);
 
   const tryEnableLocationSharing = useCallback(async () => {
     try {
@@ -361,7 +405,10 @@ export default function ResponderMap() {
   }, [activeAssignment]);
 
   useEffect(() => {
-    if (!patientPoint) return undefined;
+    if (!patientPoint || activeAssignment?.is_maintenance || isAgencyRole) {
+      setNearestHospital(null);
+      return undefined;
+    }
     let active = true;
     getNearestHospitals(patientPoint.lat, patientPoint.lng)
       .then((list) => {
@@ -373,9 +420,10 @@ export default function ResponderMap() {
     return () => {
       active = false;
     };
-  }, [patientPoint]);
+  }, [patientPoint, activeAssignment?.is_maintenance, isAgencyRole]);
 
   const hospitalPoint = useMemo(() => {
+    if (activeAssignment?.is_maintenance) return null;
     if (nearestHospital && hasCoordinates(nearestHospital)) {
       return {
         lat: Number(nearestHospital.latitude),
@@ -383,7 +431,7 @@ export default function ResponderMap() {
       };
     }
     return null;
-  }, [nearestHospital]);
+  }, [activeAssignment?.is_maintenance, nearestHospital]);
 
   useEffect(() => {
     if (!patientPoint) return undefined;
@@ -405,7 +453,9 @@ export default function ResponderMap() {
       }
 
       if (!active) return;
-      const stops = [origin, patientPoint, hospitalPoint].filter(hasValidPoint);
+      const stops = activeAssignment?.is_maintenance
+        ? [origin, patientPoint].filter(hasValidPoint)
+        : [origin, patientPoint, hospitalPoint].filter(hasValidPoint);
       if (stops.length < 2) return;
 
       try {
@@ -431,7 +481,7 @@ export default function ResponderMap() {
     return () => {
       active = false;
     };
-  }, [patientPoint, hospitalPoint, isNavigating, locationPermissionGranted]);
+  }, [patientPoint, hospitalPoint, isNavigating, locationPermissionGranted, activeAssignment?.is_maintenance]);
 
   const incidents = useMemo(() => {
     if (activeAssignment && patientPoint) {
@@ -439,15 +489,15 @@ export default function ResponderMap() {
         {
           id: activeAssignment.incident_id || activeAssignment.id,
           title: activeAssignment.incident_title,
-          category: activeAssignment.incident_category,
-          urgency: activeAssignment.urgency || 'High',
+          category: activeAssignment.is_maintenance ? 'infrastructure' : activeAssignment.incident_category,
+          urgency: activeAssignment.urgency || 'Standard',
           address: activeAssignment.incident_location,
           reporter_name: activeAssignment.reporter_name,
           reporter_phone: activeAssignment.reporter_phone,
           description: activeAssignment.incident_description,
           lat: patientPoint.lat,
           lng: patientPoint.lng,
-          pinType: 'patient',
+          pinType: activeAssignment.is_maintenance ? 'maintenance' : 'patient',
         },
       ];
     }
@@ -456,6 +506,7 @@ export default function ResponderMap() {
   }, [activeAssignment, patientPoint]);
 
   const hospitalDropOffs = useMemo(() => {
+    if (activeAssignment?.is_maintenance) return [];
     if (activeAssignment && nearestHospital && hospitalPoint) {
       return [
         {
@@ -520,16 +571,100 @@ export default function ResponderMap() {
     }
   };
 
+  const handleLocateNearbyHospital = async () => {
+    if (busy) return;
+    if (isAgencyRole && nearestHospital) {
+      setNearestHospital(null);
+      setSelectedPin((prev) => (prev?.pinType === 'hospital' ? null : prev));
+      return;
+    }
+    const refPoint = patientPoint || currentLocation;
+    if (!refPoint) return;
+    setBusy(true);
+    setError('');
+    try {
+      const list = await getNearestHospitals(refPoint.lat, refPoint.lng);
+      if (list.length > 0) {
+        setHospitalOptions(list.slice(0, 3));
+        setShowHospitalPicker(true);
+      } else {
+        setError('No nearby hospital found.');
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleArrivedOnScene = async () => {
+    if (!activeAssignment || busy || activeAssignment.status === 'ON_SCENE') return;
+    setBusy(true);
+    setError('');
+    try {
+      await markArrivedOnScene(activeAssignment.id, {
+        incident_id: activeAssignment.incident_id,
+      });
+      setActiveAssignment((prev) => (prev ? { ...prev, status: 'ON_SCENE' } : prev));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRequestBackup = async () => {
+    if (!activeAssignment || busy || backupSent) return;
+    setBusy(true);
+    setError('');
+    try {
+      await requestFieldBackup(activeAssignment.id, {
+        incident_id: activeAssignment.incident_id,
+        requested_support: 'Tanod Emergency Transport / Backup',
+        reason: `${userRole.toUpperCase()} requested field backup on scene`,
+      });
+      setBackupSent(true);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleSubmitPatientForm = async () => {
     if (!activeAssignment || busy) return;
     if (!proofPhoto) {
-      setFormError('Please attach a proof photo showing the patient was transported.');
+      setFormError(
+        isAgencyRole
+          ? 'Please attach a proof of resolution photo for BDRRMO and Admin.'
+          : 'Please attach a proof photo showing the patient was transported.',
+      );
       return;
     }
     setBusy(true);
     setError('');
     setFormError('');
     try {
+      if (isAgencyRole) {
+        await completeAgencyDispatch(activeAssignment.id, {
+          incident_id: activeAssignment.incident_id,
+          summary: furtherInfo.trim(),
+          proof_photo_base64: proofPhoto.base64,
+          proof_photo_mime: proofPhoto.mimeType,
+          persons: patients,
+        });
+        setIsNavigating(false);
+        setCaseClosedOnMap(true);
+        setActiveAssignment(null);
+        setRoutePoints([]);
+        setRouteInfo(null);
+        setNearestHospital(null);
+        setSelectedPin(null);
+        setShowPatientModal(false);
+        navigation.navigate('History');
+        return;
+      }
+
       const res = await generateHospitalQrHandover(activeAssignment.id, {
         incident_id: activeAssignment.incident_id,
         hospital_name: nearestHospital?.name || 'Receiving Hospital',
@@ -548,7 +683,121 @@ export default function ResponderMap() {
       setSelectedPin(null);
       setShowPatientModal(false);
     } catch (err) {
-      setFormError(err.message);
+      if (isNetworkError(err)) {
+        const queuedCount = await enqueueOfflineSubmission({
+          kind: isAgencyRole ? 'agency_resolution' : 'tanod_qr_handover',
+          dispatchId: activeAssignment.id,
+          payload: isAgencyRole
+            ? {
+                incident_id: activeAssignment.incident_id,
+                summary: furtherInfo.trim(),
+                proof_photo_base64: proofPhoto.base64,
+                proof_photo_mime: proofPhoto.mimeType,
+                persons: patients,
+              }
+            : {
+                incident_id: activeAssignment.incident_id,
+                hospital_name: nearestHospital?.name || 'Receiving Hospital',
+                further_info: furtherInfo.trim(),
+                proof_photo_base64: proofPhoto.base64,
+                proof_photo_mime: proofPhoto.mimeType,
+                patients,
+              },
+        });
+        setOfflineQueueCount(queuedCount);
+        setShowPatientModal(false);
+        setError('No signal — report & photo saved offline and will auto-sync when online.');
+      } else {
+        setFormError(err.message);
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleCancelMaintenanceTrack = () => {
+    setIsNavigating(false);
+    setCaseClosedOnMap(true);
+    setActiveAssignment(null);
+    setRoutePoints([]);
+    setRouteInfo(null);
+    setNearestHospital(null);
+    setSelectedPin(null);
+    navigation.navigate('Assignments');
+  };
+
+  const handleOpenMaintenanceModal = (mode) => {
+    setMaintenanceModalMode(mode);
+    setMaintenanceNote('');
+    setMaintenancePhoto(null);
+    setMaintenanceError('');
+  };
+
+  const handlePickMaintenancePhoto = async (useCamera = true) => {
+    setMaintenanceError('');
+    try {
+      const perm = useCamera
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (perm.status !== 'granted') {
+        setMaintenanceError('Camera / gallery permission is required.');
+        return;
+      }
+      const result = useCamera
+        ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.4, base64: true })
+        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.4, base64: true });
+      if (!result.canceled && result.assets?.[0]) {
+        const asset = result.assets[0];
+        setMaintenancePhoto({
+          uri: asset.uri,
+          base64: asset.base64 || '',
+          mimeType: asset.mimeType || 'image/jpeg',
+        });
+      }
+    } catch {
+      setMaintenanceError('Unable to select photo. Please try again.');
+    }
+  };
+
+  const handleSubmitMaintenanceProof = async () => {
+    if (!activeAssignment || busy) return;
+    if (!maintenancePhoto || !maintenanceNote.trim()) {
+      setMaintenanceError('Please provide both a photo and a note for the Admin.');
+      return;
+    }
+    setBusy(true);
+    setMaintenanceError('');
+    try {
+      if (maintenanceModalMode === 'inspection') {
+        await submitMaintenanceInspection(activeAssignment.id, {
+          incident_id: activeAssignment.incident_id,
+          note: maintenanceNote.trim(),
+          photo_base64: maintenancePhoto.base64,
+          photo_mime: maintenancePhoto.mimeType,
+        });
+        setActiveAssignment((prev) =>
+          prev ? { ...prev, inspection_done: true, status: 'EN_ROUTE' } : prev,
+        );
+        setMaintenanceModalMode(null);
+      } else {
+        await submitMaintenanceRepair(activeAssignment.id, {
+          incident_id: activeAssignment.incident_id,
+          note: maintenanceNote.trim(),
+          photo_base64: maintenancePhoto.base64,
+          photo_mime: maintenancePhoto.mimeType,
+        });
+        setMaintenanceModalMode(null);
+        setIsNavigating(false);
+        setCaseClosedOnMap(true);
+        setActiveAssignment(null);
+        setRoutePoints([]);
+        setRouteInfo(null);
+        setNearestHospital(null);
+        setSelectedPin(null);
+        navigation.navigate('History');
+      }
+    } catch (err) {
+      setMaintenanceError(err.message);
     } finally {
       setBusy(false);
     }
@@ -562,6 +811,22 @@ export default function ResponderMap() {
 
   return (
     <View style={tw`flex-1`}>
+      {offlineQueueCount > 0 ? (
+        <View style={tw`z-30 flex-row items-center justify-between border-b border-blue-200 bg-blue-50 px-4 py-2`}>
+          <Text style={tw`mr-2 flex-1 text-[11px] font-bold text-blue-900`}>
+            {offlineQueueCount} resolution report(s) queued offline
+          </Text>
+          <Pressable
+            onPress={() => void syncOfflineSubmissions()}
+            disabled={syncingOffline}
+            style={tw`rounded-lg bg-blue-700 px-3 py-1.5`}
+          >
+            <Text style={tw`text-[10px] font-bold text-white`}>
+              {syncingOffline ? 'Syncing...' : 'Retry Sync'}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
       {locationSharingOff ? (
         <View style={tw`z-20 flex-row items-center justify-between border-b border-amber-200 bg-amber-50 px-4 py-2.5`}>
           <View style={tw`mr-3 flex-1 flex-row items-start gap-2`}>
@@ -610,7 +875,6 @@ export default function ResponderMap() {
           recenterSignal={recenterKey}
           compassResetSignal={compassResetKey}
           navigationUserLocation={currentLocation}
-          highwayShields={getHighwayShields(routePoints)}
           showBackButton={false}
           showBasemapControl={false}
           hideMapLabel
@@ -629,17 +893,27 @@ export default function ResponderMap() {
           <View style={tw`flex-row items-center justify-between`}>
             <View
               style={tw`rounded-md px-2 py-0.5 ${
-                selectedPin.pinType === 'hospital' ? 'bg-blue-100' : 'bg-red-100'
+                selectedPin.pinType === 'hospital'
+                  ? 'bg-blue-100'
+                  : selectedPin.pinType === 'maintenance'
+                    ? 'bg-green-100'
+                    : 'bg-red-100'
               }`}
             >
               <Text
                 style={tw`text-[10px] font-extrabold uppercase ${
-                  selectedPin.pinType === 'hospital' ? 'text-blue-800' : 'text-red-800'
+                  selectedPin.pinType === 'hospital'
+                    ? 'text-blue-800'
+                    : selectedPin.pinType === 'maintenance'
+                      ? 'text-green-800'
+                      : 'text-red-800'
                 }`}
               >
                 {selectedPin.pinType === 'hospital'
                   ? 'Nearest Hospital'
-                  : `Patient Pickup • ${selectedPin.category || 'Emergency'}`}
+                  : selectedPin.pinType === 'maintenance'
+                    ? `Maintenance Site • ${activeAssignment?.incident_category || 'Maintenance'}`
+                    : `Patient Pickup • ${selectedPin.category || 'Emergency'}`}
               </Text>
             </View>
             <Pressable
@@ -684,7 +958,11 @@ export default function ResponderMap() {
               <Navigation size={26} color="#fff" />
               <View style={tw`ml-3 flex-1`}>
                 <Text style={tw`text-[11px] font-bold uppercase tracking-wide text-green-100`}>
-                  Patient Pickup → {nearestHospital ? nearestHospital.name : 'Nearest Hospital'}
+                  {activeAssignment.is_maintenance
+                    ? `Maintenance Route → ${activeAssignment.incident_location || 'Pinned Site'}`
+                    : isAgencyRole
+                      ? `${userRole === 'fire' ? 'BFP' : 'Police'} Scene Route${nearestHospital ? ` → ${nearestHospital.name}` : ''}`
+                      : `Patient Pickup → ${nearestHospital ? nearestHospital.name : 'Nearest Hospital'}`}
                 </Text>
                 <Text numberOfLines={2} style={tw`mt-0.5 text-base font-extrabold text-white`}>
                   {routeInfo?.instruction || 'Follow the highlighted route'}
@@ -718,14 +996,26 @@ export default function ResponderMap() {
             </Pressable>
           </View>
 
-          <View style={tw`absolute bottom-36 left-4 flex-row gap-2`}>
+          <View style={tw`absolute bottom-36 left-4 right-4 flex-row flex-wrap gap-2`}>
             <Pressable
               onPress={() => setRecenterKey((k) => k + 1)}
-              style={tw`flex-row items-center rounded-full bg-black/85 px-4 py-2.5`}
+              style={tw`flex-row items-center rounded-full bg-black/85 px-3.5 py-2`}
             >
-              <Navigation size={16} color="#fff" />
+              <Navigation size={15} color="#fff" />
               <Text style={tw`ml-1.5 text-xs font-bold text-white`}>Re-center</Text>
             </Pressable>
+            {isAgencyRole && !activeAssignment.is_maintenance ? (
+              <Pressable
+                onPress={handleLocateNearbyHospital}
+                disabled={busy}
+                style={tw`flex-row items-center rounded-full ${nearestHospital ? 'bg-amber-600' : 'bg-blue-600'} px-3.5 py-2.5`}
+              >
+                {nearestHospital ? <X size={15} color="#fff" /> : <Hospital size={15} color="#fff" />}
+                <Text style={tw`ml-1.5 text-xs font-bold text-white`}>
+                  {nearestHospital ? 'Cancel Hospital Route' : 'Locate Nearby Hospital'}
+                </Text>
+              </Pressable>
+            ) : null}
             <Pressable
               onPress={() => setIsNavigating(false)}
               style={tw`flex-row items-center rounded-full bg-red-600 px-4 py-2.5`}
@@ -748,32 +1038,79 @@ export default function ResponderMap() {
                 </Text>
               </View>
               <View style={tw`items-end`}>
-                <Text style={tw`text-[11px] font-bold text-green-300`}>1. Pickup Patient</Text>
-                {nearestHospital ? (
-                  <Text style={tw`text-[11px] font-bold text-blue-300`} numberOfLines={1}>
-                    2. {nearestHospital.name}
+                {activeAssignment.is_maintenance ? (
+                  <Text style={tw`text-[11px] font-bold text-green-300`} numberOfLines={1}>
+                    Maintenance Site
                   </Text>
-                ) : null}
+                ) : (
+                  <>
+                    <Text style={tw`text-[11px] font-bold text-green-300`}>1. Pickup Patient</Text>
+                    {nearestHospital ? (
+                      <Text style={tw`text-[11px] font-bold text-blue-300`} numberOfLines={1}>
+                        2. {nearestHospital.name}
+                      </Text>
+                    ) : null}
+                  </>
+                )}
               </View>
             </View>
 
             <View style={tw`mt-3 flex-row gap-2.5`}>
-              <Pressable
-                onPress={() => navigation.navigate('Messages', { assignment: activeAssignment })}
-                style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-slate-800 py-2.5`}
-              >
-                <MessageCircle size={15} color="#FFFFFF" />
-                <Text style={tw`text-xs font-bold text-white`}>Message</Text>
-              </Pressable>
+              {activeAssignment.is_maintenance ? (
+                <>
+                  <Pressable
+                    onPress={handleCancelMaintenanceTrack}
+                    style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-slate-800 py-2.5`}
+                  >
+                    <X size={15} color="#FFFFFF" />
+                    <Text style={tw`text-xs font-bold text-white`}>Cancel</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() =>
+                      handleOpenMaintenanceModal(
+                        activeAssignment.inspection_done ? 'repair' : 'inspection',
+                      )
+                    }
+                    disabled={busy}
+                    style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-[#1F7A4D] py-2.5`}
+                  >
+                    <CheckCircle2 size={15} color="#FFFFFF" />
+                    <Text style={tw`text-xs font-bold text-white`}>
+                      {activeAssignment.inspection_done ? 'Submit Proof of Repair' : 'Document Inspection'}
+                    </Text>
+                  </Pressable>
+                </>
+              ) : (
+                <>
+                  <Pressable
+                    onPress={() => navigation.navigate('Messages', { assignment: activeAssignment })}
+                    style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-slate-800 py-2.5`}
+                  >
+                    <MessageCircle size={15} color="#FFFFFF" />
+                    <Text style={tw`text-xs font-bold text-white`}>Message</Text>
+                  </Pressable>
 
-              <Pressable
-                onPress={handleOpenCompleteForm}
-                disabled={busy}
-                style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-[#1F7A4D] py-2.5`}
-              >
-                <CheckCircle2 size={15} color="#FFFFFF" />
-                <Text style={tw`text-xs font-bold text-white`}>Mark as Completed</Text>
-              </Pressable>
+                  {activeAssignment.status === 'ON_SCENE' ? (
+                    <Pressable
+                      onPress={handleOpenCompleteForm}
+                      disabled={busy}
+                      style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-[#1F7A4D] py-2.5`}
+                    >
+                      <CheckCircle2 size={15} color="#FFFFFF" />
+                      <Text style={tw`text-xs font-bold text-white`}>Mark as Completed</Text>
+                    </Pressable>
+                  ) : (
+                    <Pressable
+                      onPress={handleArrivedOnScene}
+                      disabled={busy}
+                      style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-amber-600 py-2.5`}
+                    >
+                      <MapPin size={15} color="#FFFFFF" />
+                      <Text style={tw`text-xs font-bold text-white`}>Arrived on Scene</Text>
+                    </Pressable>
+                  )}
+                </>
+              )}
             </View>
           </View>
         </View>
@@ -798,12 +1135,14 @@ export default function ResponderMap() {
             <View style={tw`mt-1 flex-row items-center gap-1`}>
               <MapPin size={13} color="#64748B" />
               <Text style={tw`flex-1 text-xs text-slate-500`} numberOfLines={1}>
-                1. Pickup: {activeAssignment.incident_location}
+                {activeAssignment.is_maintenance
+                  ? `Site: ${activeAssignment.incident_location}`
+                  : `1. Pickup: ${activeAssignment.incident_location}`}
               </Text>
             </View>
           ) : null}
 
-          {nearestHospital ? (
+          {!activeAssignment.is_maintenance && nearestHospital ? (
             <View style={tw`mt-1 flex-row items-center gap-1`}>
               <Hospital size={13} color="#1E40AF" />
               <Text style={tw`flex-1 text-xs font-semibold text-blue-800`} numberOfLines={1}>
@@ -819,6 +1158,56 @@ export default function ResponderMap() {
               <Text style={tw`text-xs font-semibold text-[#1F7A4D]`}>
                 Fastest route: {routeInfo.durationMin} min ({routeInfo.distanceKm} km • {routeInfo.trafficLabel || 'Traffic'})
               </Text>
+            </View>
+          ) : null}
+
+          {activeAssignment.tactical_note ? (
+            <View style={tw`mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2`}>
+              <Text style={tw`text-[10px] font-extrabold uppercase text-amber-800`}>
+                BDRRMO Tactical Note
+              </Text>
+              <Text style={tw`mt-0.5 text-xs text-amber-950`}>
+                {String(activeAssignment.tactical_note).replace('[BDRRMO NOTE] ', '')}
+              </Text>
+            </View>
+          ) : null}
+
+          {!activeAssignment.is_maintenance && !isAgencyRole ? (
+            <View style={tw`mt-2 flex-row gap-2`}>
+              <Pressable
+                onPress={handleLocateNearbyHospital}
+                disabled={busy}
+                style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 py-2`}
+              >
+                <Hospital size={14} color="#1E40AF" />
+                <Text style={tw`text-[11px] font-bold text-blue-900`}>Change Hospital</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
+          {isAgencyRole && !activeAssignment.is_maintenance ? (
+            <View style={tw`mt-2 flex-row gap-2`}>
+              <Pressable
+                onPress={handleLocateNearbyHospital}
+                disabled={busy}
+                style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border ${
+                  nearestHospital ? 'border-amber-300 bg-amber-50' : 'border-blue-200 bg-blue-50'
+                } py-2`}
+              >
+                {nearestHospital ? <X size={14} color="#B45309" /> : <Hospital size={14} color="#1E40AF" />}
+                <Text style={tw`text-[11px] font-bold ${nearestHospital ? 'text-amber-900' : 'text-blue-900'}`}>
+                  {nearestHospital ? 'Cancel Hospital Route' : 'Locate Nearby Hospital'}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={handleRequestBackup}
+                disabled={busy || backupSent}
+                style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 py-2`}
+              >
+                <Text style={tw`text-[11px] font-bold text-amber-900`}>
+                  {backupSent ? 'Backup Requested ✓' : 'Request Tanod / Backup'}
+                </Text>
+              </Pressable>
             </View>
           ) : null}
 
@@ -840,27 +1229,169 @@ export default function ResponderMap() {
           </Pressable>
 
           <View style={tw`mt-2.5 flex-row gap-2.5`}>
-            <Pressable
-              onPress={() => navigation.navigate('Messages', { assignment: activeAssignment })}
-              style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white py-2.5`}
-            >
-              <MessageCircle size={15} color="#0F172A" />
-              <Text style={tw`text-xs font-bold text-slate-900`}>Message</Text>
-            </Pressable>
+            {activeAssignment.is_maintenance ? (
+              <>
+                <Pressable
+                  onPress={handleCancelMaintenanceTrack}
+                  style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white py-2.5`}
+                >
+                  <X size={15} color="#0F172A" />
+                  <Text style={tw`text-xs font-bold text-slate-900`}>Cancel</Text>
+                </Pressable>
 
-            <Pressable
-              onPress={handleOpenCompleteForm}
-              disabled={busy}
-              style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-[#1F7A4D] py-2.5`}
-            >
-              <CheckCircle2 size={15} color="#FFFFFF" />
-              <Text style={tw`text-xs font-bold text-white`}>
-                {qrResult ? 'View QR / Info' : 'Mark as Completed'}
-              </Text>
-            </Pressable>
+                <Pressable
+                  onPress={() =>
+                    handleOpenMaintenanceModal(
+                      activeAssignment.inspection_done ? 'repair' : 'inspection',
+                    )
+                  }
+                  disabled={busy}
+                  style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-[#1F7A4D] py-2.5`}
+                >
+                  <Wrench size={14} color="#FFFFFF" />
+                  <Text style={tw`text-xs font-bold text-white`}>
+                    {activeAssignment.inspection_done ? 'Submit Proof of Repair' : 'Document Inspection'}
+                  </Text>
+                </Pressable>
+              </>
+            ) : (
+              <>
+                <Pressable
+                  onPress={() => navigation.navigate('Messages', { assignment: activeAssignment })}
+                  style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white py-2.5`}
+                >
+                  <MessageCircle size={15} color="#0F172A" />
+                  <Text style={tw`text-xs font-bold text-slate-900`}>Message</Text>
+                </Pressable>
+
+                {activeAssignment.status === 'ON_SCENE' || qrResult ? (
+                  <Pressable
+                    onPress={handleOpenCompleteForm}
+                    disabled={busy}
+                    style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-[#1F7A4D] py-2.5`}
+                  >
+                    <CheckCircle2 size={15} color="#FFFFFF" />
+                    <Text style={tw`text-xs font-bold text-white`}>
+                      {qrResult ? 'View QR / Info' : 'Mark as Completed'}
+                    </Text>
+                  </Pressable>
+                ) : (
+                  <Pressable
+                    onPress={handleArrivedOnScene}
+                    disabled={busy}
+                    style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-amber-600 py-2.5`}
+                  >
+                    <MapPin size={15} color="#FFFFFF" />
+                    <Text style={tw`text-xs font-bold text-white`}>Arrived on Scene</Text>
+                  </Pressable>
+                )}
+              </>
+            )}
           </View>
         </View>
       ) : null}
+
+      <Modal
+        visible={Boolean(maintenanceModalMode)}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setMaintenanceModalMode(null)}
+      >
+        <View style={tw`flex-1 justify-end bg-black/45`}>
+          <View style={tw`rounded-t-3xl bg-white px-5 pb-6 pt-5`}>
+            <Text style={tw`text-lg font-extrabold text-slate-900`}>
+              {maintenanceModalMode === 'repair'
+                ? 'Submit Proof of Repair'
+                : 'Document On-Site Inspection'}
+            </Text>
+            <Text style={tw`mt-1 text-xs text-slate-500`}>
+              {maintenanceModalMode === 'repair'
+                ? 'Upload a photo of the completed repair and add a completion note for the Admin.'
+                : 'Upload a photo proving you inspected the maintenance area and add a note for the Admin.'}
+            </Text>
+
+            <View style={tw`mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3`}>
+              <Text style={tw`text-xs font-bold text-slate-800`}>
+                {maintenanceModalMode === 'repair' ? 'Repair Completion Photo *' : 'Inspection Arrival Photo *'}
+              </Text>
+              {maintenancePhoto ? (
+                <View style={tw`mt-2`}>
+                  <Image
+                    source={{ uri: maintenancePhoto.uri }}
+                    style={tw`h-40 w-full rounded-xl bg-slate-200`}
+                    resizeMode="cover"
+                  />
+                  <Pressable
+                    onPress={() => setMaintenancePhoto(null)}
+                    style={tw`mt-2 flex-row items-center justify-center gap-1.5 rounded-xl bg-red-50 py-2`}
+                  >
+                    <Trash2 size={13} color="#DC2626" />
+                    <Text style={tw`text-xs font-bold text-red-600`}>Remove Photo</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <View style={tw`mt-2.5 flex-row gap-2`}>
+                  <Pressable
+                    onPress={() => handlePickMaintenancePhoto(true)}
+                    style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-[#1F7A4D] py-2.5`}
+                  >
+                    <Camera size={14} color="#FFFFFF" />
+                    <Text style={tw`text-xs font-bold text-white`}>Take Photo</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => handlePickMaintenancePhoto(false)}
+                    style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white py-2.5`}
+                  >
+                    <ImagePlus size={14} color="#0F172A" />
+                    <Text style={tw`text-xs font-bold text-slate-800`}>Upload Photo</Text>
+                  </Pressable>
+                </View>
+              )}
+            </View>
+
+            <View style={tw`mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3`}>
+              <Text style={tw`text-xs font-bold text-slate-800`}>Note for Admin *</Text>
+              <TextInput
+                value={maintenanceNote}
+                onChangeText={setMaintenanceNote}
+                placeholder={
+                  maintenanceModalMode === 'repair'
+                    ? 'Describe the completed repair work...'
+                    : 'Describe site conditions, materials or budget needed...'
+                }
+                multiline
+                style={tw`mt-2 min-h-16 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900`}
+              />
+            </View>
+
+            {maintenanceError ? (
+              <Text style={tw`mt-2 text-xs font-semibold text-red-600`}>{maintenanceError}</Text>
+            ) : null}
+
+            <View style={tw`mt-4 flex-row gap-2.5`}>
+              <Pressable
+                onPress={() => setMaintenanceModalMode(null)}
+                style={tw`flex-1 items-center rounded-xl bg-slate-100 py-3`}
+              >
+                <Text style={tw`text-xs font-bold text-slate-700`}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleSubmitMaintenanceProof}
+                disabled={busy}
+                style={tw`flex-1 items-center rounded-xl bg-[#1F7A4D] py-3`}
+              >
+                <Text style={tw`text-xs font-bold text-white`}>
+                  {busy
+                    ? 'Submitting...'
+                    : maintenanceModalMode === 'repair'
+                      ? 'Submit Repair Proof'
+                      : 'Submit Inspection'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={showPatientModal}
@@ -871,10 +1402,16 @@ export default function ResponderMap() {
         <View style={tw`flex-1 justify-end bg-black/40`}>
           <View style={tw`max-h-[82%] rounded-t-3xl bg-white px-5 pb-6 pt-5`}>
             <Text style={tw`text-lg font-extrabold text-slate-900`}>
-              Patient / Reporter Information
+              {userRole === 'police'
+                ? 'Criminal / Incident Report Handover'
+                : userRole === 'fire'
+                  ? 'Fire Scene Resolution Report'
+                  : 'Patient / Reporter Information'}
             </Text>
             <Text style={tw`mt-1 text-xs text-slate-500`}>
-              Auto-filled from the guest incident report. Review or add individuals before generating the hospital QR code.
+              {isAgencyRole
+                ? 'Auto-filled from the guest report. Add involved persons and submit proof of resolution for BDRRMO & Admin.'
+                : 'Auto-filled from the guest incident report. Review or add individuals before generating the hospital QR code.'}
             </Text>
 
             <ScrollView style={tw`mt-3`} contentContainerStyle={tw`gap-3 pb-4`}>
@@ -1050,7 +1587,11 @@ export default function ResponderMap() {
                 style={tw`flex-1 items-center rounded-xl bg-[#1F7A4D] py-3`}
               >
                 <Text style={tw`text-xs font-bold text-white`}>
-                  {busy ? 'Generating QR...' : 'Submit & Generate QR'}
+                  {busy
+                    ? 'Submitting...'
+                    : isAgencyRole
+                      ? 'Submit Resolution Report'
+                      : 'Submit & Generate QR'}
                 </Text>
               </Pressable>
             </View>
@@ -1118,6 +1659,54 @@ export default function ResponderMap() {
             >
               <Text style={tw`text-xs font-bold text-white`}>Done</Text>
             </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={showHospitalPicker} transparent animationType="slide">
+        <View style={tw`flex-1 justify-end bg-black/50`}>
+          <View style={tw`rounded-t-3xl bg-white px-5 pb-6 pt-5`}>
+            <View style={tw`flex-row items-center justify-between`}>
+              <View>
+                <Text style={tw`text-base font-extrabold text-slate-900`}>Select Nearest Hospital</Text>
+                <Text style={tw`text-[11px] text-slate-500`}>Top 3 closest emergency rooms</Text>
+              </View>
+              <Pressable onPress={() => setShowHospitalPicker(false)} hitSlop={10}>
+                <X size={20} color="#64748B" />
+              </Pressable>
+            </View>
+            <View style={tw`mt-4 gap-2.5`}>
+              {hospitalOptions.map((hosp, idx) => {
+                const isCurrent = nearestHospital?.name === hosp.name;
+                return (
+                  <Pressable
+                    key={`${hosp.name}-${idx}`}
+                    onPress={() => {
+                      setNearestHospital(hosp);
+                      setShowHospitalPicker(false);
+                    }}
+                    style={tw`flex-row items-center justify-between rounded-2xl border p-3.5 ${
+                      isCurrent ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-white'
+                    }`}
+                  >
+                    <View style={tw`mr-3 flex-1`}>
+                      <Text style={tw`text-xs font-extrabold text-slate-900`}>{hosp.name}</Text>
+                      <Text style={tw`mt-0.5 text-[11px] text-slate-500`} numberOfLines={1}>
+                        {hosp.address || 'Emergency Room'}
+                      </Text>
+                    </View>
+                    <View style={tw`items-end`}>
+                      {hosp.distance_km != null ? (
+                        <Text style={tw`text-xs font-extrabold text-blue-700`}>
+                          {Number(hosp.distance_km).toFixed(1)} km
+                        </Text>
+                      ) : null}
+                      <Text style={tw`text-[10px] font-bold text-slate-400`}>#{idx + 1} Nearest</Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
         </View>
       </Modal>

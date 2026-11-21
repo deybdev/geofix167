@@ -1,0 +1,5 @@
+import { CheckCircle2, MapPin, Radio, SearchCheck, ShieldCheck } from "lucide-react";
+import Reveal from "../../../shared/components/Reveal";
+import SectionHeader from "../../../shared/components/SectionHeader";
+const steps = [[MapPin,"Report","Pin the exact location and attach evidence."],[SearchCheck,"Validate","Barangay staff confirm urgency and scope."],[Radio,"Dispatch","The right response team receives the task."],[ShieldCheck,"Resolve","Field teams complete and document the work."],[CheckCircle2,"Verify","Proof is reviewed before public closure."]];
+export default function HowItWorksSection(){return <section className="landing-section landing-section--card"><div className="site-container"><SectionHeader number="01" eyebrow="How it works" title="From report to verified resolution." lead="One transparent workflow keeps residents informed and response teams accountable."/><div className="landing-process">{steps.map(([Icon,title,desc],i)=><Reveal key={title} delay={i*60} className="landing-process__step"><span>{String(i+1).padStart(2,"0")}</span><Icon size={22}/><h3>{title}</h3><p>{desc}</p></Reveal>)}</div></div></section>}

@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 import { PATHS } from "./paths";
 
-// Keep availability beside each route so the sidebar badge and route use one flag.
 export const ADMIN_NAVIGATION = [
   {
     key: "dashboard",
@@ -20,21 +19,12 @@ export const ADMIN_NAVIGATION = [
     icon: Grid2X2,
     path: PATHS.admin,
     section: "MAIN MENU",
-    comingSoon: true,
-    comingSoonDescription: "The live operations dashboard will appear here when its reporting API is ready.",
   },
   {
     key: "incident-reports",
     label: "Incident Reports",
     icon: ClipboardList,
     path: PATHS.adminIncidentReports,
-    children: [
-      { label: "Pending Triage Queue", queue: "pending-triage" },
-      { label: "Active Emergencies (BDRRMO)", queue: "active-emergencies" },
-      { label: "External Agency Requests", queue: "external-agencies" },
-      { label: "Infrastructure Reports", queue: "infrastructure" },
-      { label: "Monitor Dispatch & Tracking", queue: "dispatch-tracking" },
-    ],
   },
   { key: "dispatch", label: "Dispatch Responders", icon: Radio, path: PATHS.adminDispatch },
   {
@@ -42,56 +32,42 @@ export const ADMIN_NAVIGATION = [
     label: "Maintenance Tasks",
     icon: ShieldCheck,
     path: PATHS.adminMaintenanceTasks,
-    children: ["Non-Emergency Intake", "Active Work Orders", "Awaiting Verification", "Completed & Logged"],
   },
   {
     key: "resolution-verification",
     label: "Resolution & Verification",
     icon: CheckSquare,
     path: PATHS.adminResolutionVerification,
-    children: ["Evidence Review", "QR Handover Reconciliation", "False-Report Controls"],
   },
   {
     key: "announcements",
     label: "Announcements & Broadcasts",
     icon: Megaphone,
     path: PATHS.adminAnnouncements,
-    children: ["Create Advisory / Notice", "Geo-Fenced Broadcasts", "Active Broadcast Log", "Public Feed Curation"],
   },
   {
     key: "accomplishment-log",
     label: "Accomplishment Log",
     icon: BookOpen,
     path: PATHS.adminAccomplishmentLog,
-    children: ["Public Ledger Preview", "Curation Queue", "Audit & Retention Trail"],
-    comingSoon: true,
-    comingSoonDescription: "The accomplishment ledger will be available when it is connected to approved server records.",
   },
   {
     key: "residents",
     label: "Residents & Access",
     icon: Users,
     path: PATHS.adminResidents,
-    children: ["Resident Directory", "Pending Verifications", "Account Recovery"],
-    comingSoon: true,
-    comingSoonDescription: "Resident directory and access management will be available when its admin API is ready.",
   },
   {
     key: "registrations",
     label: "Registrations",
     icon: ShieldCheck,
     path: PATHS.adminRegistrations,
-    comingSoon: true,
-    comingSoonDescription: "Registration review will be available when its workflow is ready for administrators.",
   },
   {
     key: "reports-analytics",
     label: "Reports & Analytics",
     icon: BarChart3,
     path: PATHS.adminReportsAnalytics,
-    children: ["Incident Heatmaps & Trends", "Response-Time & SLA Metrics", "Resource Utilization", "Export Center"],
-    comingSoon: true,
-    comingSoonDescription: "Verified incident analytics will be available when the reporting API is connected.",
   },
   {
     key: "settings",
@@ -99,10 +75,5 @@ export const ADMIN_NAVIGATION = [
     icon: Settings,
     path: PATHS.adminSettings,
     section: "UTILITIES",
-    children: ["Categories & Zones", "Agency Contacts", "Hospital Capability Matrix", "Language Filters"],
-    comingSoon: true,
-    comingSoonDescription: "System settings will be available when they can be saved through the admin API.",
   },
 ];
-
-export const getAdminNavigationItem = (key) => ADMIN_NAVIGATION.find((item) => item.key === key);

@@ -1,17 +1,70 @@
-import { ChevronDown, LockKeyhole, Menu } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ChevronDown, LogOut, Menu } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ADMIN_NAVIGATION } from "../../router/adminNavigation";
 import { PATHS } from "../../router/paths";
+import { useAuth } from "../hooks/useAuth";
+import ConfirmationDialog from "./ConfirmationDialog";
+import { toast } from "./ui/toast";
 
 export default function AdminSidebar({ open = false, onClose, onToggle }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const activeGroup = ADMIN_NAVIGATION.find(
-    ({ path }) => path && path !== PATHS.admin && location.pathname.startsWith(path),
-  )?.label;
-  const [expansion, setExpansion] = useState({ pathname: location.pathname, label: activeGroup });
-  const expandedGroup = expansion.pathname === location.pathname ? expansion.label : activeGroup;
+  const { user, signOut } = useAuth();
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [isSignOutDialogOpen, setIsSignOutDialogOpen] = useState(false);
+  const accountRef = useRef(null);
+
+  const displayName =
+    user?.name ||
+    [user?.first_name, user?.last_name].filter(Boolean).join(" ") ||
+    "Barangay Administrator";
+  const initials =
+    displayName
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0])
+      .join("")
+      .toUpperCase() || "BA";
+
+  useEffect(() => {
+    if (!accountMenuOpen) return undefined;
+    const handlePointerDown = (event) => {
+      if (accountRef.current && !accountRef.current.contains(event.target)) {
+        setAccountMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") setAccountMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [accountMenuOpen]);
+
+  async function handleSignOut() {
+    try {
+      await signOut();
+      setIsSignOutDialogOpen(false);
+      setAccountMenuOpen(false);
+      toast.add({
+        title: "Logout successful",
+        description: "You have been safely logged out.",
+        type: "success",
+      });
+      navigate(PATHS.adminLogin, { replace: true });
+    } catch (error) {
+      toast.add({
+        title: "Logout failed",
+        description: error instanceof Error ? error.message : "Please try again.",
+        type: "error",
+      });
+    }
+  }
 
   const navigateTo = (path) => {
     navigate(path);
@@ -43,7 +96,11 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
             aria-label="Open menu"
           ><Menu size={19} /></button>}
           <div className={`flex items-center gap-2 ${open ? "" : "flex-col"}`}>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-[4px] border-(--gf-green) text-[10px] font-bold text-(--gf-green)" aria-label="GeoFix 167">G</div>
+            <img
+              src="/geofix167.png"
+              alt="GeoFix 167"
+              className="h-10 w-10 shrink-0 rounded-lg object-contain"
+            />
             <div className={`min-w-0 text-[11px] font-bold leading-tight text-(--gf-green) ${open ? "" : "md:hidden"}`}>
               GeoFix <span className="block text-[8px]">Barangay 167</span>
             </div>
@@ -56,38 +113,28 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
             aria-label="Close menu"
           ><Menu size={19} /></button>}
         </div>
-        <nav className="max-h-[calc(100dvh-142px)] space-y-1 overflow-y-auto pr-0.5">
-          {ADMIN_NAVIGATION.map(({ label, icon: Icon, path, children, section, comingSoon }) => {
+        <nav className="max-h-[calc(100dvh-230px)] space-y-1 overflow-y-auto pr-0.5" aria-label="Admin navigation">
+          {ADMIN_NAVIGATION.map(({ label, icon: Icon, path, section }) => {
             const active = path && (path === PATHS.admin ? location.pathname === path : location.pathname.startsWith(path));
-            const expanded = expandedGroup === label;
             return (
               <div key={label}>
                 {section && open && (
-                  <div className="mb-2 mt-4 px-3 text-[9px] font-semibold tracking-[0.08em] text-slate-400 first:mt-0">
+                  <div className="mb-2 mt-4 px-3 text-[10px] font-semibold tracking-[0.08em] text-slate-400 first:mt-0">
                     {section}
                   </div>
                 )}
                 <button
                   type="button"
-                  title={comingSoon ? `${label} · Locked, coming soon` : open ? undefined : label}
-                  disabled={comingSoon}
-                  aria-disabled={comingSoon || undefined}
+                  title={open ? undefined : label}
                   onClick={() => {
-                    if (comingSoon) return;
-                    if (children) {
-                      setExpansion({ pathname: location.pathname, label: expanded ? null : label });
-                      if (path) navigate(path);
-                    } else if (path) {
+                    if (path) {
                       navigateTo(path);
                     }
                   }}
-                  aria-expanded={children ? expanded : undefined}
-                  className={`group relative flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[10px] font-medium transition-colors disabled:cursor-not-allowed ${
+                  className={`group relative flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12px] font-medium transition-colors ${
                     open ? "" : "md:justify-center md:px-0"
                   } ${
-                    comingSoon
-                      ? "cursor-not-allowed text-slate-400"
-                      : active
+                    active
                       ? "bg-(--gf-green) text-white"
                       : "text-[#263246] hover:bg-(--gf-green-soft)"
                   }`}
@@ -95,49 +142,70 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
                   <Icon size={14} strokeWidth={1.8} />
                   <span className={`min-w-0 flex-1 truncate ${open ? "" : "md:hidden"}`}>{label}</span>
                   {!open && (
-                    <span className="pointer-events-none absolute left-[calc(100%+10px)] z-50 hidden whitespace-nowrap rounded-md bg-slate-900 px-2.5 py-1.5 text-[10px] text-white shadow-lg group-hover:md:block">
-                      {comingSoon ? `${label} · Locked, coming soon` : label}
+                    <span className="pointer-events-none absolute left-[calc(100%+10px)] z-50 hidden whitespace-nowrap rounded-md bg-slate-900 px-2.5 py-1.5 text-[12px] text-white shadow-lg group-hover:md:block">
+                      {label}
                     </span>
                   )}
-                  {open && <span aria-hidden="true" className="ml-auto flex w-[68px] shrink-0 items-center justify-end gap-1.5">
-                    {comingSoon && <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-1.5 py-1 text-center text-[7px] font-semibold leading-none text-amber-700"><LockKeyhole size={8} />Coming soon</span>}
-                    {children && !comingSoon && <ChevronDown size={13} className={`shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`} />}
-                  </span>}
                 </button>
-                {children && expanded && open && !comingSoon && (
-                  <div className="ml-5 border-l border-(--gf-green-border) py-1 pl-2">
-                    {children.map((child) => {
-                      const childLabel = typeof child === "string" ? child : child.label;
-                      const childPath = typeof child === "string" ? path : `${path}?queue=${child.queue}`;
-                      return (
-                      <button
-                        key={childLabel}
-                        type="button"
-                        onClick={() => navigateTo(childPath)}
-                        className="block w-full rounded px-2 py-1.5 text-left text-[9px] leading-tight text-slate-500 hover:bg-(--gf-green-soft) hover:text-(--gf-green)"
-                      >
-                        {childLabel}
-                      </button>
-                      );
-                    })}
-                  </div>
-                )}
               </div>
             );
           })}
         </nav>
-        <div className={`absolute bottom-4 flex items-center gap-2 rounded-xl border border-[#e5eaed] bg-[#f8fafb] p-2 ${open ? "left-3 right-3" : "left-2 right-2 md:justify-center"}`}>
-          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-(--gf-green) text-[9px] font-bold text-white">
-            BA
-          </div>
-          <div className={`min-w-0 text-[9px] ${open ? "" : "md:hidden"}`}>
-            <strong className="block truncate">Barangay Administrator</strong>
-            <span className="text-[8px] text-slate-400">
-              Authorized Account
+        <div ref={accountRef} className={`absolute bottom-4 left-2 right-2`}>
+          {accountMenuOpen && (
+            <div
+              role="menu"
+              aria-label="Account options"
+              className={`absolute bottom-[calc(100%+8px)] ${open ? "left-0 right-0" : "left-0 w-[220px]"} overflow-hidden rounded-xl border border-[#e5eaed] bg-white p-1.5 shadow-xl`}
+            >
+              <div className="px-2.5 py-2">
+                <p className="truncate text-[11px] font-bold text-[#263246]">{displayName}</p>
+                <p className="mt-0.5 truncate text-[9px] text-slate-400">System Administrator</p>
+              </div>
+              <div className="my-1 h-px bg-[#eef1f3]" />
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setAccountMenuOpen(false);
+                  setIsSignOutDialogOpen(true);
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[11px] font-semibold text-red-600 transition hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
+              >
+                <LogOut size={14} />
+                Log out
+              </button>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => setAccountMenuOpen((value) => !value)}
+            aria-haspopup="menu"
+            aria-expanded={accountMenuOpen}
+            aria-label="Account menu"
+            title={open ? undefined : displayName}
+            className={`flex w-full items-center gap-2 rounded-xl border border-[#e5eaed] bg-[#f8fafb] p-2 text-left transition hover:border-(--gf-green-border) hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--gf-green) ${open ? "" : "md:justify-center md:px-0"}`}
+          >
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-(--gf-green) text-[9px] font-bold text-white">
+              {initials}
             </span>
-          </div>
+            <span className={`min-w-0 flex-1 ${open ? "" : "md:hidden"}`}>
+              <strong className="block truncate text-[10px] text-[#263246]">{displayName}</strong>
+              <span className="block text-[8px] text-slate-400">System Administrator</span>
+            </span>
+            {open && <ChevronDown size={12} className={`shrink-0 text-slate-400 transition-transform ${accountMenuOpen ? "rotate-180" : ""}`} />}
+          </button>
         </div>
       </aside>
+      <ConfirmationDialog
+        open={isSignOutDialogOpen}
+        onOpenChange={setIsSignOutDialogOpen}
+        onConfirm={handleSignOut}
+        title="Sign out?"
+        description="Are you sure you want to sign out of the admin portal?"
+        confirmLabel="Sign out"
+        confirmVariant="destructive"
+      />
     </>
   );
 }
