@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowRight, CalendarDays, Clock3, MapPin, Megaphone, Search, Video } from "lucide-react";
 import AccessibleDropdown from "../shared/components/AccessibleDropdown";
 import AnnouncementDetailsModal from "./AnnouncementDetailsModal";
+import PublicLoader from "../shared/components/PublicLoader";
 import { announcementCategoryBadge, announcementCategoryOptions } from "../shared/constants/announcementCategoryStyles";
 import catalog from "../../../server/src/shared/announcementCatalog.json";
 
@@ -17,7 +18,10 @@ export default function AnnouncementsPage({ initialSelectedId = "", onCloseAnnou
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState(initialSelectedId);
-  useEffect(() => setSelectedId(initialSelectedId), [initialSelectedId]);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setSelectedId(initialSelectedId));
+    return () => cancelAnimationFrame(frame);
+  }, [initialSelectedId]);
   const categoryOptions = useMemo(() => [
     { value: "", label: "All categories", tone: "green", tag: String(catalog.categories.length) },
     ...announcementCategoryOptions(catalog.categories),
@@ -25,8 +29,7 @@ export default function AnnouncementsPage({ initialSelectedId = "", onCloseAnnou
 
   useEffect(() => {
     const controller = new AbortController();
-    setLoading(true);
-    setError("");
+    const frame = requestAnimationFrame(() => { setLoading(true); setError(""); });
     const params = new URLSearchParams({ limit: "10", offset: String(offset) });
     if (category) params.set("category", category);
     if (query.trim()) params.set("q", query.trim());
@@ -39,14 +42,14 @@ export default function AnnouncementsPage({ initialSelectedId = "", onCloseAnnou
       })
       .catch((requestError) => { if (requestError.name !== "AbortError") setError(requestError.message); })
       .finally(() => setLoading(false));
-    return () => controller.abort();
+    return () => { cancelAnimationFrame(frame); controller.abort(); };
   }, [category, query, offset]);
 
   const resetResults = (update) => { setItems([]); setOffset(0); update(); };
   const closeAnnouncement = useCallback(() => { setSelectedId(""); onCloseAnnouncement?.(); }, [onCloseAnnouncement]);
 
   return <div className="min-h-full bg-[#f4f8f5] pb-12">
-    <section className="bg-[#103b2b] text-white">
+    <section className="scroll-mt-20 bg-[#103b2b] text-white">
       <div className="mx-auto w-full max-w-6xl px-5 py-10 sm:py-14">
         <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-100"><Megaphone size={13} /> Barangay 167 · Caloocan City</div>
         <div className="mt-5 flex flex-col justify-between gap-5 md:flex-row md:items-end">
@@ -83,8 +86,8 @@ export default function AnnouncementsPage({ initialSelectedId = "", onCloseAnnou
           <span className="mt-4 inline-flex items-center gap-1 text-xs font-bold text-emerald-800">View announcement <ArrowRight size={13} className="transition-transform group-hover:translate-x-1" /></span>
         </button>)}
       </div>
-      {!loading && !error && items.length === 0 && <div className="mt-5 rounded-2xl border border-dashed border-[#cbd9cf] bg-white px-5 py-14 text-center"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700"><Megaphone size={21} /></div><h2 className="mt-4 text-base font-bold text-slate-900">No announcements found</h2><p className="mt-1 text-sm text-slate-500">Try another category or search term.</p></div>}
-      {loading && <p className="py-8 text-center text-sm text-slate-500">Loading announcements…</p>}
+      {!loading && !error && items.length === 0 && <div className="mt-5 rounded-xl border border-dashed border-[#cbd9cf] bg-white px-5 py-8 text-center"><div className="mx-auto flex h-10 w-10 items-center justify-center bg-emerald-50 text-emerald-700"><Megaphone size={19} /></div><h2 className="mt-3 text-sm font-bold text-slate-900">No announcements found</h2><p className="mt-1 text-xs text-slate-500">Try another category or search term.</p></div>}
+      {loading && <PublicLoader label="Loading announcements…" />}
       {more && <button disabled={loading} onClick={() => setOffset((current) => current + 10)} className="mx-auto mt-6 flex items-center gap-2 rounded-lg border border-emerald-200 bg-white px-4 py-2.5 text-xs font-bold text-emerald-800 hover:bg-emerald-50 disabled:opacity-50">Load more announcements <ArrowRight size={13} /></button>}
     </section>
     {selectedId && <AnnouncementDetailsModal id={selectedId} onClose={closeAnnouncement} />}

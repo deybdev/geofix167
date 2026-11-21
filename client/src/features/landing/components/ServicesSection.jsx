@@ -1,88 +1,10 @@
-import {
-  MapPin,
-  Flame,
-  Wrench,
-  ShieldCheck,
-} from "lucide-react";
-
-export default function ServicesSection() {
-  const services = [
-    {
-      icon: MapPin,
-      badge: "Geotagging",
-      badgeColor: "bg-[#e5efe6] text-[#174b37]",
-      title: "Geotagged Incident Reporting",
-      desc: "Pin issues directly on the digital map of Barangay 167 with GPS coordinates and photographic evidence.",
-    },
-    {
-      icon: Flame,
-      badge: "Emergency",
-      badgeColor: "bg-[#f9e8e5] text-[#9f241b]",
-      title: "Sudden Emergency Dispatch",
-      desc: "Instant routing and prioritization for fires, sudden medical emergencies, road accidents, and public security incidents.",
-    },
-    {
-      icon: Wrench,
-      badge: "Public Works",
-      badgeColor: "bg-[#e5efe6] text-[#174b37]",
-      title: "Infrastructure Maintenance",
-      desc: "Systematic logging and dispatch for clogged drainage, unlit streetlights, roadway potholes, and electrical cable hazards.",
-    },
-    {
-      icon: ShieldCheck,
-      badge: "Transparency",
-      badgeColor: "bg-[#e5efe6] text-[#174b37]",
-      title: "Verified Accomplishment Proof",
-      desc: "Barangay officers and maintenance crews upload post-resolution evidence with QR verification and time-stamped proof.",
-    },
-  ];
-
-  return (
-    <section id="services" className="landing-section landing-section--tint border-t">
-      <div className="site-container">
-        
-        <div className="text-center max-w-2xl mx-auto mb-12">
-          <span className="rounded-md bg-[#e5efe6] px-3 py-1 text-xs font-semibold text-[#174b37] uppercase tracking-wide">
-            Barangay 167 Core Capabilities
-          </span>
-          <h2 className="landing-display mt-3 text-3xl sm:text-4xl">
-            Engineered for Response, Safety, & Transparency
-          </h2>
-          <p className="mt-2 text-sm text-slate-500">
-            A comprehensive unified platform connecting citizens, barangay leadership, and emergency personnel.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {services.map((svc, i) => {
-            const Icon = svc.icon;
-            return (
-              <div
-                key={i}
-                className="landing-card group relative p-6"
-              >
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#e5efe6] text-[#174b37] transition-colors group-hover:bg-[#174b37] group-hover:text-white">
-                    <Icon size={24} />
-                  </div>
-                  <span className={`rounded-md px-2 py-1 text-[10px] font-semibold ${svc.badgeColor}`}>
-                    {svc.badge}
-                  </span>
-                </div>
-
-                <h3 className="text-base font-semibold text-[#1b2821] group-hover:text-[#174b37] transition-colors">
-                  {svc.title}
-                </h3>
-                <p className="mt-2 text-xs leading-relaxed text-slate-500">
-                  {svc.desc}
-                </p>
-              </div>
-            );
-          })}
-        </div>
-
-      </div>
-    </section>
-  );
-}
-
+import { useState } from "react";
+import { ArrowRight, Flame, MapPin, ShieldCheck, Wrench } from "lucide-react";
+import { Link } from "react-router-dom";
+import SectionHeader from "../../../shared/components/SectionHeader";
+import IconTile from "../../../shared/components/IconTile";
+import Reveal from "../../../shared/components/Reveal";
+import { PATHS } from "../../../router/paths";
+import QuickReportModal from "./QuickReportModal";
+const services=[[MapPin,'Geotagged incident reporting','Pin an issue on the Barangay 167 map with accurate location details and evidence.'],[Flame,'Emergency dispatch','Route urgent fire, medical, road, and public-safety incidents for rapid validation.',true],[Wrench,'Infrastructure maintenance','Track drainage, lighting, road, sanitation, and other public-work concerns.'],[ShieldCheck,'Verified accomplishment proof','Document completed work with time-stamped evidence and official review.']];
+export default function ServicesSection({preview=false}){const[reportOpen,setReportOpen]=useState(false);return <><section className="landing-section landing-section--card"><div className="site-container"><SectionHeader number="04" eyebrow="Barangay services" title="One clear entry point for community concerns." lead="Report, track, and verify—from urgent response to everyday public maintenance." link={preview?PATHS.services:null} linkLabel="All services"/><div className="landing-service-list">{services.map(([Icon,title,desc,emergency],i)=>{const content=<><span>{String(i+1).padStart(2,'0')}</span><IconTile icon={Icon} emergency={emergency}/><div><h3>{title}</h3><p>{desc}</p></div><ArrowRight size={18}/></>;return <Reveal key={title} delay={i*50}>{preview?<Link to={PATHS.services} aria-label={`View ${title}`} className="landing-service-row is-clickable">{content}</Link>:<button type="button" onClick={()=>setReportOpen(true)} aria-label={`Start a ${title} report`} className="landing-service-row is-clickable">{content}</button>}</Reveal>})}</div>{!preview&&<div className="landing-flow-strip"><strong>Request flow</strong><span>Submit</span><i/> <span>Validate</span><i/> <span>Assign</span><i/> <span>Update</span><i/> <span>Verify</span></div>}</div></section>{!preview&&<QuickReportModal isOpen={reportOpen} onClose={()=>setReportOpen(false)} defaultCoordinates={null}/>}</>}
