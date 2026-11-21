@@ -43,7 +43,11 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
             aria-label="Open menu"
           ><Menu size={19} /></button>}
           <div className={`flex items-center gap-2 ${open ? "" : "flex-col"}`}>
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-[4px] border-(--gf-green) text-[10px] font-bold text-(--gf-green)" aria-label="GeoFix 167">G</div>
+            <img
+              src="/geofix167.png"
+              alt="GeoFix 167"
+              className="h-10 w-10 shrink-0 rounded-lg object-contain"
+            />
             <div className={`min-w-0 text-[11px] font-bold leading-tight text-(--gf-green) ${open ? "" : "md:hidden"}`}>
               GeoFix <span className="block text-[8px]">Barangay 167</span>
             </div>
