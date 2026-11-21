@@ -33,12 +33,14 @@ const NAV_ITEMS_BY_ROLE = {
     { route: 'Messages', label: 'Messages', Icon: MessageCircle },
     { route: 'Profile', label: 'Profile', Icon: UserRound },
   ],
+  tanod: NAV_ITEMS,
   police: [...NAV_ITEMS.slice(0, 3), { route: 'Messages', label: 'Messages', Icon: MessageCircle }, ...NAV_ITEMS.slice(3)],
   fire: [...NAV_ITEMS.slice(0, 3), { route: 'Messages', label: 'Messages', Icon: MessageCircle }, ...NAV_ITEMS.slice(3)],
 };
 
 const ROLE_LABELS = {
   bdrrmo: 'BDRRMO',
+  tanod: 'Tanod',
   police: 'Police',
   fire: 'BFP',
 };
@@ -102,7 +104,7 @@ export default function ResponderLayout({ children }) {
             {ROLE_LABELS[role] || 'Responder'}
           </Text>
           <Text style={tw`mt-0.5 text-xs text-green-100`}>
-            {user?.full_name || 'Responder'}
+            {user?.full_name || ROLE_LABELS[role] || 'Responder'}
           </Text>
         </View>
         <Pressable
