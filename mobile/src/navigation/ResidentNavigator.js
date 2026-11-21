@@ -15,7 +15,7 @@ const Stack = createNativeStackNavigator();
 function withLayout(Screen) {
   return function WrappedScreen(props) {
     return (
-      <ResidentLayout>
+      <ResidentLayout routeName={props.route.name}>
         <Screen {...props} />
       </ResidentLayout>
     );

@@ -182,11 +182,10 @@ export async function uploadReportAttachment(reportId, file, uploadId) {
   return reportRequest(`/${encodeURIComponent(reportId)}/attachments`, { method: "POST", body, timeout: 120000 });
 }
 
-export function buildResidentReportPayload({ category, urgency, isEmergency, description, position, address, landmark, callbackContact }) {
+export function buildResidentReportPayload({ category, isEmergency, description, position, address, landmark, callbackContact }) {
   const pinned = Number.isFinite(position?.lat) && Number.isFinite(position?.lng);
   return {
     reporter_type: "RESIDENT", incident_category: category,
-    priority_level: urgency?.toUpperCase() === "MODERATE" ? "MEDIUM" : (urgency || "HIGH").toUpperCase(),
     is_emergency: isEmergency ? 1 : 0, description: description.trim(),
     latitude: pinned ? position.lat : null, longitude: pinned ? position.lng : null,
     landmark_description: landmark?.trim() || null,

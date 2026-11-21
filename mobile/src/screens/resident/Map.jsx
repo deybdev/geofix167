@@ -36,6 +36,7 @@ export default function MapScreen() {
         dropOffs={[]}
         highlightBoundary
         showBackButton={false}
+        hideMapLabel
         compact={false}
       />
     </View>

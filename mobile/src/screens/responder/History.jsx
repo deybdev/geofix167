@@ -13,7 +13,7 @@ export default function History() {
 
   useEffect(() => {
     let active = true;
-    getResponderDispatches('COMPLETED')
+    getResponderDispatches('COMPLETED', user?.role)
       .then((dispatches) => {
         if (active) setHistory(dispatches);
       })
@@ -24,7 +24,7 @@ export default function History() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [user]);
 
   return (
     <ScrollView contentContainerStyle={tw`px-5 pb-6 pt-6`}>
