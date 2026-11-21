@@ -51,6 +51,37 @@ function guestPriorityCode(value: string): PriorityCode {
   if (!code) throw new ReportError("Guest urgency mapping is invalid.", 500);
   return code;
 }
+function resolveCategoryPriority(category: string, isEmergency: boolean): PriorityCode {
+  const normalized = category.trim();
+  const aliases: Record<string, string> = {
+    fire: "Fire Incident",
+    medical: "Medical Emergency",
+    crime: "Crime / Public Disturbance",
+    accident: "Road Accident",
+    flood: "Incident / Emergency",
+    road: "Road Damage / Pothole",
+    streetlight: "Streetlight",
+    drainage: "Drainage / Flooding",
+    garbage: "Sanitation / Garbage Collection",
+    water_leak: "Water Hazard / Leak",
+    fallen_tree: "Structural",
+    electrical_wire: "Electrical / Power Hazard",
+  };
+  const resolvedCategory = aliases[normalized.toLowerCase()] ?? normalized;
+
+  if (isEmergency) {
+    return resolvedCategory === "Fire Incident" ? "P1" : "P2";
+  }
+
+  const highUrgencyCategories = [
+    "Road Damage / Pothole",
+    "Electrical / Power Hazard",
+    "Streetlight",
+    "Water Hazard / Leak",
+    "Drainage / Flooding",
+  ];
+  return highUrgencyCategories.includes(resolvedCategory) ? "P2" : "P3";
+}
 function cleanSingleLine(value: string | null | undefined): string {
   return (value ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
 }
@@ -104,7 +135,7 @@ export async function submitIncidentReport(
   if (photos.length && (!guestSubmission || !uploads)) throw new ReportError("Guest evidence photos are not available for this report.", 400);
   const priority = guestSubmission
     ? guestPriorityCode(guestUrgency ?? reportCatalog.guestUrgency.maintenanceDefault)
-    : priorityCode(input.priority_level ?? (input.is_emergency === 1 ? "CRITICAL" : "MEDIUM"));
+    : resolveCategoryPriority(category, input.is_emergency === 1);
   const assignedTeam = classification?.assignedTeam ?? (input.is_emergency === 1 ? "BDRRMO Response" : "Maintenance Team A");
   const now = new Date().toISOString();
   const id = crypto.randomUUID();

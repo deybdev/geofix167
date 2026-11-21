@@ -455,6 +455,9 @@ export default function MapViewer({
   trackers = [],
   dropOffs = [],
   showBackButton = true,
+  showBasemapControl = true,
+  showMapInfoButton = true,
+  showZoomControls = true,
   showBoundary = true,
   highlightBoundary = true,
   fitPoints = null,
@@ -827,7 +830,7 @@ export default function MapViewer({
               </View>
             )}
 
-            {!compact && (
+            {!compact && showMapInfoButton && (
               <MapActionButton
                 icon={Info}
                 label="Toggle map legend"
@@ -849,18 +852,20 @@ export default function MapViewer({
             { top: insets.top + 12 },
           ]}
         >
-          <View style={tw`items-end`}>
-            <MapActionButton
-              icon={Layers}
-              label="Change map layer"
-              active={panel === 'layers'}
-              onPress={() => togglePanel('layers')}
-            />
+          {showBasemapControl ? (
+            <View style={tw`items-end`}>
+              <MapActionButton
+                icon={Layers}
+                label="Change map layer"
+                active={panel === 'layers'}
+                onPress={() => togglePanel('layers')}
+              />
 
-            {panel === 'layers' && (
-              <BasemapPicker value={basemap} onChange={handleBasemapChange} />
-            )}
-          </View>
+              {panel === 'layers' && (
+                <BasemapPicker value={basemap} onChange={handleBasemapChange} />
+              )}
+            </View>
+          ) : null}
 
           {compact && onExpand && (
             <MapActionButton
@@ -878,32 +883,34 @@ export default function MapViewer({
                 onPress={resetMap}
               />
 
-              <View
-                style={[
-                  tw`overflow-hidden rounded-xl bg-white`,
-                  { elevation: 4 },
-                ]}
-              >
-                <Pressable
-                  onPress={() => zoomBy(1)}
-                  accessibilityRole="button"
-                  accessibilityLabel="Zoom in"
-                  style={tw`h-11 w-11 items-center justify-center`}
+              {showZoomControls ? (
+                <View
+                  style={[
+                    tw`overflow-hidden rounded-xl bg-white`,
+                    { elevation: 4 },
+                  ]}
                 >
-                  <Plus size={21} color="#374151" />
-                </Pressable>
+                  <Pressable
+                    onPress={() => zoomBy(1)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Zoom in"
+                    style={tw`h-11 w-11 items-center justify-center`}
+                  >
+                    <Plus size={21} color="#374151" />
+                  </Pressable>
 
-                <View style={tw`h-px bg-gray-200`} />
+                  <View style={tw`h-px bg-gray-200`} />
 
-                <Pressable
-                  onPress={() => zoomBy(-1)}
-                  accessibilityRole="button"
-                  accessibilityLabel="Zoom out"
-                  style={tw`h-11 w-11 items-center justify-center`}
-                >
-                  <Minus size={21} color="#374151" />
-                </Pressable>
-              </View>
+                  <Pressable
+                    onPress={() => zoomBy(-1)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Zoom out"
+                    style={tw`h-11 w-11 items-center justify-center`}
+                  >
+                    <Minus size={21} color="#374151" />
+                  </Pressable>
+                </View>
+              ) : null}
             </>
           )}
         </View>

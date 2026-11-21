@@ -69,7 +69,7 @@ export default function Assignments() {
     if (isRefresh) setRefreshing(true);
     setError('');
     try {
-      const dispatches = await getResponderDispatches();
+      const dispatches = await getResponderDispatches(undefined, user?.role);
       setAssignments(
         dispatches.filter((d) => d.status !== 'COMPLETED' && d.status !== 'DISPATCHED'),
       );
@@ -78,7 +78,7 @@ export default function Assignments() {
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [user]);
 
   useFocusEffect(
     useCallback(() => {

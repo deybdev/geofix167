@@ -24,7 +24,7 @@ export default function ResponderProfile() {
         <View style={tw`mt-2 flex-row items-center rounded-full bg-green-50 px-3 py-1`}>
           <ShieldCheck size={14} color="#1F7A4D" />
           <Text style={tw`ml-1.5 text-xs font-semibold text-[#1F7A4D]`}>
-            Responder
+            {String(user?.role || 'Responder').toUpperCase()}
           </Text>
         </View>
       </View>

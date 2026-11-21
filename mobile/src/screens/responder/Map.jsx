@@ -200,6 +200,7 @@ export default function ResponderMap() {
   const isAgencyRole = userRole === 'police' || userRole === 'fire';
   const navigation = useNavigation();
   const route = useRoute();
+  const { user } = useAuth();
 
   const [activeAssignment, setActiveAssignment] = useState(route.params?.assignment || null);
   const [backupSent, setBackupSent] = useState(false);
@@ -376,7 +377,7 @@ export default function ResponderMap() {
   useEffect(() => {
     if (activeAssignment || caseClosedOnMap) return undefined;
     let mounted = true;
-    getResponderDispatches()
+    getResponderDispatches(undefined, user?.role)
       .then((list) => {
         if (!mounted) return;
         const found = list.find((d) =>
@@ -391,7 +392,7 @@ export default function ResponderMap() {
     return () => {
       mounted = false;
     };
-  }, [activeAssignment, caseClosedOnMap]);
+  }, [activeAssignment, caseClosedOnMap, user]);
 
   const patientPoint = useMemo(() => {
     if (activeAssignment && hasCoordinates(activeAssignment)) {
@@ -875,6 +876,10 @@ export default function ResponderMap() {
           compassResetSignal={compassResetKey}
           navigationUserLocation={currentLocation}
           showBackButton={false}
+          showBasemapControl={false}
+          hideMapLabel
+          showMapInfoButton={false}
+          showZoomControls={false}
           showBoundary={!isNavigating}
           highlightBoundary={!isNavigating}
           compact={false}

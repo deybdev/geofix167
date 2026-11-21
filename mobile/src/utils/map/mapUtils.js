@@ -19,7 +19,14 @@ const STATUS_MATCH = [
   ["rejected", /reject|invalid|declin/],
 ];
 
-const CATEGORY_ALIASES = { emergency: "incident" };
+const CATEGORY_ALIASES = {
+  emergency: "incident",
+  "incident / emergency": "incident",
+  "medical emergency": "incident",
+  "road accident": "incident",
+  "fire incident": "fire",
+  "crime / public disturbance": "crime",
+};
 
 export function getCategory(value) {
   const name = String(value).toLowerCase();

@@ -8,7 +8,7 @@ import {
   ToastAndroid,
   Platform,
 } from "react-native";
-import { useNavigation, useRoute } from "@react-navigation/native";
+import { useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   House,
@@ -57,7 +57,6 @@ const SUB_PAGE_TITLES = {
   Emergency: "Emergency",
   PhotoCapture: "Photo Capture",
   Profile: "Profile",
-  Report: "Report an Issue",
 };
 
 const greeting = () => {
@@ -76,18 +75,18 @@ const initialsOf = (name = "") =>
     .join("") || "R";
 
 // ───────────────────────── Layout ─────────────────────────
-export default function ResidentLayout({ children, getNotifications }) {
+export default function ResidentLayout({ children, getNotifications, routeName }) {
   const navigation = useNavigation();
-  const { name: currentRoute } = useRoute();
   const insets = useSafeAreaInsets();
   const { user, signOut } = useAuth();
 
   const [unread, setUnread] = useState(0);
   const [loggingOut, setLoggingOut] = useState(false);
 
-  const isMapPage = currentRoute === "Map";
-  const isFullScreenMapPage = isMapPage || currentRoute === "Track";
-  const subTitle = SUB_PAGE_TITLES[currentRoute];
+  const isMapPage = routeName === "Map";
+  const isFullScreenMapPage = isMapPage || routeName === "Track";
+  const isReportPage = routeName === "Report";
+  const subTitle = SUB_PAGE_TITLES[routeName];
   const isSubPage = Boolean(subTitle);
   const showChrome = !isSubPage && !isFullScreenMapPage;
 
@@ -113,10 +112,10 @@ export default function ResidentLayout({ children, getNotifications }) {
     return () => {
       mounted = false;
     };
-  }, [currentRoute, getNotifications]);
+  }, [routeName, getNotifications]);
 
   const go = (screen) => {
-    if (currentRoute !== screen) navigation.navigate(screen);
+    if (routeName !== screen) navigation.navigate(screen);
   };
 
   const goBack = () =>
@@ -181,6 +180,8 @@ export default function ResidentLayout({ children, getNotifications }) {
             <ArrowLeft size={23} color={COLORS.ink} />
           </Pressable>
         </View>
+      ) : isReportPage ? (
+        <View style={tw`flex-1`}>{children}</View>
       ) : (
         <>
           {/* HEADER */}
@@ -243,7 +244,7 @@ export default function ResidentLayout({ children, getNotifications }) {
               )}
 
               <View style={tw`flex-row gap-2`}>
-                {currentRoute !== "Notifications" && (
+                {routeName !== "Notifications" && (
                   <HeaderButton
                     onPress={() => go("Notifications")}
                     label="Notifications"
@@ -319,7 +320,7 @@ export default function ResidentLayout({ children, getNotifications }) {
                   <TabItem
                     key={key}
                     tab={TABS[key]}
-                    active={currentRoute === key}
+                    active={routeName === key}
                     onPress={() => go(key)}
                   />
                 ))}
@@ -330,7 +331,7 @@ export default function ResidentLayout({ children, getNotifications }) {
                   <TabItem
                     key={key}
                     tab={TABS[key]}
-                    active={currentRoute === key}
+                    active={routeName === key}
                     onPress={() => go(key)}
                   />
                 ))}

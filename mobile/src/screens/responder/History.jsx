@@ -13,6 +13,22 @@ export default function History() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
+<<<<<<< HEAD
+  useEffect(() => {
+    let active = true;
+    getResponderDispatches('COMPLETED', user?.role)
+      .then((dispatches) => {
+        if (active) setHistory(dispatches);
+      })
+      .catch((loadError) => {
+        if (active) setError(loadError.message);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [user]);
+=======
   const loadHistory = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     setError('');
@@ -25,6 +41,7 @@ export default function History() {
       setRefreshing(false);
     }
   }, []);
+>>>>>>> e2d4c4e999643b6cbd32365d4046bb49a07a023e
 
   useFocusEffect(
     useCallback(() => {
