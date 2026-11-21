@@ -249,6 +249,20 @@ route.get("/tasks", async (c) => {
     LIMIT 100
   `).all<Record<string, unknown>>();
 
+  const photoRows = await db.prepare(`
+    SELECT incident_id, incident_media_id AS id
+    FROM incident_media
+    WHERE media_type = 'PHOTO'
+    ORDER BY created_at, incident_media_id
+  `).all<{ incident_id: string; id: string }>().catch(() => ({ results: [] }));
+
+  const photosByIncident = new Map<string, string[]>();
+  for (const p of photoRows.results ?? []) {
+    const list = photosByIncident.get(p.incident_id) ?? [];
+    list.push(p.id);
+    photosByIncident.set(p.incident_id, list);
+  }
+
   const tasks = (rows.results ?? []).map((row) => {
     const meta = parseMaintenanceMeta(String(row.notes || "")) || {
       type: "MAINTENANCE" as const,
@@ -270,6 +284,11 @@ route.get("/tasks", async (c) => {
         ? "Awaiting Verification"
         : "In Progress";
 
+    const allPhotoIds = photosByIncident.get(String(row.incident_id)) ?? [];
+    const reporterPhotoIds = allPhotoIds.filter(
+      (pid) => !meta.inspection_photo_ids.includes(pid) && !meta.repair_photo_ids.includes(pid),
+    );
+
     return {
       assignment_id: String(row.tanod_assignment_id),
       incident_id: String(row.incident_id),
@@ -290,6 +309,7 @@ route.get("/tasks", async (c) => {
       deadline: meta.deadline,
       status,
       admin_notes: meta.admin_notes,
+      reporter_photo_ids: reporterPhotoIds,
       inspection_done: meta.inspection_done,
       inspection_at: meta.inspection_at || null,
       inspection_note: meta.inspection_note,

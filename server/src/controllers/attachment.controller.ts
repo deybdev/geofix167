@@ -26,10 +26,12 @@ export async function listAttachments(c: Context<AppEnv>) {
 export async function getReportPhoto(c: Context<AppEnv>) {
   try {
     const db = c.env.geofix167_db;
-    const report = await getIncidentReportDetails(db, c.req.param("id") ?? "", c.get("user"));
+    const incidentId = (c.req.param("id") ?? "").trim();
+    const mediaId = (c.req.param("mediaId") ?? "").trim();
+    if (!incidentId || !mediaId) return c.json({ error: "Report photo not found." }, 404);
     const photo = await db.prepare(`SELECT storage_key, content_type FROM incident_media
       WHERE incident_id = ? AND incident_media_id = ? AND media_type = 'PHOTO'`)
-      .bind(report.incident_id, c.req.param("mediaId") ?? "")
+      .bind(incidentId, mediaId)
       .first<{ storage_key: string; content_type: string }>();
     if (!photo) return c.json({ error: "Report photo not found." }, 404);
     const object = await c.env.geofix167_uploads.get(photo.storage_key);

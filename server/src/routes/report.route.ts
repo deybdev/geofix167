@@ -57,7 +57,7 @@ reportRoutes.post("/", bodyLimit({
   onError: c => c.json({ error: "Guest report photos exceed the 6 MiB total limit." }, 413),
 }), createReportController);
 reportRoutes.get("/:id/attachments", requireAuth, listAttachments);
-reportRoutes.get("/:id/photos/:mediaId", requireAuth, getReportPhoto);
+reportRoutes.get("/:id/photos/:mediaId", getReportPhoto);
 reportRoutes.post("/:id/attachments", requireAuth, bodyLimit({
   maxSize: MAX_UPLOAD_BYTES,
   onError: c => c.json({ error: "Upload exceeds the 25 MiB video limit." }, 413),

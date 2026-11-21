@@ -559,6 +559,32 @@ function IntakeReviewDrawer({ item, tanods, onClose, onConfirmIngest, logAudit }
               </div>
             )}
             <div className="mt-2"><EvidenceChips evidence={item.evidence} /></div>
+            {item.incidentId && item.photos?.length > 0 && (
+              <div className="mt-2.5 grid grid-cols-2 gap-2">
+                {item.photos.map((photo, idx) => {
+                  const photoId = typeof photo === "string" ? photo : photo.id;
+                  return (
+                    <a
+                      key={photoId || idx}
+                      href={`/api/reports/${encodeURIComponent(item.incidentId)}/photos/${encodeURIComponent(photoId)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="relative block h-[120px] overflow-hidden rounded-lg border border-[#dfe7ea] bg-slate-100"
+                    >
+                      <img
+                        src={`/api/reports/${encodeURIComponent(item.incidentId)}/photos/${encodeURIComponent(photoId)}`}
+                        alt={`Reporter maintenance photo ${idx + 1}`}
+                        loading="lazy"
+                        className="h-full w-full object-cover"
+                      />
+                      <span className="absolute bottom-1 left-1 rounded bg-slate-900/75 px-1.5 py-0.5 text-[8px] font-bold text-white">
+                        Reporter Photo #{idx + 1}
+                      </span>
+                    </a>
+                  );
+                })}
+              </div>
+            )}
           </DrawerSection>
 
           <DrawerSection title="Urgency & Classification" icon={Wrench}>
@@ -935,6 +961,32 @@ function TaskDrawer({ task, onClose, onCompleteCheck, onCloseTask, onUpdateInspe
               </div>
             )}
             <div className="mt-2"><EvidenceChips evidence={task.evidence} /></div>
+            {task.incidentId && task.reporterPhotos?.length > 0 && (
+              <div className="mt-2.5 grid grid-cols-2 gap-2">
+                {task.reporterPhotos.map((photo, idx) => {
+                  const photoId = typeof photo === "string" ? photo : photo.id;
+                  return (
+                    <a
+                      key={photoId || idx}
+                      href={`/api/reports/${encodeURIComponent(task.incidentId)}/photos/${encodeURIComponent(photoId)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="relative block h-[120px] overflow-hidden rounded-lg border border-[#dfe7ea] bg-slate-100"
+                    >
+                      <img
+                        src={`/api/reports/${encodeURIComponent(task.incidentId)}/photos/${encodeURIComponent(photoId)}`}
+                        alt={`Reporter maintenance photo ${idx + 1}`}
+                        loading="lazy"
+                        className="h-full w-full object-cover"
+                      />
+                      <span className="absolute bottom-1 left-1 rounded bg-slate-900/75 px-1.5 py-0.5 text-[8px] font-bold text-white">
+                        Reporter Photo #{idx + 1}
+                      </span>
+                    </a>
+                  );
+                })}
+              </div>
+            )}
           </DrawerSection>
 
           <DrawerSection title="Assignment Controls (Locked)" icon={Wrench}>
@@ -1441,7 +1493,8 @@ export default function MaintenanceTasks() {
               landmark: location,
             },
             outsideBarangay: report.within_barangay_boundary === 0 || report.within_barangay_boundary === false,
-            evidence: [],
+            photos: Array.isArray(report.photos) ? report.photos : [],
+            evidence: Array.isArray(report.photos) && report.photos.length > 0 ? ["photo"] : [],
             narration: String(report.description || "").trim() || "No description. See photo evidence.",
             submitted: fmtWhen(report.submitted_at),
           };
@@ -1510,7 +1563,10 @@ export default function MaintenanceTasks() {
               lat: st.lat,
               lng: st.lng,
               geotag: existing?.geotag || { source: "GPS pin", accuracy: "±5 m", landmark: st.location },
-              evidence: existing?.evidence || ["photo"],
+              reporterPhotos: (st.reporter_photo_ids || []).length > 0
+                ? st.reporter_photo_ids
+                : (existing?.reporterPhotos || []),
+              evidence: (st.reporter_photo_ids || []).length > 0 ? ["photo"] : (existing?.evidence || []),
               inspectionDone: Boolean(st.inspection_done),
               inspectionNote: st.inspection_note || "",
               serverInspectionPhotoIds: st.inspection_photo_ids || [],
@@ -1596,6 +1652,7 @@ export default function MaintenanceTasks() {
       lat: item.lat,
       lng: item.lng,
       geotag: item.geotag,
+      reporterPhotos: item.photos || [],
       evidence: item.evidence,
       inspectionPhotos: [],
       repairPhotos: [],
