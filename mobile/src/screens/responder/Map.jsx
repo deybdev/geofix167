@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   Image,
+  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -20,6 +22,7 @@ import {
   MapPin,
   MessageCircle,
   Navigation,
+  Phone,
   Plus,
   QrCode,
   Route,
@@ -31,6 +34,7 @@ import {
 } from 'lucide-react-native';
 import tw from 'twrnc';
 
+import { useAuth } from '../../context/AuthContext';
 import MapViewer from '../../components/map/MapViewer';
 import {
   generateHospitalQrHandover,
@@ -187,6 +191,8 @@ function buildInitialPatients(assignment) {
 export default function ResponderMap() {
   const navigation = useNavigation();
   const route = useRoute();
+  const { user } = useAuth();
+  const isTanod = String(user?.role || '').toLowerCase() === 'tanod';
 
   const [activeAssignment, setActiveAssignment] = useState(route.params?.assignment || null);
   const [currentLocation, setCurrentLocation] = useState(null);
@@ -208,6 +214,7 @@ export default function ResponderMap() {
   const [proofPhoto, setProofPhoto] = useState(null);
   const [formError, setFormError] = useState('');
   const [qrResult, setQrResult] = useState(null);
+  const [qrHandoverSummary, setQrHandoverSummary] = useState(null);
   const [selectedPin, setSelectedPin] = useState(null);
   const [caseClosedOnMap, setCaseClosedOnMap] = useState(false);
   const [maintenanceModalMode, setMaintenanceModalMode] = useState(null);
@@ -331,6 +338,7 @@ export default function ResponderMap() {
       setFormError('');
       setNearestHospital(null);
       setQrResult(null);
+      setQrHandoverSummary(null);
       setError('');
     }
   }, [route.params?.assignment]);
@@ -498,6 +506,19 @@ export default function ResponderMap() {
     setShowPatientModal(true);
   };
 
+  const handleContactReporter = async () => {
+    const phoneNumber = String(activeAssignment?.reporter_phone || '').replace(/[^\d+*#]/g, '');
+    if (!phoneNumber) {
+      Alert.alert('No callback number', 'This report does not include a reporter phone number.');
+      return;
+    }
+    try {
+      await Linking.openURL(`tel:${phoneNumber}`);
+    } catch {
+      Alert.alert('Unable to call', 'Please try calling the reporter again from the assignment details.');
+    }
+  };
+
   const handlePickProofPhoto = async (useCamera = true) => {
     setFormError('');
     try {
@@ -549,6 +570,11 @@ export default function ResponderMap() {
         proof_photo_base64: proofPhoto.base64,
         proof_photo_mime: proofPhoto.mimeType,
         patients,
+      });
+      setQrHandoverSummary({
+        incidentId: activeAssignment.incident_id,
+        hospitalName: nearestHospital?.name || 'Receiving Hospital',
+        patientCount: patients.length,
       });
       setQrResult(res);
       setIsNavigating(false);
@@ -645,7 +671,7 @@ export default function ResponderMap() {
         setRouteInfo(null);
         setNearestHospital(null);
         setSelectedPin(null);
-        navigation.navigate('History');
+        navigation.navigate(isTanod ? 'Home' : 'History');
       }
     } catch (err) {
       setMaintenanceError(err.message);
@@ -881,7 +907,7 @@ export default function ResponderMap() {
                     style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-slate-800 py-2.5`}
                   >
                     <X size={15} color="#FFFFFF" />
-                    <Text style={tw`text-xs font-bold text-white`}>Cancel</Text>
+                    <Text style={tw`text-xs font-bold text-white`}>{isTanod ? 'Back to tasks' : 'Cancel'}</Text>
                   </Pressable>
                   <Pressable
                     onPress={() =>
@@ -901,11 +927,15 @@ export default function ResponderMap() {
               ) : (
                 <>
                   <Pressable
-                    onPress={() => navigation.navigate('Messages', { assignment: activeAssignment })}
+                    onPress={() => isTanod
+                      ? void handleContactReporter()
+                      : navigation.navigate('Messages', { assignment: activeAssignment })}
+                    accessibilityRole="button"
+                    accessibilityLabel={isTanod ? 'Call reporter' : 'Message about assignment'}
                     style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-slate-800 py-2.5`}
                   >
-                    <MessageCircle size={15} color="#FFFFFF" />
-                    <Text style={tw`text-xs font-bold text-white`}>Message</Text>
+                    {isTanod ? <Phone size={15} color="#FFFFFF" /> : <MessageCircle size={15} color="#FFFFFF" />}
+                    <Text style={tw`text-xs font-bold text-white`}>{isTanod ? 'Call reporter' : 'Message'}</Text>
                   </Pressable>
 
                   <Pressable
@@ -914,7 +944,9 @@ export default function ResponderMap() {
                     style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-[#1F7A4D] py-2.5`}
                   >
                     <CheckCircle2 size={15} color="#FFFFFF" />
-                    <Text style={tw`text-xs font-bold text-white`}>Mark as Completed</Text>
+                    <Text style={tw`text-xs font-bold text-white`}>
+                      {isTanod ? 'Create Hospital Handover' : 'Mark as Completed'}
+                    </Text>
                   </Pressable>
                 </>
               )}
@@ -993,7 +1025,7 @@ export default function ResponderMap() {
                   style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white py-2.5`}
                 >
                   <X size={15} color="#0F172A" />
-                  <Text style={tw`text-xs font-bold text-slate-900`}>Cancel</Text>
+                    <Text style={tw`text-xs font-bold text-slate-900`}>{isTanod ? 'Back to tasks' : 'Cancel'}</Text>
                 </Pressable>
 
                 <Pressable
@@ -1014,11 +1046,15 @@ export default function ResponderMap() {
             ) : (
               <>
                 <Pressable
-                  onPress={() => navigation.navigate('Messages', { assignment: activeAssignment })}
+                  onPress={() => isTanod
+                    ? void handleContactReporter()
+                    : navigation.navigate('Messages', { assignment: activeAssignment })}
+                  accessibilityRole="button"
+                  accessibilityLabel={isTanod ? 'Call reporter' : 'Message about assignment'}
                   style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white py-2.5`}
                 >
-                  <MessageCircle size={15} color="#0F172A" />
-                  <Text style={tw`text-xs font-bold text-slate-900`}>Message</Text>
+                  {isTanod ? <Phone size={15} color="#0F172A" /> : <MessageCircle size={15} color="#0F172A" />}
+                  <Text style={tw`text-xs font-bold text-slate-900`}>{isTanod ? 'Call reporter' : 'Message'}</Text>
                 </Pressable>
 
                 <Pressable
@@ -1028,7 +1064,7 @@ export default function ResponderMap() {
                 >
                   <CheckCircle2 size={15} color="#FFFFFF" />
                   <Text style={tw`text-xs font-bold text-white`}>
-                    {qrResult ? 'View QR / Info' : 'Mark as Completed'}
+                    {qrResult ? 'View QR / Info' : isTanod ? 'Create Hospital Handover' : 'Mark as Completed'}
                   </Text>
                 </Pressable>
               </>
@@ -1339,7 +1375,10 @@ export default function ResponderMap() {
         visible={Boolean(qrResult)}
         transparent
         animationType="fade"
-        onRequestClose={() => setQrResult(null)}
+        onRequestClose={() => {
+          setQrResult(null);
+          setQrHandoverSummary(null);
+        }}
       >
         <View style={tw`flex-1 items-center justify-center bg-black/50 px-6`}>
           <View style={tw`w-full items-center rounded-3xl bg-white p-6`}>
@@ -1360,8 +1399,8 @@ export default function ResponderMap() {
                     JSON.stringify({
                       handover_id: qrResult.handover_id,
                       token: qrResult.token,
-                      incident_id: activeAssignment?.incident_id,
-                      hospital: nearestHospital?.name,
+                      incident_id: qrHandoverSummary?.incidentId,
+                      hospital: qrHandoverSummary?.hospitalName,
                       patients,
                     }),
                   )}`,
@@ -1370,13 +1409,13 @@ export default function ResponderMap() {
               />
             ) : null}
 
-            {nearestHospital ? (
+            {qrHandoverSummary?.hospitalName ? (
               <Text style={tw`mt-3 text-xs font-bold text-blue-900`}>
-                Hospital: {nearestHospital.name}
+                Hospital: {qrHandoverSummary.hospitalName}
               </Text>
             ) : null}
             <Text style={tw`mt-1 text-[11px] text-slate-600`}>
-              Patients: {patients.length} • Proof Photo Attached • Token: {qrResult?.token?.slice(0, 8)}...
+              Patients: {qrHandoverSummary?.patientCount || patients.length} • Proof Photo Attached • Token: {qrResult?.token?.slice(0, 8)}...
             </Text>
             {furtherInfo ? (
               <Text style={tw`mt-1 text-center text-[11px] text-slate-500`} numberOfLines={2}>
@@ -1390,7 +1429,11 @@ export default function ResponderMap() {
             </View>
 
             <Pressable
-              onPress={() => setQrResult(null)}
+              onPress={() => {
+                setQrResult(null);
+                setQrHandoverSummary(null);
+                if (isTanod) navigation.navigate('Home');
+              }}
               style={tw`mt-5 w-full items-center rounded-xl bg-[#1F7A4D] py-3`}
             >
               <Text style={tw`text-xs font-bold text-white`}>Done</Text>

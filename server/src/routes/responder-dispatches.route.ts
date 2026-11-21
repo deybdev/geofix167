@@ -304,6 +304,21 @@ route.patch("/:dispatchId/status", async (c) => {
         (tanod_assignment_event_id, tanod_assignment_id, assignment_status_id, changed_by_user_id, note)
         VALUES (?, ?, ?, ?, ?)`)
         .bind(crypto.randomUUID(), dispatchId, statusMap[status.data], c.get("user").id, `Responder status: ${status.data}`).run();
+      if (status.data === "DECLINED") {
+        await c.env.geofix167_db.prepare(`
+          UPDATE responder_resources
+          SET availability_status = 'AVAILABLE', updated_at = datetime('now')
+          WHERE responder_resource_id = (
+            SELECT responder_resource_id FROM tanod_assignments
+            WHERE tanod_assignment_id = ? AND tanod_user_id = ?
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM tanod_assignments active
+            WHERE active.responder_resource_id = responder_resources.responder_resource_id
+              AND active.assignment_status_id IN (1, 2, 4, 5)
+          )
+        `).bind(dispatchId, c.get("user").id).run();
+      }
       await recordTrackingStatus(c.env.geofix167_db, dispatchId, c.get("user").id, status.data);
       return c.json({ ok: true, status: status.data });
     }
@@ -548,10 +563,19 @@ route.post("/:dispatchId/maintenance-inspection", async (c) => {
   }
 
   const currentUser = c.get("user");
+  if (currentUser.role !== "tanod") {
+    return c.json({ error: "Only the assigned Tanod can submit maintenance evidence." }, 403);
+  }
   const db = c.env.geofix167_db;
   const existing = await db.prepare(`
-    SELECT tanod_assignment_id, notes FROM tanod_assignments WHERE tanod_assignment_id = ?
-  `).bind(dispatchId).first<{ tanod_assignment_id: string; notes: string | null }>();
+    SELECT tanod_assignment_id, incident_id, notes
+    FROM tanod_assignments
+    WHERE tanod_assignment_id = ? AND tanod_user_id = ? AND incident_id = ?
+  `).bind(dispatchId, currentUser.id, body.incident_id).first<{
+    tanod_assignment_id: string;
+    incident_id: string;
+    notes: string | null;
+  }>();
 
   if (!existing) return c.json({ error: "Maintenance assignment not found." }, 404);
 
@@ -588,8 +612,8 @@ route.post("/:dispatchId/maintenance-inspection", async (c) => {
   await db.prepare(`
     UPDATE tanod_assignments
     SET assignment_status_id = 4, notes = ?
-    WHERE tanod_assignment_id = ?
-  `).bind(JSON.stringify(meta), dispatchId).run();
+    WHERE tanod_assignment_id = ? AND tanod_user_id = ? AND incident_id = ?
+  `).bind(JSON.stringify(meta), dispatchId, currentUser.id, body.incident_id).run();
 
   return c.json({
     ok: true,
@@ -613,10 +637,19 @@ route.post("/:dispatchId/maintenance-repair", async (c) => {
   }
 
   const currentUser = c.get("user");
+  if (currentUser.role !== "tanod") {
+    return c.json({ error: "Only the assigned Tanod can submit maintenance evidence." }, 403);
+  }
   const db = c.env.geofix167_db;
   const existing = await db.prepare(`
-    SELECT tanod_assignment_id, notes FROM tanod_assignments WHERE tanod_assignment_id = ?
-  `).bind(dispatchId).first<{ tanod_assignment_id: string; notes: string | null }>();
+    SELECT tanod_assignment_id, incident_id, notes
+    FROM tanod_assignments
+    WHERE tanod_assignment_id = ? AND tanod_user_id = ? AND incident_id = ?
+  `).bind(dispatchId, currentUser.id, body.incident_id).first<{
+    tanod_assignment_id: string;
+    incident_id: string;
+    notes: string | null;
+  }>();
 
   if (!existing) return c.json({ error: "Maintenance assignment not found." }, 404);
 
@@ -653,8 +686,8 @@ route.post("/:dispatchId/maintenance-repair", async (c) => {
   await db.prepare(`
     UPDATE tanod_assignments
     SET notes = ?
-    WHERE tanod_assignment_id = ?
-  `).bind(JSON.stringify(meta), dispatchId).run();
+    WHERE tanod_assignment_id = ? AND tanod_user_id = ? AND incident_id = ?
+  `).bind(JSON.stringify(meta), dispatchId, currentUser.id, body.incident_id).run();
 
   return c.json({
     ok: true,

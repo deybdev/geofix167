@@ -54,6 +54,36 @@ function formatDeadline(value) {
   });
 }
 
+function EvidenceSection({ title, note, photoIds, apiBase, incidentId }) {
+  return (
+    <View style={tw`rounded-xl border border-slate-200 bg-white p-3`}>
+      <Text style={tw`text-[10px] font-extrabold uppercase tracking-wide text-slate-500`}>{title}</Text>
+      {note ? (
+        <Text style={tw`mt-1.5 text-xs leading-5 text-slate-700`}>{note}</Text>
+      ) : (
+        <Text style={tw`mt-1.5 text-xs italic text-slate-500`}>No field notes submitted.</Text>
+      )}
+      {photoIds?.length ? (
+        <ScrollView horizontal style={tw`mt-2`} contentContainerStyle={tw`gap-2`}>
+          {photoIds.map((photoId) => (
+            <Image
+              key={photoId}
+              accessibilityLabel={`${title} photo evidence`}
+              source={{
+                uri: `${apiBase}/reports/${encodeURIComponent(incidentId)}/photos/${encodeURIComponent(photoId)}`,
+              }}
+              style={tw`h-32 w-44 rounded-xl bg-slate-200`}
+              resizeMode="cover"
+            />
+          ))}
+        </ScrollView>
+      ) : (
+        <Text style={tw`mt-1.5 text-xs text-slate-500`}>No photo evidence attached.</Text>
+      )}
+    </View>
+  );
+}
+
 export default function Assignments() {
   const { user } = useAuth();
   const navigation = useNavigation();
@@ -71,7 +101,8 @@ export default function Assignments() {
     try {
       const dispatches = await getResponderDispatches();
       setAssignments(
-        dispatches.filter((d) => d.status !== 'COMPLETED' && d.status !== 'DISPATCHED'),
+        dispatches.filter((d) => d.status !== 'DISPATCHED' && d.status !== 'DECLINED'
+          && (d.status !== 'COMPLETED' || (d.is_maintenance && d.repair_done))),
       );
     } catch (loadError) {
       setError(loadError.message);
@@ -89,7 +120,8 @@ export default function Assignments() {
   const filteredAssignments = assignments.filter((a) => {
     if (statusFilter === 'ASSIGNED') return a.status === 'ACCEPTED' && !a.inspection_done;
     if (statusFilter === 'IN_PROGRESS') {
-      return ['ACCEPTED', 'EN_ROUTE', 'ON_SCENE', 'PENDING'].includes(a.status);
+      return ['ACCEPTED', 'EN_ROUTE', 'ON_SCENE', 'PENDING'].includes(a.status)
+        || (a.is_maintenance && a.repair_done);
     }
     return true;
   });
@@ -108,7 +140,9 @@ export default function Assignments() {
     >
       <Text style={tw`text-3xl font-extrabold text-slate-900`}>Assignments</Text>
       <Text style={tw`mt-1 text-sm text-slate-500`}>
-        Active dispatches assigned to {String(user?.role || 'your team').toUpperCase()}.
+        {String(user?.role || '').toLowerCase() === 'tanod'
+          ? 'Your assigned incidents and maintenance tasks.'
+          : `Active dispatches assigned to ${String(user?.role || 'your team').toUpperCase()}.`}
       </Text>
 
       {error ? (
@@ -147,18 +181,22 @@ export default function Assignments() {
             No active assignments
           </Text>
           <Text style={tw`mt-2 text-center text-sm leading-5 text-slate-500`}>
-            Accepted dispatches from Home will appear here.
+            Accepted dispatches and active tasks from your dashboard will appear here.
           </Text>
         </View>
       ) : (
         <View style={tw`mt-5 gap-4`}>
           {filteredAssignments.map((assignment) => {
             const isMaintenance = Boolean(assignment.is_maintenance);
-            const displayStatus = isMaintenance && assignment.inspection_done
-              ? 'IN PROGRESS'
-              : assignment.status === 'ACCEPTED'
-                ? 'ASSIGNED'
-                : assignment.status;
+            const awaitingReview = assignment.status === 'PENDING'
+              || (isMaintenance && assignment.repair_done);
+            const displayStatus = awaitingReview
+              ? 'AWAITING REVIEW'
+              : isMaintenance && assignment.inspection_done
+                ? 'IN PROGRESS'
+                : assignment.status === 'ACCEPTED'
+                  ? 'ASSIGNED'
+                  : assignment.status;
 
             return (
               <View
@@ -186,12 +224,12 @@ export default function Assignments() {
                   </View>
                   <View
                     style={tw`rounded-full px-3 py-1 ${
-                      assignment.status === 'PENDING' ? 'bg-amber-100' : 'bg-green-50'
+                      awaitingReview ? 'bg-amber-100' : 'bg-green-50'
                     }`}
                   >
                     <Text
                       style={tw`text-[11px] font-extrabold uppercase ${
-                        assignment.status === 'PENDING' ? 'text-amber-800' : 'text-[#1F7A4D]'
+                        awaitingReview ? 'text-amber-800' : 'text-[#1F7A4D]'
                       }`}
                     >
                       {displayStatus}
@@ -427,6 +465,26 @@ export default function Assignments() {
                   </Text>
                 )}
               </View>
+
+              {reviewItem?.inspection_done ? (
+                <EvidenceSection
+                  title="Tanod inspection report"
+                  note={reviewItem.inspection_note}
+                  photoIds={reviewItem.inspection_photo_ids}
+                  apiBase={apiBase}
+                  incidentId={reviewItem.incident_id}
+                />
+              ) : null}
+
+              {reviewItem?.repair_done ? (
+                <EvidenceSection
+                  title="Tanod repair proof"
+                  note={reviewItem.repair_note}
+                  photoIds={reviewItem.repair_photo_ids}
+                  apiBase={apiBase}
+                  incidentId={reviewItem.incident_id}
+                />
+              ) : null}
             </ScrollView>
 
             <View style={tw`mt-2 flex-row gap-2.5`}>

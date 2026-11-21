@@ -6,6 +6,7 @@ import AuthNavigator from '../navigation/AuthNavigator';
 import BdrrmoNavigator from '../navigation/BdrrmoNavigator';
 import ResidentNavigator from '../navigation/ResidentNavigator';
 import ResponderNavigator from '../navigation/ResponderNavigator';
+import TanodNavigator from '../navigation/TanodNavigator';
 import { useAuth } from '../context/AuthContext';
 
 function AppNavigator() {
@@ -22,7 +23,8 @@ function AppNavigator() {
 
   if (role === 'resident') return <ResidentNavigator />;
   if (role === 'bdrrmo') return <BdrrmoNavigator />;
-  if (['responder', 'tanod', 'police', 'fire'].includes(role)) {
+  if (role === 'tanod') return <TanodNavigator />;
+  if (['responder', 'police', 'fire'].includes(role)) {
     return <ResponderNavigator />;
   }
 

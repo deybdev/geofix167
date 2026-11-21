@@ -33,7 +33,13 @@ const NAV_ITEMS_BY_ROLE = {
     { route: 'Messages', label: 'Messages', Icon: MessageCircle },
     { route: 'Profile', label: 'Profile', Icon: UserRound },
   ],
-  tanod: NAV_ITEMS,
+  tanod: [
+    { route: 'Home', label: 'Dashboard', Icon: House },
+    { route: 'Assignments', label: 'Tasks', Icon: ClipboardList },
+    { route: 'MapOverview', label: 'Map', Icon: Map },
+    { route: 'History', label: 'History', Icon: Clock3 },
+    { route: 'Profile', label: 'Profile', Icon: UserRound },
+  ],
   police: [...NAV_ITEMS.slice(0, 3), { route: 'Messages', label: 'Messages', Icon: MessageCircle }, ...NAV_ITEMS.slice(3)],
   fire: [...NAV_ITEMS.slice(0, 3), { route: 'Messages', label: 'Messages', Icon: MessageCircle }, ...NAV_ITEMS.slice(3)],
 };
@@ -52,6 +58,7 @@ export default function ResponderLayout({ children }) {
   const [loggingOut, setLoggingOut] = useState(false);
   const [activeAssignment, setActiveAssignment] = useState(null);
   const role = String(user?.role || '').toLowerCase();
+  const isTanod = role === 'tanod';
   const navItems = NAV_ITEMS_BY_ROLE[role] || NAV_ITEMS;
 
   async function openActiveAssignmentMap() {
@@ -61,7 +68,7 @@ export default function ResponderLayout({ children }) {
   }
 
   useFocusEffect(useCallback(() => {
-    if (currentRoute === 'Map') return undefined;
+    if (isTanod || currentRoute === 'Map') return undefined;
     let active = true;
     getResponderDispatches()
       .then((dispatches) => {
@@ -71,9 +78,10 @@ export default function ResponderLayout({ children }) {
       })
       .catch(() => {});
     return () => { active = false; };
-  }, [currentRoute]));
+  }, [currentRoute, isTanod]));
 
   const confirmSignOut = () => {
+    if (isTanod) return;
     Alert.alert('Sign out', 'Are you sure you want to sign out?', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -95,51 +103,55 @@ export default function ResponderLayout({ children }) {
 
   return (
     <SafeAreaView style={tw`flex-1 bg-slate-50`} edges={['top', 'bottom']}>
-      <View style={tw`flex-row items-center justify-between bg-[#0B2E22] px-5 py-4`}>
-        <View>
-          <Text style={tw`text-xs font-bold uppercase tracking-widest text-green-200`}>
-            GeoFix 167
-          </Text>
-          <Text style={tw`mt-1 text-lg font-bold text-white`}>
-            {ROLE_LABELS[role] || 'Responder'}
-          </Text>
-          <Text style={tw`mt-0.5 text-xs text-green-100`}>
-            {user?.full_name || ROLE_LABELS[role] || 'Responder'}
-          </Text>
+      {!isTanod ? (
+        <View style={tw`flex-row items-center justify-between bg-[#0B2E22] px-5 py-4`}>
+          <View>
+            <Text style={tw`text-xs font-bold uppercase tracking-[1.5px] text-green-200`}>
+              GeoFix 167
+            </Text>
+            <Text style={tw`mt-1 text-xl font-bold text-white`}>
+              {ROLE_LABELS[role] || 'Responder'}
+            </Text>
+            <Text style={tw`mt-1 text-sm text-green-100`}>
+              {user?.full_name || ROLE_LABELS[role] || 'Responder'}
+            </Text>
+          </View>
+          <Pressable
+            onPress={confirmSignOut}
+            disabled={loggingOut}
+            accessibilityRole="button"
+            accessibilityLabel="Sign out"
+            style={({ pressed }) => [
+              tw`h-11 w-11 items-center justify-center rounded-xl bg-white/10`,
+              { opacity: pressed || loggingOut ? 0.6 : 1 },
+            ]}
+          >
+            <LogOut size={20} color="#fff" />
+          </Pressable>
         </View>
-        <Pressable
-          onPress={confirmSignOut}
-          disabled={loggingOut}
-          accessibilityRole="button"
-          accessibilityLabel="Sign out"
-          style={({ pressed }) => [
-            tw`h-11 w-11 items-center justify-center rounded-xl bg-white/10`,
-            { opacity: pressed || loggingOut ? 0.6 : 1 },
-          ]}
-        >
-          <LogOut size={20} color="#fff" />
-        </Pressable>
-      </View>
+      ) : null}
       <View style={tw`flex-1`}>
-        {currentRoute !== 'Map' && activeAssignment ? (
+        {!isTanod && currentRoute !== 'Map' && activeAssignment ? (
           <Pressable
             onPress={() => void openActiveAssignmentMap()}
             accessibilityRole="button"
             accessibilityLabel="View active response in map"
             style={({ pressed }) => [
-              tw`mx-3 mt-2 flex-row items-center justify-between rounded-xl border border-green-200 bg-green-50 px-3 py-2.5`,
+              tw`mx-3 mt-3 flex-row items-center justify-between rounded-2xl border border-green-200 bg-green-50 px-4 py-3`,
               { opacity: pressed ? 0.8 : 1 },
             ]}
           >
             <View style={tw`flex-1 pr-3`}>
-              <Text style={tw`text-[10px] font-extrabold uppercase tracking-wider text-green-800`}>Active response</Text>
-              <Text numberOfLines={1} style={tw`mt-0.5 text-xs font-semibold text-slate-800`}>
+              <Text style={tw`text-xs font-extrabold uppercase tracking-wide text-green-800`}>
+                {role === 'tanod' ? 'Active field task' : 'Active response'}
+              </Text>
+              <Text numberOfLines={1} style={tw`mt-1 text-sm font-semibold text-slate-900`}>
                 {activeAssignment.incident_title || activeAssignment.incident_category || 'Incident assignment'}
               </Text>
             </View>
             <View style={tw`flex-row items-center gap-1`}>
               <Map size={14} color="#1F7A4D" />
-              <Text style={tw`text-xs font-bold text-green-800`}>View in map</Text>
+              <Text style={tw`text-sm font-bold text-green-800`}>View in map</Text>
             </View>
           </Pressable>
         ) : null}
@@ -161,13 +173,13 @@ export default function ResponderLayout({ children }) {
                 { opacity: pressed ? 0.65 : 1 },
               ]}
             >
-              <Icon size={20} color={isActive ? '#1F7A4D' : '#64748B'} />
+              <Icon size={22} color={isActive ? '#1F7A4D' : '#64748B'} />
               <Text
                 numberOfLines={1}
                 style={
                   isActive
-                    ? tw`mt-1 text-center text-[10px] font-bold text-[#1F7A4D]`
-                    : tw`mt-1 text-center text-[10px] font-medium text-slate-500`
+                    ? tw`mt-1 text-center text-[11px] font-bold text-[#1F7A4D]`
+                    : tw`mt-1 text-center text-[11px] font-medium text-slate-500`
                 }
               >
                 {label}
