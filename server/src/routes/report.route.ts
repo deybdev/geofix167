@@ -14,12 +14,16 @@ import {
   getReportByIdController,
   listReportsController,
 } from "../controllers/report.controller";
+import { getIncidentReportDetails, ReportError } from "../services/report.service";
 
 const reportRoutes = new Hono<AppEnv>();
 const resolveSchema = z.object({
   closure_mode: z.enum(["proof", "no-proof"]).optional(),
   resolution_notes: z.string().trim().max(4000).optional(),
 }).strict();
+const chatMessageSchema = z.object({
+  body: z.string().trim().min(1).max(2000),
+});
 
 reportRoutes.use("*", async (c, next) => {
   c.header("Cache-Control", "no-store");
@@ -159,6 +163,111 @@ reportRoutes.get("/:id/report-snapshot", requireAuth, requireRole("admin"), asyn
   const snapshot = await ensureIncidentReportSnapshot(db, report.incident_id, c.get("user").id);
   if (!snapshot) return c.json({ error: "Incident report snapshot could not be loaded." }, 500);
   return c.json({ snapshot });
+});
+
+async function ensureIncidentChatThread(db: AppEnv["Bindings"]["geofix167_db"], incidentId: string, userId: string) {
+  const existing = await db.prepare(`
+    SELECT incident_chat_thread_id AS id
+    FROM incident_chat_threads
+    WHERE incident_id = ? AND thread_type = 'INCIDENT_GROUP' AND archived_at IS NULL
+    LIMIT 1
+  `).bind(incidentId).first<{ id: string }>();
+  if (existing) return existing.id;
+
+  const threadId = crypto.randomUUID();
+  await db.prepare(`
+    INSERT INTO incident_chat_threads (incident_chat_thread_id, incident_id, thread_type, created_by_user_id)
+    VALUES (?, ?, 'INCIDENT_GROUP', ?)
+  `).bind(threadId, incidentId, userId).run();
+  return threadId;
+}
+
+reportRoutes.get("/:id/messages", requireAuth, async (c) => {
+  const id = c.req.param("id")?.trim();
+  if (!id) return c.json({ error: "Incident report ID is required." }, 400);
+  const currentUser = c.get("user");
+  const db = c.env.geofix167_db;
+
+  try {
+    const report = await getIncidentReportDetails(db, id, currentUser);
+    const thread = await db.prepare(`
+      SELECT incident_chat_thread_id AS id
+      FROM incident_chat_threads
+      WHERE incident_id = ? AND thread_type = 'INCIDENT_GROUP' AND archived_at IS NULL
+      LIMIT 1
+    `).bind(report.incident_id).first<{ id: string }>();
+    if (!thread) return c.json({ messages: [] });
+
+    const rows = await db.prepare(`
+      SELECT m.incident_chat_message_id AS id, m.sender_user_id, m.body, m.sent_at,
+        trim(u.first_name || ' ' || u.last_name) AS sender_name,
+        r.code AS sender_role
+      FROM incident_chat_messages m
+      JOIN users u ON u.user_id = m.sender_user_id
+      JOIN roles r ON r.role_id = u.role_id
+      WHERE m.incident_chat_thread_id = ? AND m.deleted_at IS NULL
+      ORDER BY m.sent_at ASC
+      LIMIT 200
+    `).bind(thread.id).all();
+    return c.json({ messages: rows.results ?? [] });
+  } catch (error) {
+    if (error instanceof ReportError) {
+      return c.json({ error: error.message }, error.status as 400 | 401 | 403 | 404);
+    }
+    console.error("Failed to load incident messages:", error);
+    return c.json({ error: "An internal server error occurred." }, 500);
+  }
+});
+
+reportRoutes.post("/:id/messages", requireAuth, async (c) => {
+  const id = c.req.param("id")?.trim();
+  if (!id) return c.json({ error: "Incident report ID is required." }, 400);
+  const body = chatMessageSchema.safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: "A valid message is required." }, 400);
+
+  const currentUser = c.get("user");
+  const db = c.env.geofix167_db;
+  try {
+    const report = await getIncidentReportDetails(db, id, currentUser);
+    if (report.is_terminal === 1 || report.status_code === "CLOSED") {
+      return c.json({ error: "This incident is completed. Messaging is read-only." }, 409);
+    }
+    if (["police", "fire"].includes(currentUser.role)) {
+      const dispatch = await db.prepare(`
+        SELECT status FROM responder_dispatches
+        WHERE incident_id = ? AND target_role = ?
+        ORDER BY dispatched_at DESC LIMIT 1
+      `).bind(report.incident_id, currentUser.role).first<{ status: string }>();
+      if (dispatch && ["COMPLETED", "DECLINED"].includes(dispatch.status)) {
+        return c.json({ error: "This incident is completed. Messaging is read-only." }, 409);
+      }
+    }
+    const threadId = await ensureIncidentChatThread(db, report.incident_id, currentUser.id);
+    const messageId = crypto.randomUUID();
+    const sentAt = new Date().toISOString();
+
+    await db.prepare(`
+      INSERT INTO incident_chat_messages (incident_chat_message_id, incident_chat_thread_id, sender_user_id, body, sent_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).bind(messageId, threadId, currentUser.id, body.data.body, sentAt).run();
+
+    return c.json({
+      message: {
+        id: messageId,
+        sender_user_id: currentUser.id,
+        sender_name: currentUser.full_name,
+        sender_role: currentUser.role,
+        body: body.data.body,
+        sent_at: sentAt,
+      },
+    }, 201);
+  } catch (error) {
+    if (error instanceof ReportError) {
+      return c.json({ error: error.message }, error.status as 400 | 401 | 403 | 404);
+    }
+    console.error("Failed to send incident message:", error);
+    return c.json({ error: "An internal server error occurred." }, 500);
+  }
 });
 
 reportRoutes.patch("/:id/status", updateReportStatusController);

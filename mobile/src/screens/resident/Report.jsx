@@ -403,59 +403,6 @@ function OutlineButton({ icon: Icon, label, onPress, loading = false, color = CO
   );
 }
 
-function EmergencyNotice() {
-  return (
-    <View
-      style={[
-        tw`mb-5 rounded-2xl p-3.5`,
-        { backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA' },
-      ]}
-    >
-      <View style={tw`flex-row items-start`}>
-        <AlertTriangle size={16} color="#DC2626" style={tw`mt-0.5`} />
-
-        <Text style={tw`ml-2 flex-1 text-xs leading-4 text-red-800`}>
-          If anyone is in immediate danger, call for help first, then submit this report so the
-          barangay can respond.
-        </Text>
-      </View>
-
-      <View style={tw`mt-3 flex-row`}>
-        <Pressable
-          onPress={() => callNumber(HOTLINE)}
-          accessibilityRole="button"
-          accessibilityLabel={`Call Barangay Hall hotline ${HOTLINE}`}
-          style={({ pressed }) => [
-            tw`mr-2 flex-1 flex-row items-center justify-center rounded-xl py-2.5`,
-            { backgroundColor: '#DC2626', opacity: pressed ? 0.8 : 1 },
-          ]}
-        >
-          <Phone size={14} color="#FFFFFF" />
-          <Text style={tw`ml-1.5 text-xs font-bold text-white`}>Barangay {HOTLINE}</Text>
-        </Pressable>
-
-        <Pressable
-          onPress={() => callNumber(NATIONAL_EMERGENCY)}
-          accessibilityRole="button"
-          accessibilityLabel={`Call ${NATIONAL_EMERGENCY}`}
-          style={({ pressed }) => [
-            tw`flex-row items-center justify-center rounded-xl px-4 py-2.5`,
-            {
-              backgroundColor: '#FFFFFF',
-              borderWidth: 1.5,
-              borderColor: '#DC2626',
-              opacity: pressed ? 0.8 : 1,
-            },
-          ]}
-        >
-          <Phone size={14} color="#DC2626" />
-          <Text style={tw`ml-1.5 text-xs font-bold text-red-600`}>{NATIONAL_EMERGENCY}</Text>
-        </Pressable>
-      </View>
-    </View>
-  );
-}
-
 function SummaryCard({ label, onEdit, children }) {
   return (
     <View
@@ -933,80 +880,80 @@ export default function Report({ guestMode = false, route }) {
 
   const renderEvidenceStep = () => (
     <>
-        <StepTitle
-          title="Photo evidence"
-          subtitle="Take a clear photo of the incident using your camera."
-        />
+      <StepTitle
+        title="Photo evidence"
+        subtitle="Take a clear photo of the incident using your camera."
+      />
 
-        <View style={tw`mb-2 flex-row items-center justify-between`}>
-          <Text style={tw`text-sm font-bold text-slate-900`}>
-            Photos ({photos.length}/{MAX_PHOTOS})
-          </Text>
-          <View style={[tw`rounded-full px-2 py-0.5`, { backgroundColor: '#FEF3C7' }]}>
-            <Text style={[tw`text-[10px] font-bold`, { color: '#B45309' }]}>Required</Text>
-          </View>
+      <View style={tw`mb-2 flex-row items-center justify-between`}>
+        <Text style={tw`text-sm font-bold text-slate-900`}>
+          Photos ({photos.length}/{MAX_PHOTOS})
+        </Text>
+        <View style={[tw`rounded-full px-2 py-0.5`, { backgroundColor: '#FEF3C7' }]}>
+          <Text style={[tw`text-[10px] font-bold`, { color: '#B45309' }]}>Required</Text>
         </View>
+      </View>
 
-        {photos.length === 0 ? (
-          <OutlineButton icon={Camera} label="Take Photo" onPress={openCamera} />
-        ) : (
-          <View style={tw`-mx-1 flex-row flex-wrap`}>
-            {photos.map((uri, index) => (
-              <View key={`${uri}-${index}`} style={tw`w-1/3 p-1`}>
-                <View style={{ aspectRatio: 1 }}>
-                  <Image
-                    source={{ uri }}
-                    resizeMode="cover"
-                    style={[tw`h-full w-full rounded-2xl`, { backgroundColor: COLORS.surface }]}
-                  />
-                  <Pressable
-                    onPress={() => removePhoto(index)}
-                    hitSlop={6}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Remove photo ${index + 1}`}
-                    style={[
-                      tw`absolute right-1.5 top-1.5 h-6 w-6 items-center justify-center rounded-full`,
-                      { backgroundColor: 'rgba(15,23,42,0.7)' },
-                    ]}
-                  >
-                    <X size={14} color="#FFFFFF" />
-                  </Pressable>
-                </View>
-              </View>
-            ))}
-
-            {photos.length < MAX_PHOTOS && (
-              <View style={tw`w-1/3 p-1`}>
+      {photos.length === 0 ? (
+        <OutlineButton icon={Camera} label="Take Photo" onPress={openCamera} />
+      ) : (
+        <View style={tw`-mx-1 flex-row flex-wrap`}>
+          {photos.map((uri, index) => (
+            <View key={`${uri}-${index}`} style={tw`w-1/3 p-1`}>
+              <View style={{ aspectRatio: 1 }}>
+                <Image
+                  source={{ uri }}
+                  resizeMode="cover"
+                  style={[tw`h-full w-full rounded-2xl`, { backgroundColor: COLORS.surface }]}
+                />
                 <Pressable
-                  onPress={openCamera}
+                  onPress={() => removePhoto(index)}
+                  hitSlop={6}
                   accessibilityRole="button"
-                  accessibilityLabel="Take another photo"
-                  style={({ pressed }) => [
-                    tw`items-center justify-center rounded-2xl`,
-                    {
-                      aspectRatio: 1,
-                      borderWidth: 2,
-                      borderStyle: 'dashed',
-                      borderColor: COLORS.primary,
-                      backgroundColor: '#FFFFFF',
-                      opacity: pressed ? 0.6 : 1,
-                    },
+                  accessibilityLabel={`Remove photo ${index + 1}`}
+                  style={[
+                    tw`absolute right-1.5 top-1.5 h-6 w-6 items-center justify-center rounded-full`,
+                    { backgroundColor: 'rgba(15,23,42,0.7)' },
                   ]}
                 >
-                  <Camera size={22} color={COLORS.primary} />
-                  <Text style={[tw`mt-1 text-xs font-bold`, { color: COLORS.primary }]}>Take Photo</Text>
+                  <X size={14} color="#FFFFFF" />
                 </Pressable>
               </View>
-            )}
-          </View>
-        )}
+            </View>
+          ))}
 
-        <FieldError message={showError} />
-        {!!photoNotice && (
-          <View accessibilityRole="alert" accessibilityLiveRegion="polite">
-            <FieldError message={photoNotice} />
-          </View>
-        )}
+          {photos.length < MAX_PHOTOS && (
+            <View style={tw`w-1/3 p-1`}>
+              <Pressable
+                onPress={openCamera}
+                accessibilityRole="button"
+                accessibilityLabel="Take another photo"
+                style={({ pressed }) => [
+                  tw`items-center justify-center rounded-2xl`,
+                  {
+                    aspectRatio: 1,
+                    borderWidth: 2,
+                    borderStyle: 'dashed',
+                    borderColor: COLORS.primary,
+                    backgroundColor: '#FFFFFF',
+                    opacity: pressed ? 0.6 : 1,
+                  },
+                ]}
+              >
+                <Camera size={22} color={COLORS.primary} />
+                <Text style={[tw`mt-1 text-xs font-bold`, { color: COLORS.primary }]}>Take Photo</Text>
+              </Pressable>
+            </View>
+          )}
+        </View>
+      )}
+
+      <FieldError message={showError} />
+      {!!photoNotice && (
+        <View accessibilityRole="alert" accessibilityLiveRegion="polite">
+          <FieldError message={photoNotice} />
+        </View>
+      )}
     </>
   );
 
@@ -1088,9 +1035,6 @@ export default function Report({ guestMode = false, route }) {
     return (
       <>
         <StepTitle title="Review your report" subtitle="Check everything before sending." />
-
-        {isEmergency && <EmergencyNotice />}
-
         <SummaryCard label="Report" onEdit={() => goTo(0)}>
           <View style={tw`flex-row items-center`}>
             <View
@@ -1235,63 +1179,63 @@ export default function Report({ guestMode = false, route }) {
 
       {/* FOOTER (hidden on Type, which advances on tap) */}
       {stepKey !== 'type' && (
-      <View
-        style={[
-          tw`flex-row px-4 pt-3`,
-          {
-            paddingBottom: Math.max(insets.bottom, 12) + 4,
-            borderTopWidth: 1,
-            borderTopColor: COLORS.border,
-            backgroundColor: '#FFFFFF',
-          },
-        ]}
-      >
-        {step > 0 && (
-          <Pressable
-            onPress={goBack}
-            disabled={submitting}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            style={({ pressed }) => [
-              tw`mr-3 h-14 items-center justify-center rounded-2xl px-5`,
-              {
-                backgroundColor: '#F1F5F9',
-                opacity: pressed || submitting ? 0.6 : 1,
-              },
-            ]}
-          >
-            <ChevronLeft size={22} color="#334155" />
-          </Pressable>
-        )}
-
-        <Pressable
-          onPress={isReview ? send : goNext}
-          disabled={submitting}
-          accessibilityRole="button"
-          accessibilityState={{ disabled: submitting, busy: submitting }}
-          style={({ pressed }) => [
-            tw`h-14 flex-1 flex-row items-center justify-center rounded-2xl`,
+        <View
+          style={[
+            tw`flex-row px-4 pt-3`,
             {
-              backgroundColor: theme.main,
-              opacity: pressed || submitting ? 0.7 : 1,
-              elevation: 3,
+              paddingBottom: Math.max(insets.bottom, 12) + 4,
+              borderTopWidth: 1,
+              borderTopColor: COLORS.border,
+              backgroundColor: '#FFFFFF',
             },
           ]}
         >
-          {submitting && <ActivityIndicator size="small" color="#FFFFFF" />}
+          {step > 0 && (
+            <Pressable
+              onPress={goBack}
+              disabled={submitting}
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+              style={({ pressed }) => [
+                tw`mr-3 h-14 items-center justify-center rounded-2xl px-5`,
+                {
+                  backgroundColor: '#F1F5F9',
+                  opacity: pressed || submitting ? 0.6 : 1,
+                },
+              ]}
+            >
+              <ChevronLeft size={22} color="#334155" />
+            </Pressable>
+          )}
 
-          <Text style={tw`${submitting ? 'ml-2 ' : ''}text-base font-extrabold text-white`}>
-            {nextLabel}
-          </Text>
+          <Pressable
+            onPress={isReview ? send : goNext}
+            disabled={submitting}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: submitting, busy: submitting }}
+            style={({ pressed }) => [
+              tw`h-14 flex-1 flex-row items-center justify-center rounded-2xl`,
+              {
+                backgroundColor: theme.main,
+                opacity: pressed || submitting ? 0.7 : 1,
+                elevation: 3,
+              },
+            ]}
+          >
+            {submitting && <ActivityIndicator size="small" color="#FFFFFF" />}
 
-          {!submitting &&
-            (isReview ? (
-              <Send size={16} color="#FFFFFF" style={tw`ml-2`} />
-            ) : (
-              <ChevronRight size={18} color="#FFFFFF" style={tw`ml-1`} />
-            ))}
-        </Pressable>
-      </View>
+            <Text style={tw`${submitting ? 'ml-2 ' : ''}text-base font-extrabold text-white`}>
+              {nextLabel}
+            </Text>
+
+            {!submitting &&
+              (isReview ? (
+                <Send size={16} color="#FFFFFF" style={tw`ml-2`} />
+              ) : (
+                <ChevronRight size={18} color="#FFFFFF" style={tw`ml-1`} />
+              ))}
+          </Pressable>
+        </View>
       )}
 
       {cameraCapture && (

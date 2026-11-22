@@ -259,7 +259,7 @@ export async function getIncidentReportDetails(db: Database, id: string, user?: 
   await resolveLegacyReportAddresses(db, id.trim());
   const report = await findIncidentReportById(db, id.trim());
   if (!report) throw new ReportError("Incident report not found.", 404);
-  const owned = user && (user.role === "admin" || user.role === "bdrrmo" || report.reported_by_user_id === user.id || (["tanod", "police", "fire"].includes(user.role) && await hasReportReadAssignment(db, id, user.id)));
+  const owned = user && (user.role === "admin" || user.role === "bdrrmo" || report.reported_by_user_id === user.id || (["tanod", "police", "fire"].includes(user.role) && await hasReportReadAssignment(db, id, user.id, user.role)));
   let guestOwned = false;
   if (!owned && guestToken && report.guest_session_id) {
     guestOwned = await verifyGuestSession(db, report.guest_session_id, await sha256(guestToken));

@@ -307,11 +307,18 @@ export async function updateIncidentReportDetails(db: Database, id: string,
   return results[0]?.meta.changes === 1;
 }
 
-export async function hasReportReadAssignment(db: Database, incidentId: string, userId: string) {
-  return Boolean(await db.prepare(`SELECT a.tanod_assignment_id FROM tanod_assignments a
+export async function hasReportReadAssignment(db: Database, incidentId: string, userId: string, role?: string) {
+  const tanodMatch = await db.prepare(`SELECT a.tanod_assignment_id FROM tanod_assignments a
     JOIN assignment_statuses s ON s.assignment_status_id = a.assignment_status_id
-    WHERE a.incident_id = ? AND a.tanod_user_id = ? AND a.completed_at IS NULL
-    AND s.code IN ('OFFERED', 'ACCEPTED', 'EN_ROUTE', 'ON_SCENE') LIMIT 1`).bind(incidentId, userId).first());
+    WHERE a.incident_id = ? AND a.tanod_user_id = ?
+    AND s.code IN ('OFFERED', 'ACCEPTED', 'EN_ROUTE', 'ON_SCENE', 'COMPLETED') LIMIT 1`).bind(incidentId, userId).first();
+  if (tanodMatch) return true;
+  if (role === "police" || role === "fire") {
+    return Boolean(await db.prepare(`SELECT responder_dispatch_id FROM responder_dispatches
+      WHERE incident_id = ? AND target_role = ?
+      AND status IN ('DISPATCHED', 'ACCEPTED', 'EN_ROUTE', 'ON_SCENE', 'COMPLETED') LIMIT 1`).bind(incidentId, role).first());
+  }
+  return false;
 }
 export async function hasAnyReportAssignment(db: Database, incidentId: string) {
   return Boolean(await db.prepare(`SELECT tanod_assignment_id FROM tanod_assignments

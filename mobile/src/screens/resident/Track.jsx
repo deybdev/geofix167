@@ -31,6 +31,7 @@ import {
 import tw from 'twrnc';
 
 import MapViewer from '../../components/map/MapViewer';
+import { getIncidentMessages, sendIncidentMessage } from '../../services/responderMessageService';
 
 /* -----------------------------------------
    CONSTANTS
@@ -763,7 +764,30 @@ export default function Track({ reportId: reportIdProp, route }) {
       { location: initialLocation, priority: initialPriority }
     );
 
-    return unsubscribe;
+    const pollMessages = () => {
+      if (!reportId) return;
+      getIncidentMessages(reportId)
+        .then((loaded) => {
+          setMessages(
+            loaded.map((item) => ({
+              id: item.id,
+              from: item.sender_role === 'resident' ? 'resident' : 'responder',
+              text: item.body,
+              at: Date.parse(item.sent_at) || Date.now(),
+              state: 'sent',
+            })),
+          );
+        })
+        .catch(() => {});
+    };
+
+    pollMessages();
+    const messageTimer = setInterval(pollMessages, 4000);
+
+    return () => {
+      clearInterval(messageTimer);
+      unsubscribe();
+    };
   }, [reportId, initialLocation, initialPriority]);
 
   // Re-render periodically so "updated Xs ago" and the stale warning stay true.
@@ -952,8 +976,10 @@ export default function Track({ reportId: reportIdProp, route }) {
   const deliver = useCallback(
     async (id, text) => {
       try {
-        await sendResponderMessage(reportId, text);
-        setMessages((current) => current.map((m) => (m.id === id ? { ...m, state: 'sent' } : m)));
+        const saved = await sendIncidentMessage(reportId, text);
+        setMessages((current) =>
+          current.map((m) => (m.id === id ? { ...m, id: saved.id, state: 'sent' } : m)),
+        );
       } catch {
         setMessages((current) => current.map((m) => (m.id === id ? { ...m, state: 'failed' } : m)));
       }
