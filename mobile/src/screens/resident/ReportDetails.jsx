@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { usePreventRemove } from '@react-navigation/native';
+import { CheckCircle2, Clock, Wrench } from 'lucide-react-native';
 import tw from 'twrnc';
 import { useAuth } from '../../context/AuthContext';
 import { getReportAttachments, getReportDetails, updateReportDetails } from '../../services/residentService';
@@ -142,6 +143,9 @@ function Details({ publicId, user }) {
         canUpload={canUploadReport(report, user)} disabled={loading || saving || editing || mediaLoading} onBusy={setUploadBusy} onReload={reloadMedia}
         onResult={(attachments, attachments_error) => setReport(previous => ({ ...previous, attachments, attachments_error }))} />
       {mediaLoading && <ActivityIndicator style={tw`mt-3`} color="#1F7A4D" />}
+      {report.report_type === 'infrastructure' && (
+        <MaintenanceProgressSection progress={report.maintenance_progress} reportStatusId={report.status_id} />
+      )}
       <Text style={tw`mb-3 mt-6 text-lg font-bold text-slate-900`}>Status history</Text>
       {report.status_events?.length ? <View style={tw`ml-2 border-l-2 border-green-200 pl-4`}>
         {report.status_events.map((event, index) => <View key={event.id ?? index} style={tw`relative mb-3 rounded-xl bg-white p-3`}>
@@ -157,4 +161,131 @@ function Details({ publicId, user }) {
 
 function Field({ label, value }) {
   return <View style={tw`mt-4`}><Text style={tw`text-xs font-bold uppercase text-slate-500`}>{label}</Text><Text selectable style={tw`mt-1 text-base text-slate-800`}>{value || 'Not specified'}</Text></View>;
+}
+
+function MaintenanceProgressSection({ progress, reportStatusId }) {
+  const isVerifiedFixed = Boolean(progress?.verified_fixed) || Number(reportStatusId) === 10;
+  const isAssigned = Boolean(progress?.assigned_tanod) || Number(reportStatusId) >= 6;
+  const isInspected = Boolean(progress?.inspection_done) || isVerifiedFixed;
+  const isRepaired = Boolean(progress?.repair_done) || isVerifiedFixed;
+
+  const steps = [
+    { key: 'submitted', label: 'Report Submitted', done: true, detail: 'Received by Barangay 167 Admin' },
+    {
+      key: 'assigned',
+      label: 'Assigned to Tanod',
+      done: isAssigned,
+      detail: progress?.assigned_tanod
+        ? `Assigned to ${progress.assigned_tanod}`
+        : 'Waiting for Admin intake & assignment',
+    },
+    {
+      key: 'inspected',
+      label: 'On-Site Inspection Completed',
+      done: isInspected,
+      detail: progress?.inspection_note
+        ? `Tanod note: "${progress.inspection_note}"`
+        : isInspected
+          ? 'Site inspected & arrival photos uploaded'
+          : 'Awaiting on-site inspection by Tanod',
+    },
+    {
+      key: 'repaired',
+      label: 'Proof of Repair Submitted',
+      done: isRepaired,
+      detail: progress?.repair_note
+        ? `Repair note: "${progress.repair_note}"`
+        : isRepaired
+          ? 'Final repair proof uploaded for Admin verification'
+          : 'Repair work in progress',
+    },
+    {
+      key: 'verified',
+      label: 'Verified Fixed',
+      done: isVerifiedFixed,
+      detail: isVerifiedFixed
+        ? 'Verified fixed & closed by Barangay Admin'
+        : 'Awaiting final Admin verification',
+    },
+  ];
+
+  return (
+    <View style={tw`mt-6 rounded-2xl border border-green-200 bg-white p-4`}>
+      <View style={tw`flex-row items-center justify-between`}>
+        <View style={tw`flex-row items-center gap-2`}>
+          <Wrench size={18} color="#1F7A4D" />
+          <Text style={tw`text-base font-extrabold text-slate-900`}>
+            Maintenance Task Progress
+          </Text>
+        </View>
+        <View style={tw`rounded-full bg-green-100 px-2.5 py-1`}>
+          <Text style={tw`text-[11px] font-bold text-[#1F7A4D]`}>
+            {progress?.stage || (isVerifiedFixed ? 'Verified Fixed' : 'Submitted')}
+          </Text>
+        </View>
+      </View>
+
+      <View style={tw`mt-4 gap-3`}>
+        {steps.map((step) => (
+          <View key={step.key} style={tw`flex-row items-start gap-2.5`}>
+            {step.done ? (
+              <CheckCircle2 size={18} color="#1F7A4D" style={tw`mt-0.5`} />
+            ) : (
+              <Clock size={18} color="#94A3B8" style={tw`mt-0.5`} />
+            )}
+            <View style={tw`flex-1`}>
+              <Text
+                style={tw`text-sm font-bold ${
+                  step.done ? 'text-slate-900' : 'text-slate-400'
+                }`}
+              >
+                {step.label}
+              </Text>
+              <Text style={tw`mt-0.5 text-xs text-slate-600`}>{step.detail}</Text>
+            </View>
+          </View>
+        ))}
+      </View>
+
+      {progress?.inspection_photo_urls?.length > 0 ? (
+        <View style={tw`mt-4 border-t border-slate-100 pt-3`}>
+          <Text style={tw`text-xs font-extrabold uppercase text-[#1F7A4D]`}>
+            Tanod On-Site Inspection Photo(s)
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mt-2`}>
+            <View style={tw`flex-row gap-2.5`}>
+              {progress.inspection_photo_urls.map((uri, idx) => (
+                <Image
+                  key={`insp-${idx}`}
+                  source={{ uri }}
+                  style={tw`h-32 w-44 rounded-xl bg-slate-100`}
+                  resizeMode="cover"
+                />
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+      ) : null}
+
+      {progress?.repair_photo_urls?.length > 0 ? (
+        <View style={tw`mt-4 border-t border-slate-100 pt-3`}>
+          <Text style={tw`text-xs font-extrabold uppercase text-[#1F7A4D]`}>
+            Final Proof of Repair Photo(s)
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mt-2`}>
+            <View style={tw`flex-row gap-2.5`}>
+              {progress.repair_photo_urls.map((uri, idx) => (
+                <Image
+                  key={`rep-${idx}`}
+                  source={{ uri }}
+                  style={tw`h-32 w-44 rounded-xl bg-slate-100`}
+                  resizeMode="cover"
+                />
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+      ) : null}
+    </View>
+  );
 }

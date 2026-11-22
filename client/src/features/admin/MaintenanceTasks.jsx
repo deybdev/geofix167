@@ -62,8 +62,16 @@ const NOW = () => Date.now();
 const fmtWhen = (t) => (t ? new Date(t).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
 const fmtDue = (t) => (t ? new Date(t).toLocaleDateString([], { month: "long", day: "numeric", year: "numeric" }) : "—");
 
+function normalizeTaskId(rawId) {
+  return String(rawId || "").replace(/^TASK-167-(?:167)+/i, "TASK-167-");
+}
+
 function nextTaskId(existing) {
-  const max = existing.reduce((m, t) => Math.max(m, Number(t.id.replace(/\D/g, "")) || 0), 0);
+  const max = existing.reduce((m, t) => {
+    const clean = normalizeTaskId(t.id);
+    const trailing = clean.replace(/^TASK-167-/i, "").match(/(\d+)$/)?.[1] || "";
+    return Math.max(m, Number(trailing) || 0);
+  }, 0);
   return `TASK-167-${String(max + 1).padStart(2, "0")}`;
 }
 
@@ -259,14 +267,19 @@ function EvidenceChips({ evidence, small = false }) {
 
 function StageRail({ status }) {
   const activeIndex = STAGE_ORDER.indexOf(status);
+  const allCompleted = status === "Verified Fixed";
   return (
     <div className="flex flex-wrap gap-1.5">
-      {STAGE_ORDER.map((stage, index) => (
-        <span key={stage} className={`gf-stage ${index === activeIndex ? "text-[#e69500]" : index < activeIndex ? "text-(--gf-green)" : "text-[#a0b0c0]"}`}>
-          <span className={`gf-stage-dot ${index < activeIndex ? "gf-stage-dot--done" : index === activeIndex ? "gf-stage-dot--active" : "gf-stage-dot--locked"}`}>{index < activeIndex ? "✓" : ""}</span>
-          {stage}
-        </span>
-      ))}
+      {STAGE_ORDER.map((stage, index) => {
+        const isDone = allCompleted || index < activeIndex;
+        const isCurrent = !isDone && index === activeIndex;
+        return (
+          <span key={stage} className={`gf-stage ${isCurrent ? "text-[#e69500]" : isDone ? "text-(--gf-green)" : "text-[#a0b0c0]"}`}>
+            <span className={`gf-stage-dot ${isDone ? "gf-stage-dot--done" : isCurrent ? "gf-stage-dot--active" : "gf-stage-dot--locked"}`}>{isDone ? "✓" : ""}</span>
+            {stage}
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -412,7 +425,7 @@ function IntakeReviewDrawer({ item, tanods, onClose, onConfirmIngest, logAudit }
   const canIngest = Boolean(
     urgency
     && selectedTanod
-    && selectedTanod.availability_status === "AVAILABLE"
+    && !["UNAVAILABLE", "OUT_OF_SERVICE"].includes(selectedTanod.availability_status)
     && deadlineDate
     && deadlineDate.trim().length > 0,
   );
@@ -619,7 +632,7 @@ function IntakeReviewDrawer({ item, tanods, onClose, onConfirmIngest, logAudit }
                     <option
                       key={t.id}
                       value={t.id}
-                      disabled={t.availability_status !== "AVAILABLE"}
+                      disabled={["UNAVAILABLE", "OUT_OF_SERVICE"].includes(t.availability_status)}
                     >
                       {t.display_name || t.responder_name} — {t.availability_status}
                       {t.beat ? ` (${t.beat})` : ""}
@@ -630,25 +643,26 @@ function IntakeReviewDrawer({ item, tanods, onClose, onConfirmIngest, logAudit }
 
               <div className="grid gap-1.5">
                 {tanods.map((t) => {
+                  const isSelectable = !["UNAVAILABLE", "OUT_OF_SERVICE"].includes(t.availability_status);
                   const isAvailable = t.availability_status === "AVAILABLE";
                   const isSelected = t.id === selectedTanodId;
                   return (
                     <button
                       key={t.id}
                       type="button"
-                      disabled={!isAvailable}
+                      disabled={!isSelectable}
                       onClick={() => setSelectedTanodId(t.id)}
                       className={`flex items-center justify-between rounded-lg border px-3 py-2 text-left text-[10px] transition ${
                         isSelected
                           ? "border-(--gf-green) bg-(--gf-green-soft)"
                           : "border-[#e0e7eb] bg-white hover:border-(--gf-green)"
-                      } ${!isAvailable ? "cursor-not-allowed opacity-55" : ""}`}
+                      } ${!isSelectable ? "cursor-not-allowed opacity-55" : ""}`}
                     >
                       <div>
                         <span className="font-bold text-[#263246]">{t.display_name || t.responder_name}</span>
                         {t.beat && <span className="ml-1.5 text-[9px] text-[#60738f]">• {t.beat}</span>}
                       </div>
-                      <Chip className={isAvailable ? "bg-(--gf-green-tint-2) text-(--gf-green)" : "bg-[#fdecea] text-[#dc2626]"}>
+                      <Chip className={isAvailable ? "bg-(--gf-green-tint-2) text-(--gf-green)" : "bg-[#fff1c6] text-[#e69500]"}>
                         {t.availability_status}
                       </Chip>
                     </button>
@@ -1191,23 +1205,119 @@ function TaskDrawer({ task, onClose, onCompleteCheck, onCloseTask, onUpdateInspe
                 <Switch checked={publishIntent} onChange={setPublishIntent} label="Publish to Public Accomplishment Log?" />
               </div>
             )}
-            {resolved && task.closure && (
-              <div className="mt-3 grid gap-2">
-                <div>
-                  <InfoRow label="Closure mode">{task.closure.proof ? "Proof uploaded" : "Fallback — documented"}</InfoRow>
-                  <InfoRow label="Final Repair Proof">{task.closure.proof ?? "—"}</InfoRow>
-                  <InfoRow label="Outcome summary">{task.closure.outcome}</InfoRow>
-                  <InfoRow label="Remarks">{task.closure.remarks}</InfoRow>
-                  <InfoRow label="Closed by">{task.closure.closedBy} • {task.closure.closedAt}</InfoRow>
-                  <InfoRow label="Reporter notified">
-                    {task.notified
-                      ? <Chip className="bg-(--gf-green-tint-2) text-(--gf-green)"><UserCheck size={8} />Read-only status update pushed</Chip>
-                      : "—"}
-                  </InfoRow>
-                  <InfoRow label="Publishing">
-                    {task.published ? `Published ${task.published.at}` : "Not yet published to the public log"}
-                  </InfoRow>
+            {resolved && (
+              <div className="mt-3 grid gap-3">
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="rounded-lg border border-[#e0e7eb] bg-[#f8fafb] p-2.5">
+                    <p className="mb-1.5 flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide text-[#60738f]">
+                      <Camera size={11} className="text-(--gf-green)" />
+                      Stage 1: On-Site Inspection Proof
+                    </p>
+                    {task.incidentId && task.serverInspectionPhotoIds?.length > 0 ? (
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {task.serverInspectionPhotoIds.map((photoId, idx) => (
+                          <a
+                            key={photoId}
+                            href={`/api/reports/${encodeURIComponent(task.incidentId)}/photos/${encodeURIComponent(photoId)}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="relative block h-[96px] overflow-hidden rounded-md border border-[#dfe7ea] bg-slate-100"
+                          >
+                            <img
+                              src={`/api/reports/${encodeURIComponent(task.incidentId)}/photos/${encodeURIComponent(photoId)}`}
+                              alt={`Inspection proof ${idx + 1}`}
+                              loading="lazy"
+                              className="h-full w-full object-cover"
+                            />
+                            <span className="absolute bottom-1 left-1 rounded bg-slate-900/75 px-1.5 py-0.5 text-[8px] font-bold text-white">
+                              Inspection #{idx + 1}
+                            </span>
+                          </a>
+                        ))}
+                      </div>
+                    ) : inspectionPhotos.length > 0 ? (
+                      <div className="space-y-1">
+                        {inspectionPhotos.map((fileName, idx) => (
+                          <div key={`${fileName}-${idx}`} className="flex items-center gap-1.5 rounded border border-(--gf-green-border) bg-(--gf-green-soft) px-2 py-1 text-[9px] font-bold text-(--gf-green)">
+                            <Camera size={11} />
+                            <span className="truncate">Inspection #{idx + 1}: {fileName}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-[9px] text-[#7c8ba3]">Inspection verified on file.</p>
+                    )}
+                    {task.inspectionNote && (
+                      <p className="mt-1.5 text-[9px] text-[#263246]">
+                        <strong>Note:</strong> {task.inspectionNote}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="rounded-lg border border-[#e0e7eb] bg-[#f8fafb] p-2.5">
+                    <p className="mb-1.5 flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide text-[#60738f]">
+                      <CheckCircle2 size={11} className="text-(--gf-green)" />
+                      Stage 2: Final Repair Proof
+                    </p>
+                    {task.incidentId && task.serverRepairPhotoIds?.length > 0 ? (
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {task.serverRepairPhotoIds.map((photoId, idx) => (
+                          <a
+                            key={photoId}
+                            href={`/api/reports/${encodeURIComponent(task.incidentId)}/photos/${encodeURIComponent(photoId)}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="relative block h-[96px] overflow-hidden rounded-md border border-[#dfe7ea] bg-slate-100"
+                          >
+                            <img
+                              src={`/api/reports/${encodeURIComponent(task.incidentId)}/photos/${encodeURIComponent(photoId)}`}
+                              alt={`Repair proof ${idx + 1}`}
+                              loading="lazy"
+                              className="h-full w-full object-cover"
+                            />
+                            <span className="absolute bottom-1 left-1 rounded bg-slate-900/75 px-1.5 py-0.5 text-[8px] font-bold text-white">
+                              Repair Proof #{idx + 1}
+                            </span>
+                          </a>
+                        ))}
+                      </div>
+                    ) : repairPhotos.length > 0 ? (
+                      <div className="space-y-1">
+                        {repairPhotos.map((fileName, idx) => (
+                          <div key={`${fileName}-${idx}`} className="flex items-center gap-1.5 rounded border border-(--gf-green-border) bg-(--gf-green-soft) px-2 py-1 text-[9px] font-bold text-(--gf-green)">
+                            <CheckCircle2 size={11} />
+                            <span className="truncate">Repair Proof #{idx + 1}: {fileName}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-[9px] text-[#7c8ba3]">Repair proof verified on file.</p>
+                    )}
+                    {task.repairNote && (
+                      <p className="mt-1.5 text-[9px] text-[#263246]">
+                        <strong>Note:</strong> {task.repairNote}
+                      </p>
+                    )}
+                  </div>
                 </div>
+
+                {task.closure && (
+                  <div>
+                    <InfoRow label="Closure mode">{task.closure.proof ? "Proof uploaded" : "Fallback — documented"}</InfoRow>
+                    <InfoRow label="Final Repair Proof">{task.closure.proof ?? "—"}</InfoRow>
+                    <InfoRow label="Outcome summary">{task.closure.outcome}</InfoRow>
+                    <InfoRow label="Remarks">{task.closure.remarks}</InfoRow>
+                    <InfoRow label="Closed by">{task.closure.closedBy} • {task.closure.closedAt}</InfoRow>
+                    <InfoRow label="Reporter notified">
+                      {task.notified
+                        ? <Chip className="bg-(--gf-green-tint-2) text-(--gf-green)"><UserCheck size={8} />Read-only status update pushed</Chip>
+                        : "—"}
+                    </InfoRow>
+                    <InfoRow label="Publishing">
+                      {task.published ? `Published ${task.published.at}` : "Not yet published to the public log"}
+                    </InfoRow>
+                  </div>
+                )}
                 {!task.published && <Switch checked={publishIntent} onChange={setPublishIntent} label="Publish to Public Accomplishment Log?" />}
               </div>
             )}

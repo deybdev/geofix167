@@ -38,6 +38,64 @@ reportRoutes.get("/public", async (c) => {
   ).all();
   return c.json({ reports: result.results, count: result.results.length });
 });
+reportRoutes.get("/map-feed", async (c) => {
+  const db = c.env.geofix167_db;
+  const rows = await db.prepare(`
+    SELECT r.incident_id, COALESCE(printf('GF-%03d', rr.reference_sequence), r.incident_id) AS reference_number,
+      r.title, r.category, r.description_sanitized, r.is_emergency,
+      r.latitude, r.longitude, r.location_description, r.incident_status_id, r.assigned_team,
+      r.submitted_at, ta.notes AS maint_notes, ta.assignment_status_id
+    FROM incident_reports r
+    LEFT JOIN incident_report_references rr ON rr.incident_id = r.incident_id
+    LEFT JOIN tanod_assignments ta ON ta.incident_id = r.incident_id
+    WHERE r.latitude IS NOT NULL AND r.longitude IS NOT NULL
+      AND r.incident_status_id NOT IN (11, 12)
+    ORDER BY r.submitted_at DESC
+    LIMIT 100
+  `).all<Record<string, unknown>>().catch(() => ({ results: [] }));
+
+  const items = (rows.results ?? []).map((row) => {
+    const isEmergency = Number(row.is_emergency) === 1;
+    const statusId = Number(row.incident_status_id);
+    let stage = statusId === 10 ? "Resolved" : statusId >= 6 ? "In Progress" : "Reported";
+    let inspectionDone = false;
+    let repairDone = false;
+    if (!isEmergency && typeof row.maint_notes === "string" && row.maint_notes.startsWith("{")) {
+      try {
+        const meta = JSON.parse(row.maint_notes);
+        if (meta?.type === "MAINTENANCE") {
+          inspectionDone = Boolean(meta.inspection_done);
+          repairDone = Boolean(meta.repair_done);
+          stage = statusId === 10 || Number(row.assignment_status_id) === 5
+            ? "Verified Fixed"
+            : meta.repair_done
+              ? "Proof of Repair Submitted"
+              : meta.inspection_done
+                ? "Area Inspected"
+                : "Assigned to Tanod";
+        }
+      } catch { /* ignore */ }
+    }
+    return {
+      id: String(row.incident_id),
+      reference_number: String(row.reference_number || row.incident_id),
+      title: String(row.title || row.category || "Incident"),
+      category: String(row.category || (isEmergency ? "emergency" : "infrastructure")),
+      report_type: isEmergency ? "emergency" : "maintenance",
+      description: String(row.description_sanitized || ""),
+      location: String(row.location_description || "Barangay 167"),
+      lat: Number(row.latitude),
+      lng: Number(row.longitude),
+      status: stage,
+      assigned_team: String(row.assigned_team || ""),
+      inspection_done: inspectionDone,
+      repair_done: repairDone,
+      submitted_at: String(row.submitted_at || ""),
+    };
+  });
+
+  return c.json({ items });
+});
 reportRoutes.get("/reverse-geocode", async (c) => {
   const latitude = Number(c.req.query("lat"));
   const longitude = Number(c.req.query("lng"));
@@ -200,11 +258,13 @@ reportRoutes.get("/:id/messages", requireAuth, async (c) => {
 
     const rows = await db.prepare(`
       SELECT m.incident_chat_message_id AS id, m.sender_user_id, m.body, m.sent_at,
-        trim(u.first_name || ' ' || u.last_name) AS sender_name,
-        r.code AS sender_role
+        COALESCE(NULLIF(trim(u.first_name || ' ' || u.last_name), ''), 'User') AS sender_name,
+        COALESCE(
+          (SELECT lower(ro.code) FROM user_roles ur JOIN roles ro ON ro.role_id = ur.role_id WHERE ur.user_id = u.user_id LIMIT 1),
+          'resident'
+        ) AS sender_role
       FROM incident_chat_messages m
       JOIN users u ON u.user_id = m.sender_user_id
-      JOIN roles r ON r.role_id = u.role_id
       WHERE m.incident_chat_thread_id = ? AND m.deleted_at IS NULL
       ORDER BY m.sent_at ASC
       LIMIT 200

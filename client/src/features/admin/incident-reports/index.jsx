@@ -14,7 +14,6 @@ import {
 import {
   EMPTY_QUEUE_MESSAGES, QUEUES, primaryActionLabel, queuesFor, sortReportsForQueue,
 } from "./queues";
-import { initialReports, seededAudit, seededStrikes } from "./seedData";
 import {
   NEW_CALLS, displayUrgency, downloadReportsCsv, isEmergency, mapApiReport, privacySummary,
 } from "./utils";
@@ -49,7 +48,7 @@ export default function IncidentReports() {
     });
   }
 
-  const [reports, setReports] = useState(initialReports);
+  const [reports, setReports] = useState([]);
   const [menuFor, setMenuFor] = useState(null);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("All Statuses");
@@ -67,8 +66,8 @@ export default function IncidentReports() {
   const [flagReport, setFlagReport] = useState(null);
   const [dupReport, setDupReport] = useState(null);
   const [audit, setAudit] = useState({ open: false, reportId: "All reports" });
-  const [strikes, setStrikes] = useState(seededStrikes);
-  const [auditLog, setAuditLog] = useState(seededAudit);
+  const [strikes, setStrikes] = useState({});
+  const [auditLog, setAuditLog] = useState([]);
   const [now, setNow] = useState(() => NEW_CALLS());
   const locationOptions = useMemo(() => [
     "All Locations",
@@ -90,14 +89,19 @@ export default function IncidentReports() {
         const fetchedAt = Date.now();
         const apiReports = result.reports.map((item) => mapApiReport(item, fetchedAt));
         setReports((current) => {
-          const apiById = new Map(apiReports.map((report) => [report.id, report]));
-          const existingIds = new Set(current.map((report) => report.id));
-          const refreshed = current.map((report) => {
-            const latest = apiById.get(report.id);
-            return latest ? { ...report, incidentId: latest.incidentId, status: latest.status, photos: latest.photos, displayUrgency: latest.displayUrgency } : report;
+          const currentById = new Map(current.map((report) => [report.id, report]));
+          return apiReports.map((latest) => {
+            const existing = currentById.get(latest.id);
+            return existing
+              ? {
+                  ...existing,
+                  ...latest,
+                  ...(existing.closure && latest.status === "Verified Fixed" ? { closure: existing.closure } : {}),
+                  ...(existing.published ? { published: existing.published } : {}),
+                  ...(existing.sla?.acknowledged ? { sla: existing.sla } : {}),
+                }
+              : latest;
           });
-          const newReports = apiReports.filter((report) => !existingIds.has(report.id));
-          return [...newReports, ...refreshed];
         });
       } catch (error) {
         if (!warned) {
@@ -168,8 +172,19 @@ export default function IncidentReports() {
   }
 
   function handleDispatch(id, changes) {
+    const target = reports.find((r) => r.id === id);
     updateReportData(id, changes);
-    if (isEmergency({ ...reports.find((r) => r.id === id), ...changes })) acknowledgeSla(id);
+    if (isEmergency({ ...target, ...changes })) {
+      acknowledgeSla(id);
+      if (target?.incidentId) {
+        void fetch(`/api/admin/dispatch/reports/${encodeURIComponent(target.incidentId)}/verify`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ decision: "VERIFIED" }),
+        }).catch(() => {});
+      }
+    }
   }
 
   async function handleResolve(id, changes, mode) {

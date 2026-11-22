@@ -53,10 +53,11 @@ function mapApiReport(item, fetchedAt) {
   const address = typeof item.location_description === "string" ? item.location_description.trim() : "";
   const location = address || (hasCoordinates ? `${latitude.toFixed(5)}, ${longitude.toFixed(5)}` : "Location unavailable");
   const rawStatus = String(item.status_label ?? item.status_code ?? "Reported");
-  const status = /submitted|pending/i.test(rawStatus) ? "Reported"
+  const hasActiveUnits = Array.isArray(item.dispatched_units) && item.dispatched_units.length > 0;
+  const status = /resolved|closed|complete/i.test(rawStatus) ? "Verified Fixed"
     : /closure|handed/i.test(rawStatus) ? "Handed Over"
-      : /dispatched|accepted|en.route|on.scene|progress/i.test(rawStatus) ? "In Progress"
-        : /resolved|closed|complete/i.test(rawStatus) ? "Verified Fixed"
+      : hasActiveUnits || /assigned|dispatched|accepted|en.route|on.scene|progress/i.test(rawStatus) ? "In Progress"
+        : /submitted|pending/i.test(rawStatus) ? "Reported"
           : rawStatus;
   const reporterType = String(item.reporter_type ?? (item.guest_session_id ? "GUEST" : "RESIDENT")).toLowerCase();
   const reporter = String(item.reporter_name ?? "").trim() || (reporterType === "guest" ? "Guest" : "Resident");
@@ -84,6 +85,35 @@ function mapApiReport(item, fetchedAt) {
     ...(hasCoordinates ? { lat: latitude, lng: longitude } : {}),
     evidence: [],
     photos: Array.isArray(item.photos) ? item.photos : [],
+    dispatchedUnits: Array.isArray(item.dispatched_units) ? item.dispatched_units : [],
+    agencyReports: Array.isArray(item.agency_reports) ? item.agency_reports : [],
+    bdrrmoVerified: Boolean(item.bdrrmo_verified),
+    bdrrmoVerificationNote: item.bdrrmo_verification_note || null,
+    ...(Array.isArray(item.dispatched_units) && item.dispatched_units.length > 0
+      ? {
+          responders: {
+            tanod:
+              item.dispatched_units.find((u) => u.role === "tanod")?.name
+              || item.dispatched_units[0]?.name
+              || String(item.assigned_team ?? "Dispatched Responder"),
+            vehicle: "Mobile Unit",
+            sent: item.dispatched_units[0]?.dispatched_at || "Dispatched",
+            accepted: item.dispatched_units.some((u) => u.status !== "DISPATCHED")
+              ? "Accepted"
+              : null,
+          },
+          fieldStage: item.dispatched_units.some((u) => u.status === "COMPLETED")
+            ? "Completed"
+            : item.dispatched_units.some((u) => u.status === "ON_SCENE")
+              ? "On Scene"
+              : item.dispatched_units.some((u) => ["ACCEPTED", "EN_ROUTE"].includes(u.status))
+                ? "En Route"
+                : "Assigned",
+          external: item.dispatched_units
+            .filter((u) => u.role === "police" || u.role === "fire")
+            .map((u) => `${u.name}: ${u.status}`),
+        }
+      : {}),
     geotag: {
       source: hasCoordinates ? "Pinned location" : "Location note",
       accuracy: accuracy == null ? "Not provided" : `±${Math.round(accuracy)} m`,

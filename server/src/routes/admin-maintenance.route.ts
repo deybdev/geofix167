@@ -51,6 +51,29 @@ export function parseMaintenanceMeta(raw: string | null | undefined): Maintenanc
 const route = new Hono<AppEnv>();
 route.use("*", requireAuth, requireRole("admin"));
 
+async function notifyResidentOfMaintenanceMove(
+  db: AppEnv["Bindings"]["geofix167_db"],
+  incidentId: string,
+  title: string,
+  body: string,
+) {
+  try {
+    const row = await db.prepare(`
+      SELECT reported_by_user_id FROM incident_reports WHERE incident_id = ?
+    `).bind(incidentId).first<{ reported_by_user_id: string | null }>();
+    if (!row?.reported_by_user_id) return;
+    const notifId = crypto.randomUUID().replace(/-/g, "");
+    const nowIso = new Date().toISOString();
+    await db.prepare(`
+      INSERT INTO resident_notifications
+        (notification_id, recipient_user_id, incident_id, type, title, body, created_at)
+      VALUES (?, ?, ?, 'report_update', ?, ?, ?)
+    `).bind(notifId, row.reported_by_user_id, incidentId, title, body, nowIso).run();
+  } catch {
+    // Non-fatal if resident_notifications insert fails
+  }
+}
+
 route.get("/intake", async (c) => {
   const db = c.env.geofix167_db;
   try {
@@ -215,10 +238,18 @@ route.post("/ingest", async (c) => {
     `).bind(resource.responder_resource_id).run().catch(() => {});
   }
 
+  const assignedName = body.tanod_name || resource?.display_name || "Assigned Tanod";
+  await notifyResidentOfMaintenanceMove(
+    db,
+    body.incident_id,
+    "Maintenance Task Assigned",
+    `Your maintenance report has been assigned to ${assignedName} for on-site inspection.`,
+  );
+
   return c.json({
     ok: true,
     assignment_id: assignmentId,
-    tanod_name: body.tanod_name || resource?.display_name || "Assigned Tanod",
+    tanod_name: assignedName,
   }, 201);
 });
 
@@ -292,7 +323,10 @@ route.get("/tasks", async (c) => {
     return {
       assignment_id: String(row.tanod_assignment_id),
       incident_id: String(row.incident_id),
-      id: meta.task_code || `TASK-${String(row.report_id).replace(/^GF-/, "167-")}`,
+      id: (meta.task_code || `TASK-${String(row.report_id).replace(/^GF-/, "167-")}`).replace(
+        /^TASK-167-(?:167)+/i,
+        "TASK-167-",
+      ),
       originReportId: String(row.report_id),
       issue: String(row.title || "Maintenance Task"),
       category: String(row.category || "Maintenance"),
@@ -400,6 +434,20 @@ route.patch("/tasks/:assignmentId", async (c) => {
         WHERE responder_resource_id = ?
       `).bind(existing.responder_resource_id).run().catch(() => {});
     }
+
+    await notifyResidentOfMaintenanceMove(
+      db,
+      existing.incident_id,
+      "Maintenance Report Verified Fixed",
+      "Your maintenance report has been repaired and verified fixed by Admin. Thank you for reporting!",
+    );
+  } else if (body?.admin_check_approved) {
+    await notifyResidentOfMaintenanceMove(
+      db,
+      existing.incident_id,
+      "On-Site Inspection Verified",
+      "Admin verified the Tanod's on-site inspection photos. Repair work is now in progress.",
+    );
   }
 
   return c.json({ ok: true, meta });

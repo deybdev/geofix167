@@ -27,6 +27,17 @@ function timestamp(value) {
     ? value.replace(" ", "T") + "Z" : value;
 }
 
+function resolveMediaUrl(path) {
+  if (!path || typeof path !== "string") return null;
+  if (/^https?:\/\//i.test(path)) return path;
+  try {
+    const origin = new URL(api.defaults.baseURL).origin;
+    return `${origin}${path.startsWith("/") ? "" : "/"}${path}`;
+  } catch {
+    return path;
+  }
+}
+
 export function normalizeReport(record) {
   const statusId = Number(record.incident_status_id ?? record.status_id);
   const [code, label, group] = STATUSES[statusId] ?? ["UNKNOWN", "Unknown", "unknown"];
@@ -41,6 +52,24 @@ export function normalizeReport(record) {
     note: event.note ?? event.reason ?? "",
     created_at: timestamp(event.created_at ?? event.occurred_at),
   })).sort((a, b) => (Date.parse(a.created_at) || 0) - (Date.parse(b.created_at) || 0));
+
+  const firstPhoto = Array.isArray(record.photos) && record.photos[0]
+    ? `/api/reports/${encodeURIComponent(record.incident_id)}/photos/${encodeURIComponent(record.photos[0].id || record.photos[0])}`
+    : null;
+  const rawPhotoUrl = record.photo_url || firstPhoto;
+
+  const maint = record.maintenance_progress
+    ? {
+        ...record.maintenance_progress,
+        inspection_photo_urls: (record.maintenance_progress.inspection_photo_urls || [])
+          .map(resolveMediaUrl)
+          .filter(Boolean),
+        repair_photo_urls: (record.maintenance_progress.repair_photo_urls || [])
+          .map(resolveMediaUrl)
+          .filter(Boolean),
+      }
+    : null;
+
   return {
     public_id: record.incident_id,
     reference_number: record.reference_number ?? record.incident_id,
@@ -56,7 +85,9 @@ export function normalizeReport(record) {
     status_label: record.status_label ?? label,
     reported_by_user_id: record.reported_by_user_id ?? null,
     is_terminal: record.is_terminal === 1 || record.is_terminal === true || [10, 11, 12].includes(statusId),
-    photo_url: record.photo_url ?? null,
+    photo_url: resolveMediaUrl(rawPhotoUrl),
+    maintenance_progress: maint,
+    dispatched_units: Array.isArray(record.dispatched_units) ? record.dispatched_units : [],
     attachments: record.attachments ?? [],
     attachments_error: record.attachments_error ?? null,
     created_at: timestamp(record.submitted_at ?? record.received_at),
@@ -130,6 +161,11 @@ export async function getReports({ status, limit, signal } = {}) {
 export async function getReportStats() {
   const { data } = await getReports();
   return { data: { stats: summarizeReports(data.reports) } };
+}
+
+export async function getPublicMapFeed({ signal } = {}) {
+  const data = await reportRequest("/map-feed", { signal });
+  return Array.isArray(data?.items) ? data.items : [];
 }
 
 function reportResult(data) {

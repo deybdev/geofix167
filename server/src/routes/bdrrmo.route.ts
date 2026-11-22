@@ -132,10 +132,11 @@ route.get("/overview", async (c) => {
   for (const m of mediaRows.results ?? []) {
     const key = String(m.incident_id);
     const list = photosByIncident.get(key) ?? [];
+    const fname = String(m.original_filename || "evidence.jpg");
     list.push({
       id: String(m.id),
-      filename: String(m.original_filename || "evidence.jpg"),
-      by_staff: Boolean(m.uploaded_by_user_id),
+      filename: fname,
+      by_staff: /^(fire|police|tanod)-/i.test(fname),
       created_at: String(m.created_at),
     });
     photosByIncident.set(key, list);
@@ -184,6 +185,7 @@ route.get("/overview", async (c) => {
     const tacticalNotes = events.filter((e) => e.note.startsWith("[BDRRMO NOTE]"));
     const backupAlerts = events.filter((e) => e.note.startsWith("[BACKUP REQUEST]"));
     const agencyReports = events.filter((e) => e.note.startsWith("[AGENCY REPORT]"));
+    const verifiedEvent = events.find((e) => e.note.startsWith("[BDRRMO VERIFIED]"));
 
     const rawStatus = String(row.status_code || "FORWARDED_TO_BDRRMO");
     const mappedStatus = ["SUBMITTED", "UNDER_REVIEW", "VERIFIED"].includes(rawStatus)
@@ -214,6 +216,8 @@ route.get("/overview", async (c) => {
       tacticalNotes,
       backupAlerts,
       agencyReports,
+      bdrrmoVerified: Boolean(verifiedEvent),
+      bdrrmoVerificationNote: verifiedEvent?.note.replace("[BDRRMO VERIFIED] ", "") || null,
       photos,
     };
   });
@@ -368,6 +372,29 @@ route.post("/incidents/:incidentId/note", async (c) => {
   ).run();
 
   return c.json({ ok: true }, 201);
+});
+
+route.post("/incidents/:incidentId/verify-closure", async (c) => {
+  const db = c.env.geofix167_db;
+  const incidentId = c.req.param("incidentId");
+  const currentUser = c.get("user");
+  const body = (await c.req.json().catch(() => null)) as { note?: string } | null;
+  const verifyNote = `[BDRRMO VERIFIED] ${body?.note?.trim() || "Field resolution & proof photos verified by BDRRMO — forwarded to Admin for final closure."}`;
+
+  await db.batch([
+    db.prepare(`
+      UPDATE incident_reports
+      SET incident_status_id = 9, updated_at = datetime('now')
+      WHERE incident_id = ? AND incident_status_id NOT IN (10, 11)
+    `).bind(incidentId),
+    db.prepare(`
+      INSERT INTO incident_status_events
+        (incident_status_event_id, incident_id, from_incident_status_id, to_incident_status_id, changed_by_user_id, note)
+      VALUES (?, ?, 9, 9, ?, ?)
+    `).bind(crypto.randomUUID(), incidentId, currentUser.id, verifyNote),
+  ]);
+
+  return c.json({ ok: true, status: "FOR_CLOSURE_REVIEW", bdrrmo_verified: true });
 });
 
 route.post("/incidents/:incidentId/close", async (c) => {

@@ -44,15 +44,25 @@ const CHANNELS_BY_ROLE = {
   ],
   police: [
     {
-      id: 'resident',
-      name: 'Resident Reporter',
-      subtitle: 'Direct incident chat with reporter',
-      Icon: User,
+      id: 'bdrrmo',
+      name: 'BDRRMO',
+      subtitle: 'BDRRMO coordination channel',
+      Icon: Shield,
       color: '#1F7A4D',
       background: 'bg-green-50',
     },
   ],
   fire: [
+    {
+      id: 'bdrrmo',
+      name: 'BDRRMO',
+      subtitle: 'BDRRMO coordination channel',
+      Icon: Shield,
+      color: '#1F7A4D',
+      background: 'bg-green-50',
+    },
+  ],
+  tanod: [
     {
       id: 'bdrrmo',
       name: 'BDRRMO',
@@ -80,7 +90,7 @@ export default function Messages() {
   const { user } = useAuth();
   const route = useRoute();
   const role = String(user?.role || 'bdrrmo').toLowerCase();
-  const isPolice = role === 'police';
+  const isPolice = false;
   const channels = CHANNELS_BY_ROLE[role] || CHANNELS_BY_ROLE.bdrrmo;
   const [selectedId, setSelectedId] = useState(channels[0].id);
   const [policeDispatches, setPoliceDispatches] = useState([]);
@@ -98,7 +108,7 @@ export default function Messages() {
     if (!isPolice) return undefined;
 
     let active = true;
-    getResponderDispatches(undefined, 'police')
+    getResponderDispatches(undefined, role)
       .then((dispatches) => {
         if (!active) return;
         const list = (Array.isArray(dispatches) ? dispatches : []).filter(
@@ -119,7 +129,7 @@ export default function Messages() {
     return () => {
       active = false;
     };
-  }, [isPolice]);
+  }, [isPolice, role]);
 
   const activeIncident = useMemo(() => {
     if (!isPolice || !selectedIncidentId) return null;

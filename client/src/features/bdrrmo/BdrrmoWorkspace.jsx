@@ -125,14 +125,31 @@ function InfoRow({ label, children }) {
   );
 }
 
-function DrawerSection({ title, icon: Icon, children, last = false }) {
+function DrawerSection({ title, icon: Icon, children, last = false, collapsible = false, defaultOpen = true }) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
     <section className={`pb-4 ${last ? "" : "border-b border-[#edf0f2]"}`}>
-      <h3 className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-[#60738f]">
-        {Icon && <Icon size={11} className="text-(--gf-green)" />}
-        {title}
-      </h3>
-      {children}
+      {collapsible ? (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="mb-2 flex w-full items-center justify-between gap-1.5 text-left text-[10px] font-bold uppercase tracking-wide text-[#60738f] hover:text-(--gf-green)"
+        >
+          <span className="flex items-center gap-1.5">
+            {Icon && <Icon size={11} className="text-(--gf-green)" />}
+            {title}
+          </span>
+          <span className="text-[9px] font-semibold text-[#7c8ba3]">
+            {open ? "▲ Hide" : "▼ Show"}
+          </span>
+        </button>
+      ) : (
+        <h3 className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-[#60738f]">
+          {Icon && <Icon size={11} className="text-(--gf-green)" />}
+          {title}
+        </h3>
+      )}
+      {(!collapsible || open) && children}
     </section>
   );
 }
@@ -761,6 +778,7 @@ function IncidentDrawer({ incident: initialIncident, onClose }) {
     responders,
     batchDispatch,
     broadcastNote,
+    verifyClosureForAdmin,
     closeServerIncident,
   } = useBdrrmoDemo();
 
@@ -776,6 +794,59 @@ function IncidentDrawer({ incident: initialIncident, onClose }) {
   const [showLiveTrackingMap, setShowLiveTrackingMap] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
+  const [verifiedComplete, setVerifiedComplete] = useState(false);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatDraft, setChatDraft] = useState("");
+  const [sendingChat, setSendingChat] = useState(false);
+
+  useEffect(() => {
+    if (!incident.incidentId) return undefined;
+    let active = true;
+    const loadChat = async () => {
+      try {
+        const res = await fetch(`/api/reports/${encodeURIComponent(incident.incidentId)}/messages`, {
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (active && Array.isArray(data.messages)) {
+          setChatMessages(data.messages);
+        }
+      } catch {
+        // Ignore transient chat poll errors
+      }
+    };
+    void loadChat();
+    const timer = window.setInterval(loadChat, 4000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [incident.incidentId]);
+
+  async function handleSendChatMessage() {
+    if (!incident.incidentId || !chatDraft.trim() || sendingChat) return;
+    setSendingChat(true);
+    try {
+      const res = await fetch(`/api/reports/${encodeURIComponent(incident.incidentId)}/messages`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ body: chatDraft.trim() }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error || "Could not send message.");
+      if (data?.message) {
+        setChatMessages((prev) => [...prev, data.message]);
+      }
+      setChatDraft("");
+    } catch (err) {
+      toast.add({ type: "error", title: "Message failed", description: err.message });
+    } finally {
+      setSendingChat(false);
+    }
+  }
 
   useEffect(() => {
     const onKey = (event) => {
@@ -790,7 +861,9 @@ function IncidentDrawer({ incident: initialIncident, onClose }) {
   }, [onClose]);
 
   const availableTanods = responders.filter(
-    (r) => r.availabilityStatus === "AVAILABLE" && (!r.resourceType || r.resourceType === "TANOD"),
+    (r) =>
+      !["UNAVAILABLE", "OUT_OF_SERVICE"].includes(r.availabilityStatus) &&
+      (!r.resourceType || r.resourceType === "TANOD"),
   );
   const dispatchedUnits = incident.dispatchedUnits || [];
   const linkedHandovers = handovers.filter(
@@ -802,10 +875,10 @@ function IncidentDrawer({ incident: initialIncident, onClose }) {
   const selectedTanod = responders.find((r) => r.id === selectedTanodId) || null;
   const dispatchErrors = [];
   if (!(includeFire || fireLocked || includePolice || policeLocked || selectedTanodId)) {
-    dispatchErrors.push("Select at least one department (BFP / Police) or an available Tanod.");
+    dispatchErrors.push("Select at least one department (BFP / Police) or a Tanod.");
   }
-  if (selectedTanod && selectedTanod.availabilityStatus !== "AVAILABLE") {
-    dispatchErrors.push("Selected Tanod is no longer AVAILABLE.");
+  if (selectedTanod && ["UNAVAILABLE", "OUT_OF_SERVICE"].includes(selectedTanod.availabilityStatus)) {
+    dispatchErrors.push("Selected Tanod is offline or out of service.");
   }
   const canBatchDispatch = dispatchErrors.length === 0 && incident.incidentStatusCode !== "CLOSED";
 
@@ -878,6 +951,23 @@ function IncidentDrawer({ incident: initialIncident, onClose }) {
     }
   }
 
+  async function handleVerifyForAdmin() {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      await verifyClosureForAdmin(incident.incidentId);
+      toast.add({
+        type: "success",
+        title: "Verified & forwarded to Admin",
+        description: `${incident.id} resolution verified by BDRRMO and sent to Admin for final closure.`,
+      });
+    } catch (err) {
+      toast.add({ type: "error", title: "Verification failed", description: err.message });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function handleAuthorizeClosure() {
     if (submitting) return;
     setSubmitting(true);
@@ -939,7 +1029,7 @@ function IncidentDrawer({ incident: initialIncident, onClose }) {
         <div className="gf-drawer-body">
           {incidentErrors.length > 0 && <ValidationErrors errors={incidentErrors} />}
 
-          <DrawerSection title="Incident Lifecycle Timeline" icon={Clock3}>
+          <DrawerSection title="Incident Lifecycle Timeline" icon={Clock3} collapsible defaultOpen={false}>
             <IncidentTimeline incident={incident} dispatchedUnits={dispatchedUnits} />
           </DrawerSection>
 
@@ -984,7 +1074,11 @@ function IncidentDrawer({ incident: initialIncident, onClose }) {
 
           {incident.incidentStatusCode !== "CLOSED" && (
             <DrawerSection title="Single / Batch Dispatch (BFP, Police & Tanod Transport)" icon={UserCheck}>
-              <div className="space-y-3 rounded-lg border border-[#e0e7eb] bg-[#f8fafb] p-3.5">
+              <div
+                className={`space-y-3 rounded-lg border border-[#e0e7eb] bg-[#f8fafb] p-3.5 ${
+                  incident.bdrrmoVerified ? "pointer-events-none opacity-50" : ""
+                }`}
+              >
                 <div className="grid grid-cols-2 gap-2">
                   <label
                     className={`flex items-center justify-between rounded-lg border px-3 py-2.5 text-[11px] font-bold transition ${
@@ -1043,7 +1137,7 @@ function IncidentDrawer({ incident: initialIncident, onClose }) {
                     <option value="">— Optional: No Tanod transport assigned —</option>
                     {availableTanods.map((t) => (
                       <option key={t.id} value={t.id}>
-                        {t.name} ({t.unit}) — AVAILABLE
+                        {t.name} ({t.unit}) — {t.availabilityStatus}
                       </option>
                     ))}
                   </select>
@@ -1146,7 +1240,71 @@ function IncidentDrawer({ incident: initialIncident, onClose }) {
             )}
           </DrawerSection>
 
-          <DrawerSection title="Shared Tactical Dispatch Notes" icon={Send}>
+          <DrawerSection title="Direct Emergency Chat (Resident & Field Units)" icon={Send} collapsible defaultOpen={false}>
+            <div className="space-y-2 rounded-lg border border-[#e0e7eb] bg-[#f8fafb] p-3">
+              {chatMessages.length === 0 ? (
+                <p className="py-2 text-center text-[10px] text-[#7c8ba3]">
+                  No messages yet. Send a message below to chat directly with the reporting Resident and assigned units.
+                </p>
+              ) : (
+                <div className="max-h-44 space-y-1.5 overflow-y-auto pr-1">
+                  {chatMessages.map((msg) => {
+                    const isDispatcher = ["bdrrmo", "admin"].includes(String(msg.sender_role || "").toLowerCase());
+                    return (
+                      <div
+                        key={msg.id}
+                        className={`rounded-lg px-2.5 py-1.5 text-[11px] ${
+                          isDispatcher
+                            ? "ml-6 bg-(--gf-green) text-white"
+                            : "mr-6 border border-[#dfe7ea] bg-white text-[#263246]"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2 text-[9px] font-bold opacity-80">
+                          <span>
+                            {msg.sender_name || "User"} ({String(msg.sender_role || "resident").toUpperCase()})
+                          </span>
+                          <span>
+                            {msg.sent_at
+                              ? new Date(msg.sent_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+                              : ""}
+                          </span>
+                        </div>
+                        <p className="mt-0.5 leading-snug">{msg.body}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {incident.incidentStatusCode !== "CLOSED" && (
+                <div className="flex gap-2 pt-1">
+                  <input
+                    value={chatDraft}
+                    onChange={(e) => setChatDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        void handleSendChatMessage();
+                      }
+                    }}
+                    placeholder="Message the Resident reporter or field units..."
+                    className="h-9 flex-1 rounded-md border border-[#dfe7ea] bg-white px-3 text-[11px] text-[#263246] outline-none focus:border-(--gf-green)"
+                  />
+                  <button
+                    type="button"
+                    disabled={!chatDraft.trim() || sendingChat}
+                    onClick={handleSendChatMessage}
+                    className="flex items-center gap-1 rounded-md bg-(--gf-green) px-3 text-[11px] font-bold text-white transition hover:bg-(--gf-green-dark) disabled:opacity-40"
+                  >
+                    <Send size={12} />
+                    {sendingChat ? "..." : "Reply"}
+                  </button>
+                </div>
+              )}
+            </div>
+          </DrawerSection>
+
+          <DrawerSection title="Shared Tactical Dispatch Notes" icon={Send} collapsible defaultOpen={false}>
             <div className="flex gap-2">
               <input
                 value={tacticalNoteDraft}
@@ -1198,28 +1356,40 @@ function IncidentDrawer({ incident: initialIncident, onClose }) {
             </DrawerSection>
           )}
 
-          <DrawerSection title="Evidence & Resolution Proof Photos" icon={Camera} last>
+          <DrawerSection title="Evidence & Responder Completion Proof Photos" icon={Camera} last>
             {incident.photos?.length > 0 ? (
               <div className="grid grid-cols-2 gap-2">
-                {incident.photos.map((photo, idx) => (
-                  <a
-                    key={photo.id}
-                    href={`/api/reports/${encodeURIComponent(incident.incidentId)}/photos/${encodeURIComponent(photo.id)}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="relative block h-[120px] overflow-hidden rounded-lg border border-[#dfe7ea] bg-slate-100"
-                  >
-                    <img
-                      src={`/api/reports/${encodeURIComponent(incident.incidentId)}/photos/${encodeURIComponent(photo.id)}`}
-                      alt={photo.filename}
-                      loading="lazy"
-                      className="h-full w-full object-cover"
-                    />
-                    <span className="absolute bottom-1 left-1 rounded bg-slate-900/75 px-1.5 py-0.5 text-[8px] font-bold text-white">
-                      {photo.by_staff ? `Responder Proof #${idx + 1}` : `Reporter Photo #${idx + 1}`}
-                    </span>
-                  </a>
-                ))}
+                {incident.photos.map((photo, idx) => {
+                  const fname = String(photo.filename || "");
+                  const label = /^fire-/i.test(fname)
+                    ? "BFP Completion Proof"
+                    : /^police-/i.test(fname)
+                      ? "Police Completion Proof"
+                      : /^tanod-/i.test(fname)
+                        ? "Tanod Transport Proof"
+                        : photo.by_staff
+                          ? `Responder Proof #${idx + 1}`
+                          : `Reporter Photo #${idx + 1}`;
+                  return (
+                    <a
+                      key={photo.id}
+                      href={`/api/reports/${encodeURIComponent(incident.incidentId)}/photos/${encodeURIComponent(photo.id)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="relative block h-[120px] overflow-hidden rounded-lg border border-[#dfe7ea] bg-slate-100"
+                    >
+                      <img
+                        src={`/api/reports/${encodeURIComponent(incident.incidentId)}/photos/${encodeURIComponent(photo.id)}`}
+                        alt={photo.filename}
+                        loading="lazy"
+                        className="h-full w-full object-cover"
+                      />
+                      <span className="absolute bottom-1 left-1 rounded bg-slate-900/75 px-1.5 py-0.5 text-[8px] font-bold text-white">
+                        {label}
+                      </span>
+                    </a>
+                  );
+                })}
               </div>
             ) : (
               <p className="text-[11px] text-[#7c8ba3]">No photos uploaded yet.</p>
@@ -1232,13 +1402,17 @@ function IncidentDrawer({ incident: initialIncident, onClose }) {
             <span className="flex items-center gap-1 text-[10px] font-semibold text-(--gf-green)">
               <CheckCircle2 size={12} /> Incident is closed and synced to Admin.
             </span>
+          ) : incident.bdrrmoVerified ? (
+            <span className="flex items-center gap-1 text-[10px] font-semibold text-(--gf-green)">
+              <CheckCircle2 size={12} /> Verified by BDRRMO — forwarded to Admin for final closure.
+            </span>
           ) : closureWarnings.length > 0 ? (
             <span className="flex items-center gap-1 text-[10px] font-semibold text-[#e69500]">
               <TriangleAlert size={11} /> {closureWarnings[0]}
             </span>
           ) : (
             <span className="flex items-center gap-1 text-[10px] font-semibold text-(--gf-green)">
-              <CheckCircle2 size={12} /> All units completed — ready for coordinated closure.
+              <CheckCircle2 size={12} /> All units completed — ready for BDRRMO verification & closure.
             </span>
           )}
           <div className="ml-auto flex items-center gap-2">
@@ -1249,15 +1423,26 @@ function IncidentDrawer({ incident: initialIncident, onClose }) {
             >
               Close
             </button>
-            {incident.incidentStatusCode !== "CLOSED" && (
-              <button
-                type="button"
-                disabled={submitting}
-                onClick={() => setConfirmCloseOpen(true)}
-                className="rounded-md bg-(--gf-green) px-3.5 py-2 text-[10px] font-bold text-white transition hover:bg-(--gf-green-dark) disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {submitting ? "Closing..." : "Authorize Closure"}
-              </button>
+            {incident.incidentStatusCode !== "CLOSED" && !incident.bdrrmoVerified && (
+              verifiedComplete ? (
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={handleVerifyForAdmin}
+                  className="rounded-md bg-(--gf-green) px-3.5 py-2 text-[10px] font-bold text-white transition hover:bg-(--gf-green-dark) disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {submitting ? "Sending..." : "Send Back to Admin for Final Closure"}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => setVerifiedComplete(true)}
+                  className="rounded-md bg-(--gf-green) px-3.5 py-2 text-[10px] font-bold text-white transition hover:bg-(--gf-green-dark) disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Verify Complete
+                </button>
+              )
             )}
           </div>
         </footer>
