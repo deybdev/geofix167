@@ -32,6 +32,7 @@ import tw from 'twrnc';
 
 import MapViewer from '../../components/map/MapViewer';
 import { getIncidentMessages, sendIncidentMessage } from '../../services/responderMessageService';
+import { getReportDetails } from '../../services/residentService';
 
 /* -----------------------------------------
    CONSTANTS
@@ -371,12 +372,94 @@ function simulateTracking(reportId, handlers, initialReport) {
 }
 
 function subscribeToTracking(reportId, handlers, initialReport) {
-  if (USE_SIMULATION) return simulateTracking(reportId, handlers, initialReport);
+  if (!reportId || reportId === 'demo') {
+    return simulateTracking(reportId, handlers, initialReport);
+  }
 
-  // TODO: subscribe to the real report + responder feed here and call the
-  // handlers above whenever data changes. Return the unsubscribe function.
-  handlers.onError?.(new Error("Live tracking isn't connected to the backend yet."));
-  return () => {};
+  let cancelled = false;
+
+  const pollLiveTracking = async () => {
+    try {
+      const { data } = await getReportDetails(reportId);
+      if (cancelled || !data?.report) return;
+      const rep = data.report;
+      const units = Array.isArray(rep.dispatched_units) ? rep.dispatched_units : [];
+
+      const anyCompleted = units.some((u) => u.status === 'COMPLETED') || rep.status_id === 10 || rep.status_id === 9;
+      const anyOnScene = units.some((u) => u.status === 'ON_SCENE') || rep.status_id === 8;
+      const anyMoving = units.some((u) => ['ACCEPTED', 'EN_ROUTE'].includes(u.status) || u.location) || rep.status_id === 7;
+      const anyDispatched = units.length > 0 || [6, 13, 14].includes(rep.status_id);
+      const isValidated = [4, 5].includes(rep.status_id);
+
+      const trackedStatus = anyCompleted
+        ? 'resolved'
+        : anyOnScene
+          ? 'arrived'
+          : anyMoving
+            ? 'on_the_way'
+            : anyDispatched
+              ? 'dispatched'
+              : isValidated
+                ? 'validated'
+                : 'received';
+
+      const loc =
+        Number.isFinite(rep.latitude) && Number.isFinite(rep.longitude)
+          ? { lat: rep.latitude, lng: rep.longitude }
+          : initialReport?.location || null;
+
+      handlers.onReport({
+        status: trackedStatus,
+        priority: rep.urgency === 'Critical' ? 1 : rep.urgency === 'High' ? 2 : initialReport?.priority ?? 1,
+        location: loc,
+      });
+
+      const normalizedUnits = units
+        .filter((u) => !['DECLINED', 'CANCELLED'].includes(u.status))
+        .map((u) => ({
+          id: u.id,
+          name: u.name,
+          role:
+            u.role === 'fire'
+              ? 'BFP Fire Protection'
+              : u.role === 'police'
+                ? 'PNP Police Responder'
+                : 'Barangay Tanod',
+          roleCode: u.role,
+          status: u.status,
+          phone: HOTLINE,
+          location:
+            u.location && Number.isFinite(Number(u.location.lat)) && Number.isFinite(Number(u.location.lng))
+              ? {
+                  lat: Number(u.location.lat),
+                  lng: Number(u.location.lng),
+                  heading: u.location.heading,
+                  updatedAt: Date.parse(u.location.updated_at) || Date.now(),
+                }
+              : null,
+        }));
+
+      handlers.onResponders?.(normalizedUnits);
+
+      const leadUnit =
+        normalizedUnits.find((u) => u.location) ||
+        normalizedUnits.find((u) => ['ON_SCENE', 'EN_ROUTE', 'ACCEPTED'].includes(u.status)) ||
+        normalizedUnits[0] ||
+        null;
+
+      handlers.onResponder(leadUnit);
+    } catch {
+      // Keep last known tracking state during transient network hiccups
+    }
+  };
+
+  void pollLiveTracking();
+  const timer = setInterval(pollLiveTracking, 4000);
+
+  return () => {
+    cancelled = true;
+    clearInterval(timer);
+  };
 }
 
 async function sendResponderMessage(reportId, text) {
@@ -646,6 +729,11 @@ function MessageBubble({ message, onRetry }) {
 
   return (
     <View style={[tw`mb-2 max-w-[82%]`, mine ? tw`self-end` : tw`self-start`]}>
+      {!mine && message.senderLabel ? (
+        <Text style={tw`mb-0.5 ml-1 text-[10px] font-bold text-slate-500`}>
+          {message.senderLabel}
+        </Text>
+      ) : null}
       <View
         style={[
           tw`rounded-2xl px-3.5 py-2.5`,
@@ -702,6 +790,7 @@ export default function Track({ reportId: reportIdProp, route }) {
     location: initialLocation,
   });
   const [responder, setResponder] = useState(null);
+  const [dispatchedUnits, setDispatchedUnits] = useState([]);
   const [roadRoute, setRoadRoute] = useState([]); // route pushed by the backend (optional)
   const [routeInfo, setRouteInfo] = useState(null); // route we fetched: { points, distance, duration }
   const [fitPoints, setFitPoints] = useState(null); // camera framing, set only a couple of times
@@ -747,6 +836,7 @@ export default function Track({ reportId: reportIdProp, route }) {
       {
         onReport: (patch) => setReport((current) => ({ ...current, ...patch })),
         onResponder: (next) => setResponder(next),
+        onResponders: (list) => setDispatchedUnits(Array.isArray(list) ? list : []),
         onRoute: (points) => {
           if (!Array.isArray(points)) return;
           setRoadRoute(
@@ -769,13 +859,29 @@ export default function Track({ reportId: reportIdProp, route }) {
       getIncidentMessages(reportId)
         .then((loaded) => {
           setMessages(
-            loaded.map((item) => ({
-              id: item.id,
-              from: item.sender_role === 'resident' ? 'resident' : 'responder',
-              text: item.body,
-              at: Date.parse(item.sent_at) || Date.now(),
-              state: 'sent',
-            })),
+            loaded.map((item) => {
+              const role = String(item.sender_role || '').toLowerCase();
+              const roleBadge =
+                role === 'bdrrmo'
+                  ? 'BDRRMO Dispatcher'
+                  : role === 'admin'
+                    ? 'Barangay Dispatcher'
+                    : role === 'fire'
+                      ? 'BFP Fire Unit'
+                      : role === 'police'
+                        ? 'PNP Police Unit'
+                        : role === 'tanod'
+                          ? 'Barangay Tanod'
+                          : 'Responder';
+              return {
+                id: item.id,
+                from: role === 'resident' ? 'resident' : 'responder',
+                senderLabel: item.sender_name ? `${item.sender_name} • ${roleBadge}` : roleBadge,
+                text: item.body,
+                at: Date.parse(item.sent_at) || Date.now(),
+                state: 'sent',
+              };
+            }),
           );
         })
         .catch(() => {});
@@ -908,26 +1014,40 @@ export default function Track({ reportId: reportIdProp, route }) {
   const responderId = responder?.id || 'responder';
   const responderName = responder?.name;
 
-  // Only rebuilt when something the marker shows actually changes.
-  const responderTrackers = useMemo(
-    () =>
-      trackerValid
-        ? [
-            {
-              id: responderId,
-              lat: trackerLat,
-              lng: trackerLng,
-              color: stale ? COLORS.accent : COLORS.primary,
-              heading,
-              rotation: heading,
-              label: responderName,
-              type: 'responder',
-              stale,
-            },
-          ]
-        : [],
-    [trackerValid, trackerLat, trackerLng, heading, stale, responderId, responderName]
-  );
+  // Plot ALL dispatched responders with live GPS (supports 2+ multi-responder units simultaneously)
+  const responderTrackers = useMemo(() => {
+    const extraTrackers = dispatchedUnits
+      .filter((u) => u.id !== responderId && u.location && Number.isFinite(u.location.lat) && Number.isFinite(u.location.lng))
+      .map((u) => ({
+        id: u.id,
+        lat: u.location.lat,
+        lng: u.location.lng,
+        color: u.roleCode === 'fire' ? '#DC2626' : u.roleCode === 'police' ? '#1D4ED8' : COLORS.primary,
+        heading: u.location.heading,
+        rotation: u.location.heading,
+        label: u.name,
+        type: 'responder',
+        stale: false,
+      }));
+
+    const leadTracker = trackerValid
+      ? [
+          {
+            id: responderId,
+            lat: trackerLat,
+            lng: trackerLng,
+            color: stale ? COLORS.accent : COLORS.primary,
+            heading,
+            rotation: heading,
+            label: responderName,
+            type: 'responder',
+            stale,
+          },
+        ]
+      : [];
+
+    return [...leadTracker, ...extraTrackers];
+  }, [trackerValid, trackerLat, trackerLng, heading, stale, responderId, responderName, dispatchedUnits]);
 
   const trackingRoutes = useMemo(
     () =>
@@ -943,7 +1063,7 @@ export default function Track({ reportId: reportIdProp, route }) {
   const etaMinutes =
     responder?.etaMinutes ??
     (routeInfo && !routeFromBackend && roadDistance != null && routeInfo.distance > 0
-      ? Math.max(1, Math.ceil((routeInfo.duration * (roadDistance / routeInfo.distance)) / 60))
+      ? Math.max(1, Math.round((routeInfo.duration * (roadDistance / routeInfo.distance)) / 60))
       : null);
 
   // Frame the map at most twice: once when the responder first appears, and once
@@ -1013,9 +1133,9 @@ export default function Track({ reportId: reportIdProp, route }) {
     setTimeout(() => inputRef.current?.focus(), 300);
   };
 
-  // Messaging only exists once a responder is assigned.
-  const chatAvailable = !!responder;
-  const activeTab = chatAvailable ? tab : 'progress';
+  // Residents can always message the BDRRMO Dispatcher or assigned responders during an emergency.
+  const chatAvailable = true;
+  const activeTab = tab;
 
   // Keep the pager on the selected tab (tap on the tab bar, or openChat()).
   useEffect(() => {
@@ -1149,6 +1269,35 @@ export default function Track({ reportId: reportIdProp, route }) {
                   In immediate danger? Don’t wait, call now.
                 </Text>
                 <EmergencyCallRow />
+
+                <Pressable
+                  onPress={openChat}
+                  accessibilityRole="button"
+                  accessibilityLabel="Message BDRRMO Dispatcher"
+                  style={({ pressed }) => [
+                    tw`mt-2.5 h-11 flex-row items-center justify-center rounded-2xl bg-white`,
+                    {
+                      borderWidth: 1.5,
+                      borderColor: COLORS.primary,
+                      opacity: pressed ? 0.8 : 1,
+                    },
+                  ]}
+                >
+                  <MessageCircle size={16} color={COLORS.primary} />
+                  <Text style={[tw`ml-2 text-xs font-extrabold`, { color: COLORS.primary }]}>
+                    Message BDRRMO / Dispatcher
+                  </Text>
+                  {unread > 0 && (
+                    <View
+                      style={[
+                        tw`ml-2 h-5 min-w-5 items-center justify-center rounded-full px-1`,
+                        { backgroundColor: COLORS.emergency },
+                      ]}
+                    >
+                      <Text style={tw`text-[11px] font-extrabold text-white`}>{unread}</Text>
+                    </View>
+                  )}
+                </Pressable>
               </View>
             )}
 
@@ -1235,6 +1384,24 @@ export default function Track({ reportId: reportIdProp, route }) {
                     </Text>
                   </View>
                 </View>
+
+                {dispatchedUnits.length > 1 && (
+                  <View style={tw`mt-2.5 rounded-2xl border border-slate-200 bg-slate-50 p-2.5`}>
+                    <Text style={tw`text-[10px] font-extrabold uppercase text-slate-500`}>
+                      Dispatched Responders ({dispatchedUnits.length} Units)
+                    </Text>
+                    <View style={tw`mt-1.5 gap-1.5`}>
+                      {dispatchedUnits.map((unit) => (
+                        <View key={unit.id} style={tw`flex-row items-center justify-between`}>
+                          <Text style={tw`text-xs font-bold text-slate-800`}>{unit.name}</Text>
+                          <Text style={tw`text-[10px] font-extrabold text-[#1F7A4D]`}>
+                            {unit.status} {unit.location ? '• Live GPS' : ''}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                )}
 
                 {stale && (
                   <View
@@ -1372,7 +1539,7 @@ export default function Track({ reportId: reportIdProp, route }) {
                         >
                           {messages.length === 0 ? (
                             <Text style={tw`py-6 text-center text-xs leading-4 text-slate-400`}>
-                              No messages yet. Tell the responder anything that helps them find you.
+                              No messages yet. Message the BDRRMO Dispatcher or assigned responder directly here.
                             </Text>
                           ) : (
                             messages.map((message) => (

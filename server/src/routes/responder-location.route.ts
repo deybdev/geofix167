@@ -37,9 +37,8 @@ route.post("/", async (c) => {
     return c.json({ error: "Location sharing is available only for an active accepted assignment." }, 409);
   }
   const eligibleReport = await db.prepare(`SELECT r.incident_id
-    FROM incident_reports r JOIN tracking_links t ON t.report_id = r.incident_id
-    WHERE r.incident_id = ? AND r.is_emergency = 1 AND r.incident_status_id NOT IN (10, 11)
-      AND t.revoked_at IS NULL AND datetime(t.expires_at) > datetime('now') LIMIT 1`)
+    FROM incident_reports r
+    WHERE r.incident_id = ? AND r.incident_status_id NOT IN (10, 11) LIMIT 1`)
     .bind(assignment.incident_id).first<{ incident_id: string }>();
   if (!eligibleReport) return c.json({ error: "This incident is no longer accepting location updates." }, 409);
 

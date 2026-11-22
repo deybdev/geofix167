@@ -509,7 +509,7 @@ export default function Report({ guestMode = false, route }) {
   }, [step, fade]);
 
   const goTo = (target) => {
-    if (submittingRef.current || submissionRef.current.payload) return;
+    if (submittingRef.current) return;
     setAttempted(false);
     setStep(target);
   };
@@ -521,6 +521,12 @@ export default function Report({ guestMode = false, route }) {
 
   const handleHeaderBack = () => {
     if (submittingRef.current) return;
+    if (submissionRef.current.report) {
+      resetForm();
+      if (navigation.canGoBack()) navigation.goBack();
+      else navigation.navigate('Resident');
+      return;
+    }
     if (step > 0) {
       goBack();
       return;
@@ -543,8 +549,14 @@ export default function Report({ guestMode = false, route }) {
 
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (!guestMode && (submittingRef.current || submissionRef.current.payload)) return true;
-      if (step > 0 && !submittingRef.current) {
+      if (submittingRef.current) return true;
+      if (submissionRef.current.report) {
+        resetForm();
+        if (navigation.canGoBack()) navigation.goBack();
+        else navigation.navigate('Resident');
+        return true;
+      }
+      if (step > 0) {
         setAttempted(false);
         setStep(step - 1);
         return true;
@@ -553,7 +565,7 @@ export default function Report({ guestMode = false, route }) {
     });
 
     return () => subscription.remove();
-  }, [step, guestMode]);
+  }, [step, navigation]);
 
   /* ---------- selections ---------- */
 

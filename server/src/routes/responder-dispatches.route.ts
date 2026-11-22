@@ -153,37 +153,53 @@ route.get("/", async (c) => {
   const requestedStatus = c.req.query("status");
   const status = requestedStatus ? statusSchema.safeParse(requestedStatus) : null;
   if (status && !status.success) return c.json({ error: "Invalid dispatch status." }, 400);
-  const statusClause = status ? "AND status = ?" : "";
+
+  // Clean up any legacy 'wdad' mock/test rows in local D1
+  await c.env.geofix167_db.batch([
+    c.env.geofix167_db.prepare(`DELETE FROM responder_dispatches WHERE LOWER(TRIM(incident_title)) = 'wdad'`),
+    c.env.geofix167_db.prepare(`DELETE FROM incident_reports WHERE LOWER(TRIM(title)) = 'wdad' OR LOWER(TRIM(description_original)) = 'wdad'`),
+  ]).catch(() => {});
+
+  const statusClause = status ? "AND rd.status = ?" : "";
   const bindings = status
     ? [currentUser.role, currentUser.role, status.data]
     : [currentUser.role, currentUser.role];
-  const result = await c.env.geofix167_db.prepare(`
-    SELECT rd.responder_dispatch_id AS id, rd.incident_id, rd.incident_title, rd.incident_category,
-      rd.incident_location, rd.incident_latitude, rd.incident_longitude, rd.target_role, rd.urgency,
-      rd.vehicle_name,
-      CASE
-        WHEN rd.status = 'COMPLETED' OR r.incident_status_id = 10 THEN 'COMPLETED'
-        WHEN r.incident_status_id = 9 THEN 'PENDING'
-        ELSE rd.status
-      END AS status,
-      rd.dispatched_at,
-      COALESCE(NULLIF(trim(u.first_name || ' ' || u.last_name), ''), gs.display_name, 'Guest') AS reporter_name,
-      COALESCE(r.callback_mobile_number, gs.contact_mobile_number, '') AS reporter_phone,
-      COALESCE(r.description_sanitized, r.description_original, '') AS incident_description,
-      COALESCE(r.is_emergency, 1) AS is_emergency,
-      (
-        SELECT ise.note FROM incident_status_events ise
-        WHERE ise.incident_id = rd.incident_id AND ise.note LIKE '[BDRRMO NOTE]%'
-        ORDER BY ise.created_at DESC LIMIT 1
-      ) AS tactical_note
-    FROM responder_dispatches rd
-    LEFT JOIN incident_reports r ON r.incident_id = rd.incident_id
-    LEFT JOIN users u ON u.user_id = r.reported_by_user_id
-    LEFT JOIN guest_sessions gs ON gs.guest_session_id = r.guest_session_id
-    WHERE (rd.target_role = ? OR ? = 'bdrrmo') ${statusClause ? "AND rd.status = ?" : ""}
-    ORDER BY rd.dispatched_at DESC
-    LIMIT 200
-  `).bind(...bindings).all();
+  const result = currentUser.role === "tanod"
+    ? { results: [] }
+    : await c.env.geofix167_db.prepare(`
+        SELECT rd.responder_dispatch_id AS id, rd.incident_id,
+          COALESCE(r.title, rd.incident_title) AS incident_title,
+          COALESCE(r.category, rd.incident_category) AS incident_category,
+          COALESCE(r.location_description, rd.incident_location) AS incident_location,
+          COALESCE(r.latitude, rd.incident_latitude) AS incident_latitude,
+          COALESCE(r.longitude, rd.incident_longitude) AS incident_longitude,
+          rd.target_role, rd.urgency, rd.vehicle_name,
+          CASE
+            WHEN rd.status = 'COMPLETED' OR r.incident_status_id = 10 THEN 'COMPLETED'
+            WHEN r.incident_status_id = 9 THEN 'COMPLETED'
+            ELSE rd.status
+          END AS status,
+          rd.dispatched_at,
+          COALESCE(NULLIF(trim(u.first_name || ' ' || u.last_name), ''), gs.display_name, 'Guest') AS reporter_name,
+          COALESCE(r.callback_mobile_number, gs.contact_mobile_number, '') AS reporter_phone,
+          COALESCE(r.description_sanitized, r.description_original, '') AS incident_description,
+          COALESCE(r.is_emergency, 1) AS is_emergency,
+          (
+            SELECT ise.note FROM incident_status_events ise
+            WHERE ise.incident_id = rd.incident_id AND ise.note LIKE '[BDRRMO NOTE]%'
+            ORDER BY ise.created_at DESC LIMIT 1
+          ) AS tactical_note
+        FROM responder_dispatches rd
+        JOIN incident_reports r ON r.incident_id = rd.incident_id
+        LEFT JOIN users u ON u.user_id = r.reported_by_user_id
+        LEFT JOIN guest_sessions gs ON gs.guest_session_id = r.guest_session_id
+        WHERE (rd.target_role = ? OR ? = 'bdrrmo')
+          AND r.incident_status_id NOT IN (11, 12)
+          AND LOWER(TRIM(COALESCE(r.title, rd.incident_title, ''))) != 'wdad'
+          ${statusClause}
+        ORDER BY rd.dispatched_at DESC
+        LIMIT 200
+      `).bind(...bindings).all();
 
   const dispatches = result.results ?? [];
 
@@ -664,6 +680,25 @@ route.post("/:dispatchId/maintenance-inspection", async (c) => {
     WHERE tanod_assignment_id = ?
   `).bind(JSON.stringify(meta), dispatchId).run();
 
+  try {
+    const rep = await db.prepare(`SELECT reported_by_user_id FROM incident_reports WHERE incident_id = ?`)
+      .bind(body.incident_id).first<{ reported_by_user_id: string | null }>();
+    if (rep?.reported_by_user_id) {
+      await db.prepare(`
+        INSERT INTO resident_notifications
+          (notification_id, recipient_user_id, incident_id, type, title, body, created_at)
+        VALUES (?, ?, ?, 'report_update', ?, ?, ?)
+      `).bind(
+        crypto.randomUUID().replace(/-/g, ""),
+        rep.reported_by_user_id,
+        body.incident_id,
+        "On-Site Inspection Completed",
+        `Tanod completed the on-site inspection and uploaded inspection photo proof${meta.inspection_note ? `: "${meta.inspection_note}"` : "."}`,
+        new Date().toISOString(),
+      ).run();
+    }
+  } catch { /* ignore notification error */ }
+
   return c.json({
     ok: true,
     inspection_done: true,
@@ -729,6 +764,25 @@ route.post("/:dispatchId/maintenance-repair", async (c) => {
     WHERE tanod_assignment_id = ?
   `).bind(JSON.stringify(meta), dispatchId).run();
 
+  try {
+    const rep = await db.prepare(`SELECT reported_by_user_id FROM incident_reports WHERE incident_id = ?`)
+      .bind(body.incident_id).first<{ reported_by_user_id: string | null }>();
+    if (rep?.reported_by_user_id) {
+      await db.prepare(`
+        INSERT INTO resident_notifications
+          (notification_id, recipient_user_id, incident_id, type, title, body, created_at)
+        VALUES (?, ?, ?, 'report_update', ?, ?, ?)
+      `).bind(
+        crypto.randomUUID().replace(/-/g, ""),
+        rep.reported_by_user_id,
+        body.incident_id,
+        "Proof of Repair Submitted",
+        `Tanod uploaded final proof of repair photos${meta.repair_note ? `: "${meta.repair_note}"` : " and submitted the task for Admin verification."}`,
+        new Date().toISOString(),
+      ).run();
+    }
+  } catch { /* ignore notification error */ }
+
   return c.json({
     ok: true,
     repair_done: true,
@@ -745,6 +799,13 @@ route.post("/:dispatchId/complete-agency", async (c) => {
     proof_photo_base64?: string;
     proof_photo_mime?: string;
     persons?: Array<{ full_name?: string; contact?: string; role_in_incident?: string; age?: string; sex?: string; notes?: string }>;
+    lto_handover?: {
+      enabled?: boolean;
+      vehicles_involved?: string;
+      driver_license_info?: string;
+      violation_type?: string;
+      receiving_lto_unit?: string;
+    };
   } | null;
 
   if (!dispatchId || !body?.incident_id) {
@@ -762,9 +823,21 @@ route.post("/:dispatchId/complete-agency", async (c) => {
     `${currentUser.role}-resolution`,
   );
 
+  const lto = currentUser.role === "police" && body.lto_handover?.enabled ? body.lto_handover : null;
+  const ltoToken = lto ? crypto.randomUUID().replace(/-/g, "") : null;
+  const ltoHandoverId = lto ? crypto.randomUUID() : null;
+  const ltoSuffix = lto
+    ? ` | LTO Handover (${lto.receiving_lto_unit || "LTO Enforcement"}): Vehicles [${lto.vehicles_involved || "N/A"}], Driver/License [${lto.driver_license_info || "N/A"}], Violation [${lto.violation_type || "Road Incident"}]`
+    : "";
+
   const reportType = currentUser.role === "police" ? "Police Criminal / Incident Report" : "BFP Fire Scene Report";
-  const personsCount = Array.isArray(body.persons) ? body.persons.length : 0;
-  const payloadNote = `[AGENCY REPORT] ${reportType} by ${currentUser.role.toUpperCase()} (${personsCount} person(s)). ${String(body.summary || "").trim()}`;
+  const personsList = Array.isArray(body.persons) ? body.persons : [];
+  const personsSummary = personsList
+    .filter((p) => p?.full_name?.trim())
+    .map((p) => `${p.full_name?.trim()}${p.role_in_incident ? ` (${p.role_in_incident})` : ""}${p.contact ? ` [${p.contact}]` : ""}`)
+    .join(", ");
+  const personsSuffix = personsSummary ? ` | Involved Persons: ${personsSummary}` : "";
+  const payloadNote = `[AGENCY REPORT] ${reportType} by ${currentUser.role.toUpperCase()} (${personsList.length} person(s)). ${String(body.summary || "Scene resolved and proof photo attached.").trim()}${personsSuffix}${ltoSuffix}`;
 
   await db.batch([
     db.prepare(`
@@ -788,6 +861,18 @@ route.post("/:dispatchId/complete-agency", async (c) => {
     ok: true,
     status: "COMPLETED",
     proof_media_id: mediaId,
+    ...(lto
+      ? {
+          lto_handover: {
+            handover_id: ltoHandoverId,
+            token: ltoToken,
+            receiving_lto_unit: lto.receiving_lto_unit || "LTO Traffic Enforcement",
+            vehicles_involved: lto.vehicles_involved || "",
+            driver_license_info: lto.driver_license_info || "",
+            violation_type: lto.violation_type || "",
+          },
+        }
+      : {}),
   }, 201);
 });
 

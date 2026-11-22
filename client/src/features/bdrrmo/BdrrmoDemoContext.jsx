@@ -219,6 +219,28 @@ export function BdrrmoDemoProvider({ children }) {
     return data;
   };
 
+  const verifyClosureForAdmin = async (serverIncidentId, note) => {
+    const res = await fetch(
+      `/api/bdrrmo/incidents/${encodeURIComponent(serverIncidentId)}/verify-closure`,
+      {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note }),
+      },
+    );
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(data?.error || "Could not verify resolution for Admin.");
+    addNotification({
+      incidentId: serverIncidentId,
+      type: "VERIFICATION",
+      title: "Verified & forwarded to Admin",
+      body: `Incident ${serverIncidentId} resolution verified by BDRRMO and forwarded to Admin for final closure.`,
+    });
+    await fetchLiveOverview();
+    return data;
+  };
+
   const closeServerIncident = async (serverIncidentId) => {
     const res = await fetch(
       `/api/bdrrmo/incidents/${encodeURIComponent(serverIncidentId)}/close`,
@@ -253,6 +275,7 @@ export function BdrrmoDemoProvider({ children }) {
     markAllRead,
     batchDispatch,
     broadcastNote,
+    verifyClosureForAdmin,
     closeServerIncident,
   };
 

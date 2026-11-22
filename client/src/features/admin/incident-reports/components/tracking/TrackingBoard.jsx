@@ -157,6 +157,16 @@ export default function TrackingBoard({ reports, onOpenFieldOps }) {
   }), [reports]);
 
   const trackers = useMemo(() => reports.flatMap((report) => {
+    const liveDots = (report.dispatchedUnits || [])
+      .filter((u) => u.location && Number.isFinite(Number(u.location.lat)) && Number.isFinite(Number(u.location.lng)))
+      .map((u) => ({
+        id: `live-tracker-${report.id}-${u.id}`,
+        category: u.role === "fire" ? "fire" : u.role === "police" ? "police" : "infrastructure",
+        lat: Number(u.location.lat),
+        lng: Number(u.location.lng),
+        label: u.name,
+      }));
+    if (liveDots.length > 0) return liveDots;
     if (!hasCoords(report)) return [];
     const fraction = fractions[report.id] ?? 0;
     const dots = [{ id: `tracker-${report.id}-tanod`, category: "infrastructure", ...pointAtFraction(routeBetween(TANOD_BASE, report), fraction) }];
