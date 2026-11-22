@@ -134,7 +134,7 @@ export default function ResponderLayout({ children }) {
 
   return (
     <SafeAreaView style={tw`flex-1 bg-slate-50`} edges={['top', 'bottom']}>
-      {currentRoute !== 'Map' ? (
+      {currentRoute !== 'Map' && currentRoute !== 'Messages' ? (
         <>
           {/* Header */}
           <View
