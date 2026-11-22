@@ -114,7 +114,7 @@ export default function Messages() {
         }
         setPoliceDispatches(uniqueByIncident);
       })
-      .catch(() => {});
+      .catch(() => { });
 
     return () => {
       active = false;
@@ -267,9 +267,8 @@ export default function Messages() {
                       {item.reporter_name || 'Resident Reporter'}
                     </Text>
                     <Text
-                      style={tw`rounded-full px-2.5 py-0.5 text-[10px] font-extrabold ${
-                        done ? 'bg-slate-200 text-slate-600' : 'bg-green-100 text-[#1F7A4D]'
-                      }`}
+                      style={tw`rounded-full px-2.5 py-0.5 text-[10px] font-extrabold ${done ? 'bg-slate-200 text-slate-600' : 'bg-green-100 text-[#1F7A4D]'
+                        }`}
                     >
                       {done ? 'Done' : 'Active'}
                     </Text>
