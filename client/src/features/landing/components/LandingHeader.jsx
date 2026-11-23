@@ -6,6 +6,7 @@ import {
   X,
   Shield,
   AlertTriangle,
+  ArrowRight,
   House,
   Info,
   MapPin,
@@ -60,8 +61,18 @@ export default function LandingHeader({ onReportClick }) {
   }, [servicesMenuOpen]);
 
   const servicesSubLinks = [
-    { label: "Barangay Services", href: PATHS.services, icon: Wrench },
-    { label: "Barangay Announcements", href: PATHS.announcements, icon: Megaphone },
+    {
+      label: "Barangay Services",
+      caption: "Request help & public services",
+      href: PATHS.services,
+      icon: Wrench,
+    },
+    {
+      label: "Barangay Announcements",
+      caption: "Advisories, schedules & notices",
+      href: PATHS.announcements,
+      icon: Megaphone,
+    },
   ];
 
   const isServicesGroupActive =
@@ -109,9 +120,11 @@ export default function LandingHeader({ onReportClick }) {
                       aria-haspopup="menu"
                       onClick={() => setServicesMenuOpen((current) => !current)}
                       className={`relative inline-flex items-center gap-1.5 whitespace-nowrap py-2 text-[13px] font-bold transition-colors ${
-                        isServicesGroupActive || servicesMenuOpen
+                        isServicesGroupActive
                           ? "text-(--public-action) after:absolute after:inset-x-0 after:-bottom-1 after:h-0.5 after:rounded-full after:bg-(--gf-green)"
-                          : "text-slate-600 hover:text-(--public-action)"
+                          : servicesMenuOpen
+                            ? "text-(--public-action)"
+                            : "text-slate-600 hover:text-(--public-action)"
                       }`}
                     >
                       <span>{link.label}</span>
@@ -128,43 +141,71 @@ export default function LandingHeader({ onReportClick }) {
                       aria-label="Barangay Services and Announcements"
                       aria-hidden={!servicesMenuOpen}
                       inert={!servicesMenuOpen ? "" : undefined}
-                      className={`absolute left-0 top-full z-50 mt-2 min-w-[230px] rounded-lg border border-(--public-line) bg-white p-1.5 shadow-[0_10px_28px_-8px_rgb(15_23_42/0.14)] transition-[opacity,transform,visibility] duration-150 ease-out motion-reduce:transition-none ${
+                      className={`absolute left-0 top-full z-50 mt-3 w-[312px] overflow-hidden rounded-b-xl rounded-t-sm border border-(--public-line) border-t-2 border-t-(--public-action) bg-white shadow-[0_18px_40px_-14px_rgb(16_59_43/0.22)] transition-[opacity,transform,visibility] duration-150 ease-out motion-reduce:transition-none ${
                         servicesMenuOpen
                           ? "visible translate-y-0 opacity-100"
-                          : "invisible -translate-y-1 opacity-0 pointer-events-none"
+                          : "invisible -translate-y-1.5 opacity-0 pointer-events-none"
                       }`}
                     >
-                      {link.children.map((sub) => {
-                        const SubIcon = sub.icon;
-                        const subActive =
-                          sub.href === PATHS.announcements
-                            ? location.pathname.startsWith(PATHS.announcements)
-                            : location.pathname === sub.href;
-                        return (
-                          <Link
-                            key={sub.href}
-                            to={sub.href}
-                            role="menuitem"
-                            onClick={() => {
-                              setServicesMenuOpen(false);
-                              setMobileMenuOpen(false);
-                            }}
-                            className={`flex items-center gap-2.5 whitespace-nowrap rounded-md px-3 py-2 text-[13px] transition-colors ${
-                              subActive
-                                ? "bg-(--gf-green-soft) font-bold text-(--public-action)"
-                                : "font-semibold text-slate-600 hover:bg-(--gf-green-soft) hover:text-(--public-action)"
-                            }`}
-                          >
-                            <SubIcon
-                              size={15}
-                              strokeWidth={2}
-                              aria-hidden="true"
-                              className={subActive ? "shrink-0 text-(--public-action)" : "shrink-0 text-slate-400"}
-                            />
-                            <span>{sub.label}</span>
-                          </Link>
-                        );
-                      })}
+                      <div className="divide-y divide-(--public-line)">
+                        {link.children.map((sub) => {
+                          const SubIcon = sub.icon;
+                          const subActive =
+                            sub.href === PATHS.announcements
+                              ? location.pathname.startsWith(PATHS.announcements)
+                              : location.pathname === sub.href;
+                          return (
+                            <Link
+                              key={sub.href}
+                              to={sub.href}
+                              role="menuitem"
+                              onClick={() => {
+                                setServicesMenuOpen(false);
+                                setMobileMenuOpen(false);
+                              }}
+                              className={`group/item flex items-center gap-3.5 px-4 py-3.5 transition-colors ${
+                                subActive
+                                  ? "border-l-[3px] border-l-(--public-action) bg-(--gf-green-soft)"
+                                  : "border-l-[3px] border-l-transparent hover:bg-(--gf-green-soft)/60"
+                              }`}
+                            >
+                              <span
+                                aria-hidden="true"
+                                className={`grid h-10 w-10 shrink-0 place-items-center rounded-lg transition-colors ${
+                                  subActive
+                                    ? "bg-(--public-action) text-white"
+                                    : "bg-(--gf-green-soft) text-(--public-action) group-hover/item:bg-(--public-action) group-hover/item:text-white"
+                                }`}
+                              >
+                                <SubIcon size={17} strokeWidth={2} />
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span
+                                  className={`block whitespace-nowrap text-[13px] font-bold leading-snug transition-colors ${
+                                    subActive
+                                      ? "text-(--public-action)"
+                                      : "text-(--public-text-strong) group-hover/item:text-(--public-action)"
+                                  }`}
+                                >
+                                  {sub.label}
+                                </span>
+                                <span className="mt-0.5 block whitespace-nowrap text-[11px] font-medium text-(--public-text-muted)">
+                                  {sub.caption}
+                                </span>
+                              </span>
+                              <ArrowRight
+                                size={15}
+                                aria-hidden="true"
+                                className={`shrink-0 transition-transform duration-150 motion-reduce:transition-none ${
+                                  subActive
+                                    ? "text-(--public-action)"
+                                    : "text-slate-300 group-hover/item:translate-x-0.5 group-hover/item:text-(--public-action)"
+                                }`}
+                              />
+                            </Link>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 );
