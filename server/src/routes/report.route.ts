@@ -52,9 +52,9 @@ reportRoutes.get("/map-feed", async (c) => {
       AND r.incident_status_id NOT IN (11, 12)
     ORDER BY r.submitted_at DESC
     LIMIT 100
-  `).all<Record<string, unknown>>().catch(() => ({ results: [] }));
+  `).all<Record<string, unknown>>();
 
-  const items = (rows.results ?? []).map((row) => {
+  const items = rows.results.map((row) => {
     const isEmergency = Number(row.is_emergency) === 1;
     const statusId = Number(row.incident_status_id);
     let stage = statusId === 10 ? "Resolved" : statusId >= 6 ? "In Progress" : "Reported";

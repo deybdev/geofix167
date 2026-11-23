@@ -165,7 +165,12 @@ export async function getReportStats() {
 
 export async function getPublicMapFeed({ signal } = {}) {
   const data = await reportRequest("/map-feed", { signal });
-  return Array.isArray(data?.items) ? data.items : [];
+  if (!Array.isArray(data.items)) throw new Error("The server did not return a map feed.");
+  return data.items.map(item => ({
+    ...item,
+    pinType: item.report_type === "maintenance" ? "maintenance" : "incident",
+    category: item.report_type === "maintenance" ? "infrastructure" : item.category || "emergency",
+  }));
 }
 
 function reportResult(data) {
