@@ -29,9 +29,9 @@ function ActionCell({ report, escalated, primaryLabel, menuOpen, onToggleMenu, o
   };
   return (
     <td className="px-3 py-3">
-      <div className="flex min-w-[150px] items-center gap-1.5">
+      <div className="flex w-max whitespace-nowrap items-center gap-1.5">
         <button type="button" onClick={() => onOpenDrawer(report)}
-          className="h-9 min-w-[68px] rounded-md bg-(--gf-green) px-3 text-[11px] font-bold text-white shadow-sm transition hover:-translate-y-px hover:bg-(--gf-green-dark) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--gf-green)"
+          className="h-9 min-w-[68px] rounded-md bg-(--gf-green) px-3 text-[11px] font-bold text-white shadow-sm transition hover:bg-(--gf-green-dark) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--gf-green)"
           style={escalated ? { background: "var(--gf-red)", borderColor: "var(--gf-red)" } : undefined}>
           {primaryLabel}
         </button>

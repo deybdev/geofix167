@@ -377,7 +377,7 @@ export default function IncidentReports() {
               const externalTab = tab === "external-agencies";
               const headings = ["ID", "Incident Details", "Category", "Urgency", "Photos", "Location", "Reporter", "Date Reported", "Assigned Team", "Status", ...(pendingTab ? ["Triage Timer"] : []), ...(externalTab ? ["External Units"] : []), "Action"];
               return (
-                <table className="gf-table">
+                <table className="gf-table incident-table">
                   <thead>
                     <tr>{headings.map((heading) => <th key={heading}>{heading}</th>)}</tr>
                   </thead>

@@ -1,3 +1,4 @@
+import HotlineLink from "../../../shared/components/HotlineLink";
 import { CheckCircle2, Radio, PhoneCall } from "lucide-react";
 
 export default function BarangayStatusBanner() {
@@ -19,7 +20,7 @@ export default function BarangayStatusBanner() {
 
         <div className="hidden items-center gap-1 font-medium text-slate-700 md:flex">
           <PhoneCall size={12} className="text-emerald-700" />
-          <span>Emergency Hotline: <strong className="text-slate-900 font-bold">668-338-3141</strong></span>
+          <span>Emergency Hotline: <strong className="text-slate-900 font-bold"><HotlineLink /></strong></span>
         </div>
       </div>
     </div>
