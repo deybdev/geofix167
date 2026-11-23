@@ -129,7 +129,7 @@ export async function submitIncidentReport(
         ? reportCatalog.guestUrgency.sudden
         : reportCatalog.guestUrgency.maintenanceDefault)
     : null;
-  if (guestSubmission && photos.length === 0) {
+  if (guestSubmission && input.is_emergency === 1 && photos.length === 0) {
     throw new ReportError("Attach at least one photo to submit a guest report.", 400);
   }
   if (photos.length && (!guestSubmission || !uploads)) throw new ReportError("Guest evidence photos are not available for this report.", 400);
@@ -188,15 +188,15 @@ export async function submitIncidentReport(
       creationAudit,
       trackingLink,
       guestSession: guestId && token ? {
-        guest_session_id: guestId, display_name: cleanSingleLine(input.guest_alias) || "Guest",
+        guest_session_id: guestId, display_name: "Guest",
         access_token_hash: await sha256(token), created_at: now,
       } : null,
       guestPhotos: preparedPhotos.rows,
       report: {
         incident_id: id, reported_by_user_id: userId, guest_session_id: guestId,
-        incident_status_id: initialStatusId, category, priority_code: priority,
+        incident_status_id: initialStatusId, category, categories: JSON.stringify(input.categories), priority_code: priority,
         is_emergency: input.is_emergency === 1 ? 1 : 0,
-        title: cleanSingleLine(input.title) || `${category} Incident Report`, description_original: description,
+        title: guestSubmission ? input.categories.join(" + ").slice(0, 120) : cleanSingleLine(input.title) || category, description_original: description,
         description_sanitized: language.sanitizedText, callback_mobile_number: input.callback_contact?.trim() || null,
         latitude: input.latitude ?? null, longitude: input.longitude ?? null,
         accuracy_meters: input.accuracy_meters ?? null,

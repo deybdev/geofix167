@@ -11,6 +11,7 @@ export type InsertIncidentReportParams = {
   guest_session_id: string | null;
   incident_status_id: number;
   category: string;
+  categories?: string;
   priority_code: PriorityCode;
   is_emergency: 0 | 1;
   title: string;
@@ -81,7 +82,7 @@ const PUBLIC_REPORT_COLUMNS = `
   r.incident_id,
   COALESCE(printf('GF-%03d', rr.reference_sequence), r.incident_id) AS reference_number,
   r.reported_by_user_id, r.guest_session_id, r.incident_status_id,
-  r.category, r.priority_code, r.is_emergency, r.title,
+  r.category, r.categories, r.priority_code, r.is_emergency, r.title,
   r.description_original, r.description_sanitized,
   r.callback_mobile_number, r.latitude, r.longitude,
   r.accuracy_meters, r.within_barangay_boundary, r.pin_manually_adjusted,
@@ -142,13 +143,13 @@ export async function createIncidentReportBundle(db: Database, params: {
   const r = params.report;
   statements.push(db.prepare(`INSERT INTO incident_reports (
     incident_id, reported_by_user_id, guest_session_id, incident_status_id,
-    category, priority_code, is_emergency, title, description_original,
+    category, categories, priority_code, is_emergency, title, description_original,
     description_sanitized, callback_mobile_number, latitude, longitude,
     accuracy_meters, within_barangay_boundary, pin_manually_adjusted, address_geocoded_at,
     location_description, assigned_team, submitted_at, updated_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(
     r.incident_id, r.reported_by_user_id, r.guest_session_id, r.incident_status_id,
-    r.category, r.priority_code, r.is_emergency, r.title, r.description_original,
+    r.category, r.categories ?? JSON.stringify([r.category]), r.priority_code, r.is_emergency, r.title, r.description_original,
     r.description_sanitized, r.callback_mobile_number, r.latitude, r.longitude,
     r.accuracy_meters, r.within_barangay_boundary, r.pin_manually_adjusted,
     r.address_geocoded_at, r.location_description, r.assigned_team, r.submitted_at, r.updated_at));
@@ -304,7 +305,10 @@ export async function updateIncidentReportDetails(db: Database, id: string,
   const fields = columns.filter(key => input[key] !== undefined);
   if (fields.length === 0) return false;
   const updatedFields: Record<string, string> = Object.fromEntries(fields.map(key => [key, input[key]!]));
-  if (input.category !== undefined) updatedFields.title = input.category.trim() + " Incident Report";
+  if (input.category !== undefined) {
+    updatedFields.title = input.category.trim();
+    updatedFields.categories = JSON.stringify([input.category.trim()]);
+  }
   const results = await db.batch([
     db.prepare(`UPDATE incident_reports SET
       ${Object.keys(updatedFields).map(key => key + ' = ?').join(', ')}, updated_at = datetime('now')

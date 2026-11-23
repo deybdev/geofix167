@@ -1,3 +1,4 @@
+import ReportCategories from "../../shared/components/ReportCategories";
 import { formatForwardedTime } from "./incident-reports/utils";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -298,7 +299,7 @@ export default function AdminDispatch() {
                     const statusLabel = reportStatus === "FORWARDED_TO_BDRRMO" ? "Forwarded to BDRRMO" : reportStatus === "VERIFIED" ? "Verified" : "Submitted";
                     return <button key={report.id} type="button" aria-pressed={selectedId === report.id} onClick={() => selectReport(report.id)} className={`w-full border-l-2 px-3 py-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-600 ${selectedId === report.id ? "border-l-emerald-700 bg-emerald-50/70" : "border-l-transparent hover:bg-slate-50"}`}>
                       <div className="flex items-start justify-between gap-2"><p className="min-w-0 truncate text-sm font-bold">{report.title || "Incident report"}</p><span className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-bold ${urgencyClasses[urgency]}`}>{urgency}</span></div>
-                      <p className="mt-1 truncate text-[11px] text-slate-600">{report.category || "Uncategorized"} · {report.location || "Location unavailable"}</p>
+                      <p className="mt-1 truncate text-[11px] text-slate-600"><ReportCategories report={report} /> · {report.location || "Location unavailable"}</p>
                       <div className="mt-1 flex items-center gap-2 truncate text-[10px] text-slate-500"><span className="truncate">{report.reporter || "Guest"}</span><span title={fullTime} className="shrink-0">{relativeTime(report.submitted_at)}</span><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${reportStatus === "VERIFIED" || reportStatus === "FORWARDED_TO_BDRRMO" ? "bg-emerald-600" : "bg-amber-500"}`} title={statusLabel} /><span className="inline-flex shrink-0 items-center gap-1" title={`${count} photos`}><ImageIcon size={11} />{count}</span></div>
                     </button>;
                   })}
@@ -311,7 +312,7 @@ export default function AdminDispatch() {
                 <section aria-label="Report summary" className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
                   <div className="flex flex-wrap items-center gap-2"><span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${urgencyClasses[urgencyLabel(selectedReport)]}`}>{urgencyLabel(selectedReport)} urgency</span><span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${reviewComplete ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>{isForwarded ? "Forwarded to BDRRMO" : isVerified ? "Verified" : selectedReport.status || "Submitted"}</span></div>
                   <h3 className="mt-3 text-lg font-bold leading-snug text-slate-900">{selectedReport.title || "Incident report"}</h3>
-                  <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-600"><span className="font-semibold text-slate-700">{selectedReport.category || "Uncategorized"}</span><span className="text-slate-300">•</span><span>Reported by {selectedReport.reporter || "Guest"}</span><span className="text-slate-300">•</span><span title={selectedReport.submitted_at ? new Date(selectedReport.submitted_at).toLocaleString() : "Time unavailable"}>{relativeTime(selectedReport.submitted_at)}</span></div>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-600"><span className="font-semibold text-slate-700"><ReportCategories report={selectedReport} /></span><span className="text-slate-300">•</span><span>Reported by {selectedReport.reporter || "Guest"}</span><span className="text-slate-300">•</span><span title={selectedReport.submitted_at ? new Date(selectedReport.submitted_at).toLocaleString() : "Time unavailable"}>{relativeTime(selectedReport.submitted_at)}</span></div>
                 </section>
 
                 <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(290px,0.85fr)]">

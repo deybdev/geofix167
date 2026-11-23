@@ -17,11 +17,13 @@ export const createReportSchema = z
     title: z.string().trim().min(1).max(120).optional(),
     classification: z.enum(["sudden", "maintenance"]).optional(),
     is_emergency: sqliteFlagSchema.optional().default(0),
+    categories: z.array(z.string().trim().min(1).max(100)).max(20).optional(),
+    category: z.string().trim().min(1).max(100).optional(),
     incident_category: z
       .string()
       .trim()
       .min(1, "Incident category is required.")
-      .max(100),
+      .max(100).optional(),
     priority_level: z.string().trim().min(1).max(20).optional(),
     description: z.string().max(10000).nullable().optional(),
     sanitized_description: z.string().max(10000).nullable().optional(),
@@ -48,25 +50,18 @@ export const createReportSchema = z
     if (data.accuracy_meters != null && !(hasLatitude && hasLongitude)) {
       ctx.addIssue({ code: "custom", path: ["accuracy_meters"], message: "Location accuracy requires a coordinate pin." });
     }
+    const selected = [...new Set(data.categories ?? [data.incident_category ?? data.category].filter((value): value is string => Boolean(value)))];
+    const allowed = data.classification ? reportCatalog.categories[data.classification] : Object.values(reportCatalog.categories).flat();
+    if (selected.length < 1 || selected.length > 4 || ((isGuest || data.categories) && selected.some(value => !allowed.includes(value)))) {
+      ctx.addIssue({ code: "custom", path: ["categories"], message: "Choose one to four valid categories for the classification." });
+    }
     if (!isGuest) return;
 
-    if (!data.title?.trim()) {
-      ctx.addIssue({ code: "custom", path: ["title"], message: "Incident title is required." });
-    }
-    if (!data.guest_alias?.trim()) {
-      ctx.addIssue({ code: "custom", path: ["guest_alias"], message: "Reporter name is required." });
-    }
     if (data.classification === "maintenance" && !data.description?.trim()) {
       ctx.addIssue({ code: "custom", path: ["description"], message: "A description is required for a maintenance issue." });
     }
     if (!data.classification) {
       ctx.addIssue({ code: "custom", path: ["classification"], message: "Incident classification is required." });
-    }
-    const allCategories = Object.values(reportCatalog.categories).flat();
-    if (!data.incident_category || !allCategories.includes(data.incident_category)) {
-      ctx.addIssue({ code: "custom", path: ["incident_category"], message: "Choose a valid incident category." });
-    } else if (data.classification && !reportCatalog.categories[data.classification].includes(data.incident_category)) {
-      ctx.addIssue({ code: "custom", path: ["incident_category"], message: "Choose a category that matches the incident classification." });
     }
     if (!hasLatitude && !hasLongitude && !data.reverse_geocoded_address?.trim() && !data.landmark_description?.trim()) {
       ctx.addIssue({ code: "custom", path: ["latitude"], message: "Pin the incident location or provide a location note." });
@@ -88,8 +83,12 @@ export const createReportSchema = z
       ? (reportCatalog.classifications.find((item) => item.value === data.classification)?.isEmergency ? 1 : 0)
       : data.is_emergency;
 
+    const categories = [...new Set(data.categories ?? [data.incident_category ?? data.category].filter((value): value is string => Boolean(value)))];
+    const primary = emergency ? categories[0] : categories.find(value => reportCatalog.guestUrgency.maintenanceHighCategories.includes(value)) ?? categories[0];
     return {
       ...data,
+      categories,
+      incident_category: primary!,
       reporter_type: resolvedReporterType,
       is_emergency: emergency as 0 | 1,
       priority_level: resolvedPriority,

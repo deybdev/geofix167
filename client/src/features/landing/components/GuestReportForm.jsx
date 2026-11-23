@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
-import { AlertTriangle, Camera, Check, Copy, FileText, Image as ImageIcon, LocateFixed, Locate, RotateCcw, Send, Share2, Trash2, UserRound, X } from "lucide-react";
+import { AlertTriangle, Camera, Check, Copy, FileText, Image as ImageIcon, LocateFixed, Locate, RotateCcw, Send, Share2, Trash2, X } from "lucide-react";
 import L from "leaflet";
 import { Circle, GeoJSON, MapContainer, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
@@ -154,10 +154,7 @@ export default function GuestReportForm({
   const [initialPin] = useState(() => getCoordinates(defaultCoordinates));
   const idPrefix = useId();
   const [reportType, setReportType] = useState("sudden");
-  const initialClassification = reportCatalog.classifications.find((item) => item.value === "sudden");
-  const [category, setCategory] = useState(initialClassification.defaultCategory);
-  const [title, setTitle] = useState("");
-  const [reporterName, setReporterName] = useState("");
+  const [selectedCategories, setSelectedCategories] = useState([]);
   const [formStep, setFormStep] = useState(1);
   const [validationErrors, setValidationErrors] = useState({});
   const [focusField, setFocusField] = useState("");
@@ -200,7 +197,7 @@ export default function GuestReportForm({
   const isSuddenIncident = reportType === "sudden";
   const urgencyCode = reportType === "sudden"
     ? reportCatalog.guestUrgency.sudden
-    : reportCatalog.guestUrgency.maintenanceHighCategories.includes(category)
+    : selectedCategories.some((category) => reportCatalog.guestUrgency.maintenanceHighCategories.includes(category))
       ? reportCatalog.guestUrgency.sudden
       : reportCatalog.guestUrgency.maintenanceDefault;
   const urgency = urgencyCode === "HIGH" ? "High" : urgencyCode === "LOW" ? "Low" : "Medium";
@@ -494,9 +491,8 @@ export default function GuestReportForm({
   }, [pinLatitude, pinLongitude]);
 
   const handleTypeChange = (type) => {
-    const selected = reportCatalog.classifications.find((item) => item.value === type);
     setReportType(type);
-    setCategory(selected?.defaultCategory ?? (reportCatalog.categories[type] ?? [])[0] ?? "");
+    setSelectedCategories([]);
     clearValidationError("classification");
     clearValidationError("category");
     clearValidationError("description");
@@ -505,34 +501,31 @@ export default function GuestReportForm({
   const handleNext = () => {
     const errors = {};
     if (!reportType) errors.classification = "Choose an incident classification.";
-    if (!category || !categories.includes(category)) errors.category = "Choose a valid category.";
-    if (!title.trim()) errors.title = "Enter a short incident title.";
-    if (!reporterName.trim()) errors.reporter = "Enter your name so staff can identify the report.";
+    if (!selectedCategories.length || selectedCategories.length > 4 || selectedCategories.some(value => !categories.includes(value))) errors.category = "Choose one to four categories.";
     if (!isSuddenIncident && !description.trim()) errors.description = "Add a description for a maintenance issue.";
     if (!pin && !locationNote.trim()) errors.location = "Pin the incident location or add a location note.";
     if (needsAccuracyConfirmation && !confirmPoorAccuracy) errors.accuracy = "Confirm the current pin or adjust it before continuing.";
     setValidationErrors(errors);
-    const firstInvalid = ["classification", "category", "title", "reporter", "location", "accuracy", "description"].find((field) => errors[field]);
+    const firstInvalid = ["classification", "category", "location", "accuracy", "description"].find((field) => errors[field]);
     if (firstInvalid) {
       setFocusField(firstInvalid);
       return;
     }
     setFocusField("");
     setFormStep(2);
-    void requestCameraAccess();
+    if (isSuddenIncident) void requestCameraAccess();
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
     const errors = {};
-    if (!title.trim()) errors.title = "Enter a short incident title.";
-    if (!reporterName.trim()) errors.reporter = "Enter your name so staff can identify the report.";
+    if (!selectedCategories.length || selectedCategories.length > 4 || selectedCategories.some(value => !categories.includes(value))) errors.category = "Choose one to four categories.";
     if (!isSuddenIncident && !description.trim()) errors.description = "Add a description for a maintenance issue.";
     if (!pin && !locationNote.trim()) errors.location = "Pin the incident location or add a location note.";
     if (needsAccuracyConfirmation && !confirmPoorAccuracy) errors.accuracy = "Confirm the current pin or adjust it before continuing.";
-    if (photosRef.current.length === 0) errors.photos = "Capture or choose at least one photo to submit this report.";
+    if (isSuddenIncident && photosRef.current.length === 0) errors.photos = "Capture or choose at least one photo to submit this report.";
     setValidationErrors(errors);
-    const firstInvalid = ["title", "reporter", "location", "accuracy", "description", "photos"].find((field) => errors[field]);
+    const firstInvalid = ["category", "location", "accuracy", "description", "photos"].find((field) => errors[field]);
     if (firstInvalid && firstInvalid !== "photos") {
       setFormStep(1);
       setFocusField(firstInvalid);
@@ -550,11 +543,9 @@ export default function GuestReportForm({
     const withinBoundary = pin && reportBoundary ? (isInside(pin.lat, pin.lng, reportBoundary) ? 1 : 0) : null;
     const payload = {
       reporter_type: "GUEST",
-      guest_alias: reporterName.trim(),
-      title: title.trim(),
       classification: reportType,
       is_emergency: classification?.isEmergency ? 1 : 0,
-      incident_category: category,
+      categories: selectedCategories,
       description: description.trim(),
       reverse_geocoded_address: address || locationNote.trim() || null,
       pin_manually_adjusted: manuallyAdjusted ? 1 : 0,
@@ -602,8 +593,9 @@ export default function GuestReportForm({
         reportNumber: savedReport.reference_number,
         type: reportType,
         classification: reportType,
-        category: savedReport.category || category,
-        title: savedReport.title || title.trim(),
+        categories: savedReport.categories,
+        category: savedReport.category || selectedCategories[0],
+        title: savedReport.title || selectedCategories.join(" + "),
         location: savedReport.location_description || (isOutsideBarangay ? "Pinned outside Barangay 167" : "Pinned on map"),
         withinBarangayBoundary: savedReport.within_barangay_boundary,
         status: savedReport.status_code || "SUBMITTED",
@@ -701,26 +693,15 @@ export default function GuestReportForm({
           </div>
 
           <div>
-            <label htmlFor={`${idPrefix}-category`} className="mb-1.5 block text-xs font-bold text-slate-700">Category</label>
+            <label htmlFor={`${idPrefix}-category`} className="mb-1.5 block text-xs font-bold text-slate-700">Categories <span className="font-normal">(select 1 to 4)</span></label>
             <AccessibleDropdown
-              value={category}
-              onChange={(value) => { setCategory(value); clearValidationError("category"); }}
+              multiple maxSelected={4}
+              value={selectedCategories}
+              onChange={(value) => { setSelectedCategories(value); clearValidationError("category"); }}
               label="Incident category"
-              options={categories.map((item) => ({ value: item, label: item }))}
+              options={categories.map((item) => ({ value: item, label: item, tone: isSuddenIncident || reportCatalog.guestUrgency.maintenanceHighCategories.includes(item) ? "red" : "neutral", tag: isSuddenIncident || reportCatalog.guestUrgency.maintenanceHighCategories.includes(item) ? "High" : undefined }))}
             />
             {validationErrors.category && <p role="alert" className="mt-1 text-[10px] font-medium text-red-700">{validationErrors.category}</p>}
-          </div>
-
-          <div>
-            <label htmlFor={`${idPrefix}-title`} className="mb-1.5 flex items-center gap-1.5 text-xs font-bold text-slate-700"><FileText size={13} /> Incident Title</label>
-            <input id={`${idPrefix}-title`} type="text" value={title} onChange={(event) => { setTitle(event.target.value); clearValidationError("title"); }} maxLength={120} placeholder="Briefly name the incident" required aria-invalid={Boolean(validationErrors.title)} aria-describedby={validationErrors.title ? `${idPrefix}-title-error` : undefined} className={`w-full rounded-lg border px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#2E8B57] ${validationErrors.title ? "border-red-400 bg-red-50/40" : "border-slate-200 bg-white"}`} />
-            {validationErrors.title && <p id={`${idPrefix}-title-error`} role="alert" className="mt-1 text-[10px] font-medium text-red-700">{validationErrors.title}</p>}
-          </div>
-
-          <div>
-            <label htmlFor={`${idPrefix}-reporter`} className="mb-1.5 flex items-center gap-1.5 text-xs font-bold text-slate-700"><UserRound size={13} /> Your Name</label>
-            <input id={`${idPrefix}-reporter`} type="text" value={reporterName} onChange={(event) => { setReporterName(event.target.value); clearValidationError("reporter"); }} maxLength={100} autoComplete="name" placeholder="Name shown to barangay staff" required aria-invalid={Boolean(validationErrors.reporter)} aria-describedby={validationErrors.reporter ? `${idPrefix}-reporter-error` : undefined} className={`w-full rounded-lg border px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#2E8B57] ${validationErrors.reporter ? "border-red-400 bg-red-50/40" : "border-slate-200 bg-white"}`} />
-            {validationErrors.reporter && <p id={`${idPrefix}-reporter-error`} role="alert" className="mt-1 text-[10px] font-medium text-red-700">{validationErrors.reporter}</p>}
           </div>
 
           <div>
@@ -788,9 +769,9 @@ export default function GuestReportForm({
           <section className="rounded-lg border border-slate-200 bg-slate-50/70 p-3" aria-label="Photo evidence">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h4 className="flex items-center gap-1.5 text-xs font-bold text-slate-800"><Camera size={14} /> Photo evidence</h4>
-              <span className="rounded-full bg-red-50 px-2 py-1 text-[9px] font-bold text-red-700">Required</span>
+              <span className="rounded-full bg-red-50 px-2 py-1 text-[9px] font-bold text-red-700">{isSuddenIncident ? "Required" : "Optional"}</span>
             </div>
-            <p className="mt-1 text-[10px] text-slate-500">Add at least one photo as evidence for barangay staff. You can capture a new photo or choose one from your device.</p>
+            <p className="mt-1 text-[10px] text-slate-500">{isSuddenIncident ? "Add at least one photo as evidence for barangay staff." : "You may add photos to help barangay staff assess the issue."} You can capture a new photo or choose one from your device.</p>
             <input ref={photoInputRef} type="file" accept="image/*" capture="environment" multiple className="sr-only" onChange={handlePhotoFiles} aria-label="Choose photo evidence" />
             {cameraOpen ? (
               <div className="mt-3 space-y-2">

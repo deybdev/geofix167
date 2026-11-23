@@ -1,3 +1,4 @@
+import ReportCategories from "../shared/components/ReportCategories";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { CircleMarker, MapContainer, TileLayer, useMap } from "react-leaflet";
@@ -143,7 +144,7 @@ export default function PublicTrackingPage() {
         <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-100 bg-white px-5 py-4 shadow-sm">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[.18em] text-emerald-700">GeoFix 167 · Live incident updates</p>
-            <h1 className="mt-1 text-xl font-extrabold">Responder tracking</h1>
+            <h1 className="mt-1 text-xl font-extrabold">Responder tracking</h1><ReportCategories report={data} />
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Link to={PATHS.home} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600">

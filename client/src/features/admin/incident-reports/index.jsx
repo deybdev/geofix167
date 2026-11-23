@@ -1,3 +1,4 @@
+import ReportCategories from "../../../shared/components/ReportCategories";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Ban, ChevronLeft, ChevronRight, Download, GitMerge, History,
@@ -335,7 +336,7 @@ export default function IncidentReports() {
                             {report.published && <div><span className="gf-badge gf-badge--fixed">published</span></div>}
                           </td>
                           <td className="px-2 py-3 font-semibold text-[#263246]">{report.title}</td>
-                          <td className="px-2 py-3 text-[#60738f]">{report.category}</td>
+                          <td className="px-2 py-3 text-[#60738f]"><ReportCategories report={report} /></td>
                           <td className="px-2 py-3"><Badge label={displayUrgency(report)} styles={DISPLAY_URGENCY_STYLES[displayUrgency(report)]} /></td>
                           <td className="px-2 py-3">
                             {report.photos?.length && report.incidentId ? <button type="button" onClick={() => setPhotoViewer({ reportId: report.id, index: 0 })} className="group relative block h-10 w-12 overflow-hidden rounded-md border border-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600" aria-label={`View ${report.photos.length} report photos`}>
