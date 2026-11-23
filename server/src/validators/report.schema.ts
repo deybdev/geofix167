@@ -52,8 +52,9 @@ export const createReportSchema = z
     }
     const selected = [...new Set(data.categories ?? [data.incident_category ?? data.category].filter((value): value is string => Boolean(value)))];
     const allowed = data.classification ? reportCatalog.categories[data.classification] : Object.values(reportCatalog.categories).flat();
-    if (selected.length < 1 || selected.length > 4 || ((isGuest || data.categories) && selected.some(value => !allowed.includes(value)))) {
-      ctx.addIssue({ code: "custom", path: ["categories"], message: "Choose one to four valid categories for the classification." });
+    const maximum = data.classification === "maintenance" || (!data.classification && data.is_emergency === 0) ? 1 : 4;
+    if (selected.length < 1 || selected.length > maximum || ((isGuest || data.categories) && selected.some(value => !allowed.includes(value)))) {
+      ctx.addIssue({ code: "custom", path: ["categories"], message: maximum === 1 ? "Choose one valid maintenance category." : "Choose one to four valid sudden incident categories." });
     }
     if (!isGuest) return;
 

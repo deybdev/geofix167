@@ -240,7 +240,7 @@ export default function GuestReportForm({
     if (!focusField) return;
     const form = formContentRef.current?.querySelector("form");
     const element = focusField === "category"
-      ? form?.querySelector('[role="combobox"][aria-label="Incident category"]')
+      ? form?.querySelector('input[name="incident-category"], [role="combobox"][aria-label="Incident category"]')
       : document.getElementById(`${idPrefix}-${focusField}`);
     if (!element) return;
     element.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -501,7 +501,7 @@ export default function GuestReportForm({
   const handleNext = () => {
     const errors = {};
     if (!reportType) errors.classification = "Choose an incident classification.";
-    if (!selectedCategories.length || selectedCategories.length > 4 || selectedCategories.some(value => !categories.includes(value))) errors.category = "Choose one to four categories.";
+    if (!selectedCategories.length || selectedCategories.length > (isSuddenIncident ? 4 : 1) || selectedCategories.some(value => !categories.includes(value))) errors.category = isSuddenIncident ? "Choose one to four incidents." : "Choose one maintenance category.";
     if (!isSuddenIncident && !description.trim()) errors.description = "Add a description for a maintenance issue.";
     if (!pin && !locationNote.trim()) errors.location = "Pin the incident location or add a location note.";
     if (needsAccuracyConfirmation && !confirmPoorAccuracy) errors.accuracy = "Confirm the current pin or adjust it before continuing.";
@@ -519,7 +519,7 @@ export default function GuestReportForm({
   const handleSubmit = async (event) => {
     event.preventDefault();
     const errors = {};
-    if (!selectedCategories.length || selectedCategories.length > 4 || selectedCategories.some(value => !categories.includes(value))) errors.category = "Choose one to four categories.";
+    if (!selectedCategories.length || selectedCategories.length > (isSuddenIncident ? 4 : 1) || selectedCategories.some(value => !categories.includes(value))) errors.category = isSuddenIncident ? "Choose one to four incidents." : "Choose one maintenance category.";
     if (!isSuddenIncident && !description.trim()) errors.description = "Add a description for a maintenance issue.";
     if (!pin && !locationNote.trim()) errors.location = "Pin the incident location or add a location note.";
     if (needsAccuracyConfirmation && !confirmPoorAccuracy) errors.accuracy = "Confirm the current pin or adjust it before continuing.";
@@ -692,17 +692,34 @@ export default function GuestReportForm({
             {validationErrors.classification && <p role="alert" className="mt-1 text-[10px] font-medium text-red-700">{validationErrors.classification}</p>}
           </div>
 
-          <div>
-            <label htmlFor={`${idPrefix}-category`} className="mb-1.5 block text-xs font-bold text-slate-700">Categories <span className="font-normal">(select 1 to 4)</span></label>
-            <AccessibleDropdown
-              multiple maxSelected={4}
-              value={selectedCategories}
-              onChange={(value) => { setSelectedCategories(value); clearValidationError("category"); }}
+          <fieldset>
+            <legend className="mb-1.5 text-xs font-bold text-slate-700">
+              {isSuddenIncident ? "Sudden incidents (select 1 to 4)" : "Maintenance category (choose one)"}
+            </legend>
+            {isSuddenIncident ? <div className="space-y-2">
+              {categories.map(item => {
+                const checked = selectedCategories.includes(item);
+                return <label key={item} className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-xs ${checked ? "border-red-300 bg-red-50" : "border-slate-200 bg-white"}`}>
+                  <input type="checkbox" name="incident-category" value={item} checked={checked}
+                    disabled={!checked && selectedCategories.length >= 4}
+                    onChange={() => {
+                      setSelectedCategories(current => checked ? current.filter(value => value !== item) : [...current, item]);
+                      clearValidationError("category");
+                    }}
+                    className="h-4 w-4 accent-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-40" />
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-red-600" aria-hidden="true" />
+                  <span className="flex-1 text-red-700">{item}</span>
+                  <span className="rounded-full bg-red-50 px-2 py-1 text-[9px] font-bold text-red-700">High</span>
+                </label>;
+              })}
+            </div> : <AccessibleDropdown
+              value={selectedCategories[0] ?? ""}
+              onChange={value => { setSelectedCategories(value ? [value] : []); clearValidationError("category"); }}
               label="Incident category"
-              options={categories.map((item) => ({ value: item, label: item, tone: isSuddenIncident || reportCatalog.guestUrgency.maintenanceHighCategories.includes(item) ? "red" : "neutral", tag: isSuddenIncident || reportCatalog.guestUrgency.maintenanceHighCategories.includes(item) ? "High" : undefined }))}
-            />
+              options={[{ value: "", label: "Choose a maintenance category" }, ...categories.map(item => ({ value: item, label: item, tone: reportCatalog.guestUrgency.maintenanceHighCategories.includes(item) ? "red" : "neutral", tag: reportCatalog.guestUrgency.maintenanceHighCategories.includes(item) ? "High" : undefined }))]}
+            />}
             {validationErrors.category && <p role="alert" className="mt-1 text-[10px] font-medium text-red-700">{validationErrors.category}</p>}
-          </div>
+          </fieldset>
 
           <div>
             <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
