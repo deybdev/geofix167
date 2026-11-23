@@ -32,7 +32,7 @@ test("consolidated mobile flows preserve records and enforce verification", asyn
     const ticket = "t".repeat(64);
     await db.prepare("INSERT INTO mobile_registration_tickets (ticket_hash,identity_payload,code_challenge,expires_at) VALUES (?,?,?,?)").bind(hash(ticket), JSON.stringify({ email: "migrated@example.com" }), challenge, expiry).run();
     await db.prepare("INSERT INTO mobile_registration_identities (token_hash,identity_payload,expires_at) VALUES ('identity','{}',?)").bind(expiry).run();
-    await apply(await readFile("src/migrations/0030_consolidate_mobile_auth_flows.sql", "utf8"));
+    await apply(await readFile("src/migrations/0035_consolidate_mobile_auth_flows.sql", "utf8"));
     assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM auth_flows").first()).n, 4);
     assert.equal((await db.prepare("SELECT attempts FROM auth_flows WHERE token_hash='web'").first()).attempts, 2);
     assert.equal((await db.prepare("SELECT expires_at FROM auth_flows WHERE token_hash='login'").first()).expires_at, expiry);

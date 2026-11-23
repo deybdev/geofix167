@@ -32,7 +32,7 @@ npm install
 
 ```bash
 # still inside the server/ folder
-npx wrangler d1 migrations apply geofix167-db --local
+npm run db:migrate
 ```
 
 ### 4. Start the backend
@@ -66,6 +66,6 @@ Frontend runs at `http://localhost:5173`.
 ## Notes
 
 - Keep both terminals running while developing.
-- The `--local` flag keeps the database on your machine — nothing is sent to Cloudflare.
+- The migration command uses Wrangler's `--local` flag to keep the database on your machine.
 - Never commit `.wrangler/` or any `.env` files to GitHub.
-- Run `npx wrangler d1 migrations apply geofix167-db --local` inside `server/` whenever you add a new migration.
+- Run `npm run db:migrate` inside `server/` so the command checks the mobile auth migration history before Wrangler applies local migrations. If it finds a verified `0030_consolidate_mobile_auth_flows.sql` record, it exports a backup to `server/.wrangler/backups/` and renames that record to `0035_consolidate_mobile_auth_flows.sql`. If the history and schema disagree, the command stops with a diagnostic.

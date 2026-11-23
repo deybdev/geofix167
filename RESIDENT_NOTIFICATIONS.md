@@ -2,9 +2,9 @@
 
 ## Local setup
 
-From `server`, run `npx.cmd wrangler d1 migrations apply geofix167_db --local`.
+From `server`, run `npm run db:migrate` to reconcile local migration history before applying migrations.
 Use the complete ordered migration chain in a normal development database.
-Do not edit applied migrations or run this command with `--remote`.
+Do not edit applied migrations.
 This change was tested only with isolated SQLite and ephemeral Miniflare D1 databases.
 
 `0019_resident_report_notifications.sql` adds the inbox and event trigger.
