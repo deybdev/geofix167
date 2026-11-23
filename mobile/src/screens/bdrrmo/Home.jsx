@@ -32,7 +32,7 @@ export default function BdrrmoHome() {
   };
 
   return (
-    <ScrollView contentContainerStyle={tw`px-5 pb-6 pt-6`}>
+    <ScrollView contentContainerStyle={tw`px-4 pb-6 pt-3`}>
       <Text style={tw`text-3xl font-extrabold text-slate-900`}>Home</Text>
       <Text style={tw`mt-1 text-sm text-slate-500`}>
         Welcome, {user?.full_name || 'BDRRMO'}. Review resident reports and coordinate response.

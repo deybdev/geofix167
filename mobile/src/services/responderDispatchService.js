@@ -1,11 +1,14 @@
 import api from './api';
 
-export async function getResponderDispatches(status) {
+export async function getResponderDispatches(status, role) {
   const { data } = await api.get('/responder/dispatches', {
     params: status ? { status } : undefined,
   });
   if (!Array.isArray(data?.dispatches)) {
     throw new Error('The server returned an invalid dispatch list.');
+  }
+  if (['police', 'fire'].includes(String(role || '').toLowerCase())) {
+    return data.dispatches.filter((item) => !item?.is_maintenance);
   }
   return data.dispatches;
 }
@@ -85,4 +88,16 @@ export async function markArrivedOnScene(dispatchId, payload = {}) {
   const { data } = await api.post(`/responder/dispatches/${dispatchId}/arrive`, payload);
   if (!data.ok) throw new Error('Could not update on-scene status.');
   return data;
+}
+
+export async function getResponderDutyStatus() {
+  const { data } = await api.get('/responder/dispatches/duty-status');
+  return Boolean(data?.on_duty ?? true);
+}
+
+export async function updateResponderDutyStatus(onDuty) {
+  const { data } = await api.patch('/responder/dispatches/duty-status', {
+    on_duty: Boolean(onDuty),
+  });
+  return Boolean(data?.on_duty ?? onDuty);
 }

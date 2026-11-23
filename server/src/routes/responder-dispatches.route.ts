@@ -148,6 +148,42 @@ route.get("/guest-emergencies", async (c) => {
   return c.json({ emergencies: result.results ?? [] });
 });
 
+route.get("/duty-status", async (c) => {
+  const currentUser = c.get("user");
+  const row = await c.env.geofix167_db.prepare(`
+    SELECT availability_status
+    FROM responder_resources
+    WHERE responder_user_id = ?
+    LIMIT 1
+  `).bind(currentUser.id).first<{ availability_status: string }>().catch(() => null);
+
+  const status = row?.availability_status || "AVAILABLE";
+  return c.json({
+    ok: true,
+    on_duty: status === "AVAILABLE" || status === "BUSY",
+    availability_status: status,
+  });
+});
+
+route.patch("/duty-status", async (c) => {
+  const currentUser = c.get("user");
+  const raw = await c.req.json().catch(() => null);
+  const onDuty = Boolean((raw as Record<string, unknown> | null)?.on_duty);
+  const nextStatus = onDuty ? "AVAILABLE" : "UNAVAILABLE";
+
+  await c.env.geofix167_db.prepare(`
+    UPDATE responder_resources
+    SET availability_status = ?, updated_at = datetime('now')
+    WHERE responder_user_id = ?
+  `).bind(nextStatus, currentUser.id).run().catch(() => { });
+
+  return c.json({
+    ok: true,
+    on_duty: onDuty,
+    availability_status: nextStatus,
+  });
+});
+
 route.get("/", async (c) => {
   const currentUser = c.get("user");
   const requestedStatus = c.req.query("status");
@@ -158,9 +194,13 @@ route.get("/", async (c) => {
   await c.env.geofix167_db.batch([
     c.env.geofix167_db.prepare(`DELETE FROM responder_dispatches WHERE LOWER(TRIM(incident_title)) = 'wdad'`),
     c.env.geofix167_db.prepare(`DELETE FROM incident_reports WHERE LOWER(TRIM(title)) = 'wdad' OR LOWER(TRIM(description_original)) = 'wdad'`),
-  ]).catch(() => {});
+  ]).catch(() => { });
 
-  const statusClause = status ? "AND rd.status = ?" : "";
+  const statusClause = status
+    ? status.data === "COMPLETED"
+      ? "AND (rd.status = ? OR r.incident_status_id IN (9, 10))"
+      : "AND rd.status = ? AND r.incident_status_id NOT IN (9, 10)"
+    : "";
   const bindings = status
     ? [currentUser.role, currentUser.role, status.data]
     : [currentUser.role, currentUser.role];
@@ -180,6 +220,21 @@ route.get("/", async (c) => {
             ELSE rd.status
           END AS status,
           rd.dispatched_at,
+          (
+            SELECT ise.created_at FROM incident_status_events ise
+            WHERE ise.incident_id = rd.incident_id AND ise.to_incident_status_id = 8
+            ORDER BY ise.created_at DESC LIMIT 1
+          ) AS arrived_at,
+          (
+            SELECT ise.created_at FROM incident_status_events ise
+            WHERE ise.incident_id = rd.incident_id AND ise.to_incident_status_id IN (9, 10)
+            ORDER BY ise.created_at DESC LIMIT 1
+          ) AS completed_at,
+          (
+            SELECT ise.note FROM incident_status_events ise
+            WHERE ise.incident_id = rd.incident_id AND ise.note LIKE '[AGENCY REPORT]%'
+            ORDER BY ise.created_at DESC LIMIT 1
+          ) AS agency_report_note,
           COALESCE(NULLIF(trim(u.first_name || ' ' || u.last_name), ''), gs.display_name, 'Guest') AS reporter_name,
           COALESCE(r.callback_mobile_number, gs.contact_mobile_number, '') AS reporter_phone,
           COALESCE(r.description_sanitized, r.description_original, '') AS incident_description,
@@ -201,7 +256,91 @@ route.get("/", async (c) => {
         LIMIT 200
       `).bind(...bindings).all();
 
-  const dispatches = result.results ?? [];
+  const rawDispatches = (result.results ?? []) as Array<Record<string, unknown>>;
+
+  const photoRows = await c.env.geofix167_db.prepare(`
+    SELECT incident_id, incident_media_id AS id, COALESCE(original_filename, '') AS original_filename
+    FROM incident_media
+    WHERE media_type = 'PHOTO'
+    ORDER BY created_at, incident_media_id
+  `).all<{ incident_id: string; id: string; original_filename: string }>().catch(() => ({ results: [] }));
+
+  const photosByIncident = new Map<string, string[]>();
+  const reporterPhotosByIncident = new Map<string, string[]>();
+  const responderPhotosByIncident = new Map<string, string[]>();
+  for (const p of photoRows.results ?? []) {
+    const list = photosByIncident.get(p.incident_id) ?? [];
+    list.push(p.id);
+    photosByIncident.set(p.incident_id, list);
+
+    const isResponderProof =
+      p.original_filename.includes("-resolution") ||
+      p.original_filename.startsWith("transport-proof") ||
+      p.original_filename.startsWith("maintenance");
+
+    if (isResponderProof) {
+      const respList = responderPhotosByIncident.get(p.incident_id) ?? [];
+      respList.push(p.id);
+      responderPhotosByIncident.set(p.incident_id, respList);
+    } else {
+      const repList = reporterPhotosByIncident.get(p.incident_id) ?? [];
+      repList.push(p.id);
+      reporterPhotosByIncident.set(p.incident_id, repList);
+    }
+  }
+
+  const qrRows = await c.env.geofix167_db.prepare(`
+    SELECT qr_handover_id, incident_id, token_hash, receiving_remarks, created_at, expires_at
+    FROM qr_handovers
+    ORDER BY created_at DESC
+  `).all<{
+    qr_handover_id: string;
+    incident_id: string;
+    token_hash: string;
+    receiving_remarks: string | null;
+    created_at: string;
+    expires_at: string | null;
+  }>().catch(() => ({ results: [] }));
+
+  const qrByIncident = new Map<string, Record<string, unknown>>();
+  for (const q of qrRows.results ?? []) {
+    if (qrByIncident.has(q.incident_id)) continue;
+    let parsedRemarks: Record<string, unknown> = {};
+    if (q.receiving_remarks) {
+      try {
+        parsedRemarks = JSON.parse(q.receiving_remarks);
+      } catch {
+        parsedRemarks = { further_info: q.receiving_remarks };
+      }
+    }
+    qrByIncident.set(q.incident_id, {
+      handover_id: q.qr_handover_id,
+      token: q.token_hash?.slice(0, 24) || q.qr_handover_id,
+      created_at: q.created_at,
+      expires_at: q.expires_at,
+      ...parsedRemarks,
+    });
+  }
+
+  const dispatches = rawDispatches.map((row) => {
+    const incId = String(row.incident_id);
+    const qrHandover = qrByIncident.get(incId) ?? null;
+    const responderPhotos = responderPhotosByIncident.get(incId) ?? [];
+    if (
+      qrHandover &&
+      typeof qrHandover.proof_media_id === "string" &&
+      !responderPhotos.includes(qrHandover.proof_media_id)
+    ) {
+      responderPhotos.push(qrHandover.proof_media_id);
+    }
+
+    return {
+      ...row,
+      reporter_photo_ids: reporterPhotosByIncident.get(incId) ?? [],
+      responder_photo_ids: responderPhotos,
+      qr_handover: qrHandover,
+    };
+  });
 
   if (currentUser.role === "tanod") {
     const tanodResult = await c.env.geofix167_db.prepare(`
@@ -235,20 +374,6 @@ route.get("/", async (c) => {
       ORDER BY ta.assigned_at DESC
       LIMIT 100
     `).bind(currentUser.id).all<Record<string, unknown>>();
-
-    const photoRows = await c.env.geofix167_db.prepare(`
-      SELECT incident_id, incident_media_id AS id
-      FROM incident_media
-      WHERE media_type = 'PHOTO'
-      ORDER BY created_at, incident_media_id
-    `).all<{ incident_id: string; id: string }>().catch(() => ({ results: [] }));
-
-    const photosByIncident = new Map<string, string[]>();
-    for (const p of photoRows.results ?? []) {
-      const list = photosByIncident.get(p.incident_id) ?? [];
-      list.push(p.id);
-      photosByIncident.set(p.incident_id, list);
-    }
 
     const mappedTanod = (tanodResult.results ?? []).map((row) => {
       const meta = parseMaintenanceMeta(String(row.raw_notes || ""));
@@ -536,7 +661,7 @@ route.post("/:dispatchId/qr-handover", async (c) => {
       UPDATE responder_resources
       SET availability_status = 'AVAILABLE', updated_at = datetime('now')
       WHERE responder_user_id = ?
-    `).bind(currentUser.id).run().catch(() => {});
+    `).bind(currentUser.id).run().catch(() => { });
   }
 
   await c.env.geofix167_db.prepare(`
@@ -554,7 +679,7 @@ route.post("/:dispatchId/qr-handover", async (c) => {
     body.incident_id,
     currentUser.id,
     `Hospital QR handover generated (${body.hospital_name || "Hospital"}). ${body.further_info || ""}`.trim(),
-  ).run().catch(() => {});
+  ).run().catch(() => { });
 
   return c.json({
     ok: true,
@@ -863,15 +988,15 @@ route.post("/:dispatchId/complete-agency", async (c) => {
     proof_media_id: mediaId,
     ...(lto
       ? {
-          lto_handover: {
-            handover_id: ltoHandoverId,
-            token: ltoToken,
-            receiving_lto_unit: lto.receiving_lto_unit || "LTO Traffic Enforcement",
-            vehicles_involved: lto.vehicles_involved || "",
-            driver_license_info: lto.driver_license_info || "",
-            violation_type: lto.violation_type || "",
-          },
-        }
+        lto_handover: {
+          handover_id: ltoHandoverId,
+          token: ltoToken,
+          receiving_lto_unit: lto.receiving_lto_unit || "LTO Traffic Enforcement",
+          vehicles_involved: lto.vehicles_involved || "",
+          driver_license_info: lto.driver_license_info || "",
+          violation_type: lto.violation_type || "",
+        },
+      }
       : {}),
   }, 201);
 });

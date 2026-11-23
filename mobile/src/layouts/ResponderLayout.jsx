@@ -1,10 +1,8 @@
-import { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import {
   ClipboardList,
   Clock3,
   House,
-  LogOut,
   Map,
   MessageCircle,
   UserRound,
@@ -18,6 +16,7 @@ import { useAuth } from '../context/AuthContext';
 const COLORS = {
   brandDark: '#0B2E22',
   brand: '#1F7A4D',
+  active: '#1F7A4D',
   inactive: '#94A3B8',
 };
 
@@ -86,15 +85,22 @@ function NavTab({ item, isActive, onPress }) {
     >
       <View
         style={[
-          tw`h-8 w-14 items-center justify-center rounded-full`,
-          isActive ? tw`bg-green-100` : null,
+          tw`h-8 w-12 items-center justify-center rounded-full`,
+          isActive ? tw`bg-green-50` : null,
         ]}
       >
-        <Icon size={21} color={isActive ? COLORS.brand : COLORS.inactive} strokeWidth={isActive ? 2.4 : 2} />
+        <Icon
+          size={20}
+          color={isActive ? COLORS.active : COLORS.inactive}
+          strokeWidth={isActive ? 2.4 : 2}
+        />
       </View>
       <Text
         numberOfLines={1}
-        style={tw`mt-1 text-center text-[10px] ${isActive ? 'font-bold text-[#1F7A4D]' : 'font-medium text-slate-400'}`}
+        style={[
+          tw`mt-0.5 text-center text-[10px]`,
+          isActive ? tw`font-bold text-[#1F7A4D]` : [tw`font-medium`, { color: COLORS.inactive }],
+        ]}
       >
         {label}
       </Text>
@@ -103,95 +109,58 @@ function NavTab({ item, isActive, onPress }) {
 }
 
 export default function ResponderLayout({ children }) {
-  const { user, signOut } = useAuth();
+  const { user, onDuty, toggleDuty } = useAuth();
   const navigation = useNavigation();
   const { name: currentRoute } = useRoute();
-  const [loggingOut, setLoggingOut] = useState(false);
-  const [onDuty, setOnDuty] = useState(true);
   const role = String(user?.role || '').toLowerCase();
   const navItems = NAV_ITEMS_BY_ROLE[role] || NAV_ITEMS;
 
-
-  const confirmSignOut = () => {
-    Alert.alert('Sign out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign out',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            setLoggingOut(true);
-            await signOut();
-          } catch (error) {
-            setLoggingOut(false);
-            console.error('Responder logout failed:', error);
-            Alert.alert('Error', 'Unable to sign out. Please try again.');
-          }
-        },
-      },
-    ]);
-  };
-
   return (
     <SafeAreaView style={tw`flex-1 bg-slate-50`} edges={['top', 'bottom']}>
-      {currentRoute !== 'Map' && currentRoute !== 'Messages' ? (
+      {currentRoute !== 'Map' && currentRoute !== 'Navigation' && currentRoute !== 'IncidentDetails' && currentRoute !== 'HistoryDetails' && currentRoute !== 'Messages' && currentRoute !== 'Call' && currentRoute !== 'History' && currentRoute !== 'Profile' ? (
         <>
           {/* Header */}
           <View
-            style={tw`flex-row items-center bg-[#0B2E22] px-4 pb-4 pt-3 rounded-b-3xl`}
+            style={tw`flex-row items-center rounded-b-3xl border-b border-slate-200 bg-white px-4 pb-3.5 pt-3`}
           >
-            <View style={tw`h-11 w-11 items-center justify-center rounded-full bg-green-400/20`}>
-              <Text style={tw`text-sm font-extrabold text-green-100`}>
+            <View style={tw`h-11 w-11 items-center justify-center rounded-full border border-green-200 bg-green-50`}>
+              <Text style={tw`text-sm font-extrabold text-[#1F7A4D]`}>
                 {getInitials(user?.full_name)}
               </Text>
             </View>
 
             <View style={tw`ml-3 flex-1`}>
-              <Text numberOfLines={1} style={tw`mt-0.5 text-base font-bold text-white`}>
+              <Text numberOfLines={1} style={tw`mt-0.5 text-base font-bold text-slate-900`}>
                 {user?.full_name || 'Responder'}
               </Text>
-              <Text style={tw`mt-0.5 text-xs font-medium text-green-200`}>
+              <Text style={tw`mt-0.5 text-xs font-semibold text-[#1F7A4D]`}>
                 {ROLE_LABELS[role] || 'Responder'}
               </Text>
             </View>
 
             <Pressable
-              onPress={() => setOnDuty((current) => !current)}
+              onPress={() => void toggleDuty()}
               accessibilityRole="button"
               accessibilityLabel={onDuty ? 'Set responder off duty' : 'Set responder on duty'}
               accessibilityState={{ selected: onDuty }}
               style={({ pressed }) => [
-                tw`mr-2 flex-row items-center rounded-full border px-2.5 py-2`,
-                {
-                  backgroundColor: onDuty ? 'rgba(74, 222, 128, 0.18)' : 'rgba(148, 163, 184, 0.18)',
-                  borderColor: onDuty ? 'rgba(74, 222, 128, 0.55)' : 'rgba(148, 163, 184, 0.45)',
-                  opacity: pressed ? 0.7 : 1,
-                },
+                tw`flex-row items-center rounded-full border px-2.5 py-2 ${onDuty ? 'border-green-200 bg-green-50' : 'border-slate-200 bg-slate-100'
+                  }`,
+                { opacity: pressed ? 0.7 : 1 },
               ]}
             >
               <View
                 style={[
                   tw`mr-1.5 h-2 w-2 rounded-full`,
-                  { backgroundColor: onDuty ? '#4ADE80' : '#94A3B8' },
+                  { backgroundColor: onDuty ? COLORS.brand : '#94A3B8' },
                 ]}
               />
-              <Text style={tw`text-[10px] font-extrabold text-white`}>
+              <Text
+                style={tw`pr-0.5 text-[10px] font-bold ${onDuty ? 'text-[#1F7A4D]' : 'text-slate-500'
+                  }`}
+              >
                 {onDuty ? 'ON DUTY' : 'OFF DUTY'}
               </Text>
-            </Pressable>
-
-            <Pressable
-              onPress={confirmSignOut}
-              disabled={loggingOut}
-              accessibilityRole="button"
-              accessibilityLabel="Sign out"
-              hitSlop={8}
-              style={({ pressed }) => [
-                tw`h-11 w-11 items-center justify-center rounded-full bg-white/10`,
-                { opacity: pressed || loggingOut ? 0.6 : 1 },
-              ]}
-            >
-              {loggingOut ? <ActivityIndicator size="small" color="#fff" /> : <LogOut size={19} color="#fff" />}
             </Pressable>
           </View>
         </>
@@ -202,28 +171,34 @@ export default function ResponderLayout({ children }) {
         <View style={tw`flex-1`}>{children}</View>
       </View>
 
-      {/* Bottom navigation */}
-      <View
-        style={[
-          tw`flex-row rounded-t-3xl bg-white px-2 pb-1 pt-2`,
-          {
-            shadowColor: '#0F172A',
-            shadowOpacity: 0.08,
-            shadowRadius: 12,
-            shadowOffset: { width: 0, height: -3 },
-            elevation: 12,
-          },
-        ]}
-      >
-        {navItems.map((item) => (
-          <NavTab
-            key={item.route}
-            item={item}
-            isActive={currentRoute === item.route}
-            onPress={() => navigation.navigate(item.route)}
-          />
-        ))}
-      </View>
+      {/* Bottom navigation (hidden on full-screen Map, Navigation, IncidentDetails, HistoryDetails, Messages, and Call) */}
+      {currentRoute !== 'Messages' && currentRoute !== 'Call' && currentRoute !== 'IncidentDetails' && currentRoute !== 'HistoryDetails' && currentRoute !== 'Map' && currentRoute !== 'Navigation' ? (
+        <View style={tw`px-3 pb-2 pt-1`}>
+          <View
+            style={[
+              tw`flex-row rounded-3xl border border-slate-200 bg-white px-1.5 py-1.5`,
+              {
+                shadowColor: '#0F172A',
+                shadowOpacity: 0.08,
+                shadowRadius: 10,
+                shadowOffset: { width: 0, height: 4 },
+                elevation: 8,
+              },
+            ]}
+          >
+            {navItems.map((item) => (
+              <NavTab
+                key={item.route}
+                item={item}
+                isActive={currentRoute === item.route}
+                onPress={() => {
+                  if (currentRoute !== item.route) navigation.navigate(item.route);
+                }}
+              />
+            ))}
+          </View>
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }

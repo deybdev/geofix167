@@ -1,5 +1,5 @@
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 
 import {
   login as loginService,
@@ -8,6 +8,10 @@ import {
   logout as logoutService,
   refreshMobileSession,
 } from '../services/authService';
+import {
+  getResponderDutyStatus,
+  updateResponderDutyStatus,
+} from '../services/responderDispatchService';
 
 import { secureStorage } from '../services/secureStorage';
 
@@ -25,6 +29,38 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(false);
   const [isRestoring, setIsRestoring] = useState(true);
+  const [onDuty, setOnDuty] = useState(true);
+
+  useEffect(() => {
+    const role = String(user?.role || '').toLowerCase();
+    if (!user?.id || !['bdrrmo', 'police', 'fire', 'tanod'].includes(role)) {
+      setOnDuty(true);
+      return undefined;
+    }
+    let active = true;
+    getResponderDutyStatus()
+      .then((duty) => {
+        if (active) setOnDuty(duty);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [user?.id, user?.role]);
+
+  const toggleDuty = useCallback(async (explicitValue) => {
+    let nextValue = true;
+    setOnDuty((current) => {
+      nextValue = typeof explicitValue === 'boolean' ? explicitValue : !current;
+      return nextValue;
+    });
+    try {
+      await updateResponderDutyStatus(nextValue);
+    } catch {
+      // Keep local duty toggle responsive even when offline
+    }
+    return nextValue;
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -227,6 +263,9 @@ export function AuthProvider({ children }) {
         user,
         loading,
         isRestoring,
+        onDuty,
+        setOnDuty,
+        toggleDuty,
         signIn,
         signInWithGoogle,
         signOut,
