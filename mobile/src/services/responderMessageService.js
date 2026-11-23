@@ -1,4 +1,5 @@
 import api from './api';
+import { secureStorage } from './secureStorage';
 
 function messageError(error, fallback) {
   return new Error(
@@ -63,4 +64,61 @@ export async function sendIncidentMessage(incidentId, body) {
     if (error.message === 'The server returned an invalid message.') throw error;
     throw messageError(error, 'Unable to send message.');
   }
+}
+
+export function connectIncidentMessagesSocket(incidentId, { onMessage } = {}) {
+  if (!incidentId) return () => {};
+  let closed = false;
+  let socket = null;
+  let reconnectTimer = null;
+
+  const open = async () => {
+    if (closed) return;
+    try {
+      const token = await secureStorage.getAccessToken();
+      if (!token || closed) return;
+      const base = String(api.defaults.baseURL || '').replace(/\/$/, '');
+      const wsBase = base.replace(/^http:/i, 'ws:').replace(/^https:/i, 'wss:');
+      const url = `${wsBase}/reports/${encodeURIComponent(incidentId)}/messages/ws?token=${encodeURIComponent(token)}`;
+      socket = new WebSocket(url);
+      socket.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload?.type === 'message' && payload.message && onMessage) {
+            onMessage(payload.message);
+          }
+        } catch {
+          // Ignore malformed WS messages
+        }
+      };
+      socket.onclose = () => {
+        if (!closed) {
+          reconnectTimer = setTimeout(open, 3000);
+        }
+      };
+      socket.onerror = () => {
+        try {
+          socket?.close();
+        } catch {
+          // Ignore close error
+        }
+      };
+    } catch {
+      if (!closed) {
+        reconnectTimer = setTimeout(open, 4000);
+      }
+    }
+  };
+
+  void open();
+
+  return () => {
+    closed = true;
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    try {
+      socket?.close();
+    } catch {
+      // Ignore close error
+    }
+  };
 }

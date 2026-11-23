@@ -340,3 +340,7 @@ export async function markAllNotificationsRead() {
   SAMPLE_NOTIFICATIONS.forEach((n) => { n.is_read = 1; });
   return { data: { ok: true } };
 }
+
+export async function discardReport(publicId, { signal } = {}) {
+  return api.delete(`/reports/${encodeURIComponent(publicId)}`, { signal });
+}

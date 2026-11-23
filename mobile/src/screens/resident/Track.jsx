@@ -31,7 +31,11 @@ import {
 import tw from 'twrnc';
 
 import MapViewer from '../../components/map/MapViewer';
-import { getIncidentMessages, sendIncidentMessage } from '../../services/responderMessageService';
+import {
+  connectIncidentMessagesSocket,
+  getIncidentMessages,
+  sendIncidentMessage,
+} from '../../services/responderMessageService';
 import { getReportDetails } from '../../services/residentService';
 
 /* -----------------------------------------
@@ -854,44 +858,53 @@ export default function Track({ reportId: reportIdProp, route }) {
       { location: initialLocation, priority: initialPriority }
     );
 
+    const mapIncidentMsg = (item) => {
+      const role = String(item.sender_role || '').toLowerCase();
+      const roleBadge =
+        role === 'bdrrmo'
+          ? 'BDRRMO Dispatcher'
+          : role === 'admin'
+            ? 'Barangay Dispatcher'
+            : role === 'fire'
+              ? 'BFP Fire Unit'
+              : role === 'police'
+                ? 'PNP Police Unit'
+                : role === 'tanod'
+                  ? 'Barangay Tanod'
+                  : 'Responder';
+      return {
+        id: item.id,
+        from: role === 'resident' ? 'resident' : 'responder',
+        senderLabel: item.sender_name ? `${item.sender_name} • ${roleBadge}` : roleBadge,
+        text: item.body,
+        at: Date.parse(item.sent_at) || Date.now(),
+        state: 'sent',
+      };
+    };
+
     const pollMessages = () => {
       if (!reportId) return;
       getIncidentMessages(reportId)
         .then((loaded) => {
-          setMessages(
-            loaded.map((item) => {
-              const role = String(item.sender_role || '').toLowerCase();
-              const roleBadge =
-                role === 'bdrrmo'
-                  ? 'BDRRMO Dispatcher'
-                  : role === 'admin'
-                    ? 'Barangay Dispatcher'
-                    : role === 'fire'
-                      ? 'BFP Fire Unit'
-                      : role === 'police'
-                        ? 'PNP Police Unit'
-                        : role === 'tanod'
-                          ? 'Barangay Tanod'
-                          : 'Responder';
-              return {
-                id: item.id,
-                from: role === 'resident' ? 'resident' : 'responder',
-                senderLabel: item.sender_name ? `${item.sender_name} • ${roleBadge}` : roleBadge,
-                text: item.body,
-                at: Date.parse(item.sent_at) || Date.now(),
-                state: 'sent',
-              };
-            }),
-          );
+          setMessages(loaded.map(mapIncidentMsg));
         })
         .catch(() => {});
     };
 
     pollMessages();
-    const messageTimer = setInterval(pollMessages, 4000);
+    const messageTimer = setInterval(pollMessages, 10000);
+    const closeSocket = connectIncidentMessagesSocket(reportId, {
+      onMessage: (item) => {
+        const mapped = mapIncidentMsg(item);
+        setMessages((current) =>
+          current.some((m) => m.id === mapped.id) ? current : [...current, mapped],
+        );
+      },
+    });
 
     return () => {
       clearInterval(messageTimer);
+      closeSocket();
       unsubscribe();
     };
   }, [reportId, initialLocation, initialPriority]);
@@ -1415,22 +1428,28 @@ export default function Track({ reportId: reportIdProp, route }) {
                 )}
 
                 <View style={tw`mt-3 flex-row`}>
+                  {(() => {
+                    const responderPhone =
+                      responder.phone || dispatchedUnits.find((u) => u.phone)?.phone || HOTLINE;
+                    return (
                   <Pressable
-                    onPress={() => callNumber(responder.phone)}
-                    disabled={!responder.phone}
+                    onPress={() => callNumber(responderPhone)}
+                    disabled={!responderPhone}
                     accessibilityRole="button"
                     accessibilityLabel={`Call ${responder.name}`}
                     style={({ pressed }) => [
                       tw`mr-3 h-12 flex-1 flex-row items-center justify-center rounded-2xl`,
                       {
                         backgroundColor: COLORS.primary,
-                        opacity: !responder.phone ? 0.4 : pressed ? 0.8 : 1,
+                        opacity: !responderPhone ? 0.4 : pressed ? 0.8 : 1,
                       },
                     ]}
                   >
                     <Phone size={17} color="#FFFFFF" />
                     <Text style={tw`ml-2 text-sm font-extrabold text-white`}>Call</Text>
                   </Pressable>
+                    );
+                  })()}
 
                   <Pressable
                     onPress={openChat}

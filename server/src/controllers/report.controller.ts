@@ -13,6 +13,7 @@ import {
   updateReportStatus, updateReportDetails,
 } from "../services/report.service";
 import { parseMaintenanceMeta } from "../routes/admin-maintenance.route";
+import { stripSelectedDetails } from "../utils/stripSelectedDetails";
 
 async function getDispatchedUnitsForIncidents(
   db: AppEnv["Bindings"]["geofix167_db"],
@@ -24,6 +25,7 @@ async function getDispatchedUnitsForIncidents(
       id: string;
       role: string;
       name: string;
+      phone: string | null;
       status: string;
       dispatched_at: string | null;
       location: { lat: number; lng: number; heading: number | null; updated_at: string } | null;
@@ -32,11 +34,12 @@ async function getDispatchedUnitsForIncidents(
   if (!incidentIds.length) return unitsByIncident;
 
   try {
-    const [tanodRows, agencyRows, locRows] = await Promise.all([
+    const [tanodRows, agencyRows, locRows, rolePhones] = await Promise.all([
       db.prepare(`
         SELECT ta.tanod_assignment_id AS id, ta.incident_id, ta.assignment_status_id,
           ta.assigned_at, ta.notes,
-          COALESCE(rr.display_name, NULLIF(trim(u.first_name || ' ' || u.last_name), ''), 'Barangay Tanod') AS unit_name
+          COALESCE(rr.display_name, NULLIF(trim(u.first_name || ' ' || u.last_name), ''), 'Barangay Tanod') AS unit_name,
+          NULLIF(trim(u.mobile_number), '') AS phone
         FROM tanod_assignments ta
         LEFT JOIN responder_resources rr ON rr.responder_resource_id = ta.responder_resource_id
         LEFT JOIN users u ON u.user_id = ta.tanod_user_id
@@ -51,7 +54,19 @@ async function getDispatchedUnitsForIncidents(
         SELECT assignment_id, lat, lng, heading, updated_at
         FROM responder_locations
       `).all<{ assignment_id: string; lat: number; lng: number; heading: number | null; updated_at: string }>(),
+      db.prepare(`
+        SELECT lower(ro.code) AS role_code, NULLIF(trim(u.mobile_number), '') AS phone
+        FROM users u
+        JOIN roles ro ON ro.role_id = u.role_id
+        WHERE lower(ro.code) IN ('police', 'fire', 'tanod')
+          AND NULLIF(trim(u.mobile_number), '') IS NOT NULL
+      `).all<{ role_code: string; phone: string }>().catch(() => ({ results: [] })),
     ]);
+
+    const phoneByRole = new Map<string, string>();
+    for (const rp of rolePhones.results ?? []) {
+      if (!phoneByRole.has(rp.role_code)) phoneByRole.set(rp.role_code, rp.phone);
+    }
 
     const locByAssign = new Map<string, { lat: number; lng: number; heading: number | null; updated_at: string }>();
     for (const loc of locRows.results ?? []) {
@@ -83,6 +98,7 @@ async function getDispatchedUnitsForIncidents(
         id,
         role: "tanod",
         name: String(row.unit_name || "Barangay Tanod"),
+        phone: row.phone ? String(row.phone) : (phoneByRole.get("tanod") ?? null),
         status: statusMap[Number(row.assignment_status_id)] || "DISPATCHED",
         dispatched_at: row.assigned_at ? String(row.assigned_at) : null,
         location: locByAssign.get(id) ?? null,
@@ -100,6 +116,7 @@ async function getDispatchedUnitsForIncidents(
         id,
         role: dept,
         name: dept === "fire" ? "BFP Fire Unit" : "PNP Police Unit",
+        phone: phoneByRole.get(dept) ?? null,
         status: String(row.status || "DISPATCHED"),
         dispatched_at: row.dispatched_at ? String(row.dispatched_at) : null,
         location: locByAssign.get(id) ?? null,
@@ -262,6 +279,8 @@ export async function listReportsController(c: Context<AppEnv>) {
         const verifiedNote = verifiedByIncident.get(report.incident_id) ?? null;
         return {
           ...report,
+          description_sanitized: stripSelectedDetails(report.description_sanitized),
+          description_original: stripSelectedDetails(report.description_original),
           photos: list,
           photo_count: list.length,
           photo_url: firstPhoto
@@ -340,6 +359,9 @@ export async function getReportByIdController(c: Context<AppEnv>) {
           inspection_photo_urls: meta.inspection_photo_ids.map(
             (pid) => `/api/reports/${encodeURIComponent(report.incident_id)}/photos/${encodeURIComponent(pid)}`,
           ),
+          for_funding: Boolean(meta.for_funding),
+          for_funding_at: meta.for_funding_at || null,
+          for_funding_note: meta.for_funding_note || "",
           admin_check_approved: Boolean(meta.admin_check_approved),
           repair_done: meta.repair_done,
           repair_at: meta.repair_at || null,
@@ -352,15 +374,19 @@ export async function getReportByIdController(c: Context<AppEnv>) {
             ? "Verified Fixed"
             : meta.repair_done
               ? "Awaiting Verification"
-              : meta.inspection_done
-                ? "Area Inspected"
-                : "Assigned to Tanod",
+              : meta.for_funding
+                ? "For Funding"
+                : meta.inspection_done
+                  ? "Area Inspected"
+                  : "Assigned to Tanod",
         }
       : null;
 
     return c.json({
       report: {
         ...report,
+        description_sanitized: stripSelectedDetails(report.description_sanitized),
+        description_original: stripSelectedDetails(report.description_original),
         photo_url: photoUrl,
         maintenance_progress: maintenanceProgress,
         dispatched_units: unitsByIncident.get(report.incident_id) ?? [],

@@ -16,6 +16,7 @@ import {
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -28,6 +29,7 @@ import tw from 'twrnc';
 import { useAuth } from '../../context/AuthContext';
 import { getResponderDispatches } from '../../services/responderDispatchService';
 import {
+  connectIncidentMessagesSocket,
   getIncidentMessages,
   getResponderMessages,
   sendIncidentMessage,
@@ -153,7 +155,7 @@ export default function Messages() {
   const route = useRoute();
   const navigation = useNavigation();
   const role = String(user?.role || 'bdrrmo').toLowerCase();
-  const isPolice = role === 'police';
+  const isPolice = ['police', 'fire', 'tanod'].includes(role);
   const channels = CHANNELS_BY_ROLE[role] || CHANNELS_BY_ROLE.bdrrmo;
 
   const [selectedId, setSelectedId] = useState(channels[0].id);
@@ -292,10 +294,10 @@ export default function Messages() {
       return {
         ...base,
         id: activeIncident.incident_id,
-        name: activeIncident.reporter_name || 'Resident Reporter',
+        name: `${activeIncident.reporter_name || 'Resident Reporter'} (Group Chat)`,
         subtitle: activeIncident.incident_title
-          ? `${activeIncident.incident_title} • ${activeIncident.incident_location || 'Barangay 167'}`
-          : base.subtitle,
+          ? `Reporter + Dispatched Units • ${activeIncident.incident_title}`
+          : 'Reporter + Dispatched Units',
       };
     }
     return base;
@@ -333,11 +335,37 @@ export default function Messages() {
       });
 
     fetchMessages();
-    const refreshTimer = setInterval(fetchMessages, 4000);
+    const refreshTimer = setInterval(fetchMessages, 10000);
+    const closeSocket =
+      isPolice && activeIncident?.incident_id
+        ? connectIncidentMessagesSocket(activeIncident.incident_id, {
+          onMessage: (item) => {
+            if (!active) return;
+            setMessagesByChannel((current) => {
+              const existing = current[selectedChannel.id] || [];
+              if (existing.some((m) => m.id === item.id)) return current;
+              return {
+                ...current,
+                [selectedChannel.id]: [
+                  ...existing,
+                  {
+                    id: item.id,
+                    from: item.sender_name || item.sender_role,
+                    text: item.body,
+                    mine: item.sender_user_id === user?.id || item.sender_role === role,
+                    createdAt: item.created_at || item.sent_at || null,
+                  },
+                ],
+              };
+            });
+          },
+        })
+        : () => {};
 
     return () => {
       active = false;
       clearInterval(refreshTimer);
+      closeSocket();
     };
   }, [activeIncident?.incident_id, isPolice, role, selectedChannel.id, user?.id]);
 
@@ -581,14 +609,19 @@ export default function Messages() {
           {isPolice ? (
             <View style={tw`ml-2 flex-row items-center gap-1`}>
               <Pressable
-                onPress={() =>
+                onPress={() => {
+                  const phone = String(activeIncident?.reporter_phone || '').replace(/[^\d+]/g, '');
+                  if (phone) {
+                    void Linking.openURL(`tel:${phone}`);
+                    return;
+                  }
                   navigation.navigate('Call', {
                     mode: 'voice',
                     recipientName: selectedChannel.name,
                     subtitle: selectedChannel.subtitle,
                     assignment: activeIncident,
-                  })
-                }
+                  });
+                }}
                 accessibilityRole="button"
                 accessibilityLabel="Call reporter"
                 hitSlop={6}

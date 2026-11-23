@@ -12,6 +12,7 @@ import {
   Modal,
   ActivityIndicator,
   BackHandler,
+  Keyboard,
   KeyboardAvoidingView,
   Linking,
   Platform,
@@ -718,14 +719,13 @@ export default function Report({ guestMode = false, route }) {
     setSubmitError('');
 
     try {
-      const selectedChecks = checks.length ? `Selected details: ${checks.join(', ')}` : '';
       const selectedCategory = CATEGORY_BY_SELECTION[reportType]?.[checks[0]] || (
         reportType === 'emergency' ? 'Incident / Emergency' : 'Structural'
       );
       const residentPayload = buildResidentReportPayload({
         category: selectedCategory,
         isEmergency: reportType === 'emergency',
-        description: [description.trim(), selectedChecks].filter(Boolean).join('\n'),
+        description: description.trim(),
         position: location,
         address: null,
         landmark: null,
@@ -1173,10 +1173,13 @@ export default function Report({ guestMode = false, route }) {
       <ScrollView
         ref={scrollRef}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={tw`px-4 pb-6 pt-1`}
       >
-        <Animated.View style={{ opacity: fade }}>{renderStep()}</Animated.View>
+        <Pressable onPress={Keyboard.dismiss}>
+          <Animated.View style={{ opacity: fade }}>{renderStep()}</Animated.View>
+        </Pressable>
       </ScrollView>
 
       {!guestMode && !!successNotice && <View style={tw`mx-4 mb-3`}><AnimatedSuccessBanner message={successNotice} /></View>}

@@ -1,7 +1,7 @@
 export const MAX_ATTACHMENTS = 5;
 export const MEDIA_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/webm', 'video/quicktime'];
 
-export const canEditReport = report => Boolean(report && !report.is_terminal && [1, 2, 3].includes(report.status_id));
+export const canEditReport = report => Boolean(report && ([1, 2, 3, 11].includes(report.status_id)));
 export const canUploadReport = (report, user) => Boolean(user?.id && report?.reported_by_user_id === user.id);
 
 export function formatReportTime(value) {

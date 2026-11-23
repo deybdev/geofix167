@@ -1,5 +1,7 @@
 import { Hono } from "hono";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { ensureIncidentReportSnapshot } from "../services/incidentReportSnapshot.service";
+import { stripSelectedDetails } from "../utils/stripSelectedDetails";
 import type { AppEnv } from "../types/env";
 
 const route = new Hono<AppEnv>();
@@ -207,7 +209,7 @@ route.get("/overview", async (c) => {
       submittedAt: String(row.submitted_at || ""),
       reporterName: String(row.reporter_name || "Guest"),
       reporterPhone: String(row.reporter_phone || ""),
-      description: String(row.description_sanitized || row.description_original || "No description provided."),
+      description: stripSelectedDetails(row.description_sanitized || row.description_original) || "No description provided.",
       lockedDepartments: {
         fire: isFireCategory(String(row.category || ""), String(row.title || "")),
         police: isCrimeCategory(String(row.category || ""), String(row.title || "")),
@@ -222,10 +224,40 @@ route.get("/overview", async (c) => {
     };
   });
 
+  const roleUserRows = await db.prepare(`
+    SELECT lower(ro.code) AS role_code, COUNT(DISTINCT u.user_id) AS total
+    FROM users u
+    JOIN user_roles ur ON ur.user_id = u.user_id
+    JOIN roles ro ON ro.role_id = ur.role_id
+    WHERE lower(ro.code) IN ('fire', 'police', 'tanod')
+    GROUP BY lower(ro.code)
+  `).all<{ role_code: string; total: number }>().catch(() => ({ results: [] }));
+
+  const roleTotals: Record<string, number> = { fire: 0, police: 0, tanod: 0 };
+  for (const r of roleUserRows.results ?? []) {
+    roleTotals[r.role_code] = Number(r.total) || 0;
+  }
+
+  const activeFireCount = (dispatchRows.results ?? []).filter(
+    (d) => String(d.target_role) === "fire" && !["COMPLETED", "CANCELLED", "DECLINED"].includes(String(d.status)),
+  ).length;
+  const activePoliceCount = (dispatchRows.results ?? []).filter(
+    (d) => String(d.target_role) === "police" && !["COMPLETED", "CANCELLED", "DECLINED"].includes(String(d.status)),
+  ).length;
+  const allResponders = unitRows.results ?? [];
+  const availableTanods = allResponders.filter(
+    (r) => r.resource_type === "TANOD" && r.availability_status === "AVAILABLE",
+  ).length;
+
   return c.json({
     incidents,
-    responders: unitRows.results ?? [],
+    responders: allResponders,
     handovers: handoverRows.results ?? [],
+    departmentCounts: {
+      fire: Math.max(0, (roleTotals.fire || 1) - activeFireCount),
+      police: Math.max(0, (roleTotals.police || 1) - activePoliceCount),
+      tanod: availableTanods,
+    },
   });
 });
 
@@ -256,13 +288,11 @@ route.post("/incidents/:incidentId/dispatch", async (c) => {
   if (!incident) return c.json({ error: "Incident not found." }, 404);
 
   const selectedDepts = new Set<string>(
-    (body?.departments ?? []).filter((d) => d === "police" || d === "fire"),
+    (body?.departments ?? []).filter((d) => d === "police" || d === "fire" || d === "tanod"),
   );
-  if (isFireCategory(incident.category || "", incident.title)) selectedDepts.add("fire");
-  if (isCrimeCategory(incident.category || "", incident.title)) selectedDepts.add("police");
 
   if (selectedDepts.size === 0 && !body?.tanod_unit_id) {
-    return c.json({ error: "Select at least one department (BFP/Police) or an available Tanod." }, 400);
+    return c.json({ error: "Select at least one department (BFP, Police, or Tanod)." }, 400);
   }
 
   const currentUser = c.get("user");
@@ -270,6 +300,7 @@ route.post("/incidents/:incidentId/dispatch", async (c) => {
   const statements = [];
 
   for (const role of selectedDepts) {
+    if (role === "tanod") continue;
     statements.push(
       db.prepare(`
         INSERT INTO responder_dispatches
@@ -293,18 +324,32 @@ route.post("/incidents/:incidentId/dispatch", async (c) => {
     );
   }
 
-  if (body?.tanod_unit_id) {
-    const resource = await db.prepare(`
-      SELECT responder_resource_id, responder_user_id, display_name
-      FROM responder_resources
-      WHERE responder_resource_id = ? AND responder_user_id IS NOT NULL
-    `).bind(body.tanod_unit_id).first<{
-      responder_resource_id: string;
-      responder_user_id: string;
-      display_name: string;
-    }>();
+  let tanodDispatched = false;
+  if (body?.tanod_unit_id || selectedDepts.has("tanod")) {
+    const resource = body?.tanod_unit_id
+      ? await db.prepare(`
+          SELECT responder_resource_id, responder_user_id, display_name
+          FROM responder_resources
+          WHERE responder_resource_id = ? AND responder_user_id IS NOT NULL
+        `).bind(body.tanod_unit_id).first<{
+          responder_resource_id: string;
+          responder_user_id: string;
+          display_name: string;
+        }>()
+      : await db.prepare(`
+          SELECT responder_resource_id, responder_user_id, display_name
+          FROM responder_resources
+          WHERE resource_type = 'TANOD' AND responder_user_id IS NOT NULL
+          ORDER BY CASE WHEN availability_status = 'AVAILABLE' THEN 0 ELSE 1 END, updated_at ASC
+          LIMIT 1
+        `).first<{
+          responder_resource_id: string;
+          responder_user_id: string;
+          display_name: string;
+        }>();
 
     if (resource) {
+      tanodDispatched = true;
       statements.push(
         db.prepare(`
           INSERT INTO tanod_assignments
@@ -350,7 +395,139 @@ route.post("/incidents/:incidentId/dispatch", async (c) => {
   }
 
   await db.batch(statements);
-  return c.json({ ok: true, dispatched_departments: [...selectedDepts], tanod_dispatched: Boolean(body?.tanod_unit_id) }, 201);
+  return c.json({
+    ok: true,
+    dispatched_departments: [...selectedDepts].filter((d) => d !== "tanod"),
+    tanod_dispatched: tanodDispatched,
+  }, 201);
+});
+
+route.post("/incidents/:incidentId/reject", async (c) => {
+  const db = c.env.geofix167_db;
+  const incidentId = c.req.param("incidentId");
+  const currentUser = c.get("user");
+  const body = (await c.req.json().catch(() => null)) as {
+    reason?: string;
+    false_report?: boolean;
+  } | null;
+
+  const isFalseReport = Boolean(body?.false_report);
+  const reason =
+    String(body?.reason || "").trim() ||
+    (isFalseReport ? "Flagged as false report by BDRRMO" : "Rejected by BDRRMO");
+  const note = isFalseReport ? `[FALSE REPORT] ${reason}` : `[REJECTED] ${reason}`;
+
+  await db.batch([
+    db.prepare(`
+      UPDATE incident_reports
+      SET incident_status_id = 11, closed_at = datetime('now'), closed_by_user_id = ?, updated_at = datetime('now')
+      WHERE incident_id = ?
+    `).bind(currentUser.id, incidentId),
+    db.prepare(`
+      INSERT INTO incident_status_events
+        (incident_status_event_id, incident_id, from_incident_status_id, to_incident_status_id, changed_by_user_id, note)
+      VALUES (?, ?, 5, 11, ?, ?)
+    `).bind(crypto.randomUUID(), incidentId, currentUser.id, note),
+  ]);
+
+  try {
+    const rep = await db.prepare(`SELECT reported_by_user_id FROM incident_reports WHERE incident_id = ?`)
+      .bind(incidentId).first<{ reported_by_user_id: string | null }>();
+    if (rep?.reported_by_user_id) {
+      await db.prepare(`
+        INSERT INTO resident_notifications
+          (notification_id, recipient_user_id, incident_id, type, title, body, created_at)
+        VALUES (?, ?, ?, 'report_update', ?, ?, ?)
+      `).bind(
+        crypto.randomUUID().replace(/-/g, ""),
+        rep.reported_by_user_id,
+        incidentId,
+        isFalseReport ? "Report Flagged as False Report" : "Submitted Report Rejected",
+        `Your submitted report was rejected by BDRRMO${reason ? `: "${reason}"` : "."} Open the report to modify and resubmit or discard it.`,
+        new Date().toISOString(),
+      ).run();
+    }
+  } catch { /* ignore notification error */ }
+
+  return c.json({ ok: true, status: "REJECTED", false_report: isFalseReport });
+});
+
+route.post("/incidents/:incidentId/reject-completion", async (c) => {
+  const db = c.env.geofix167_db;
+  const incidentId = c.req.param("incidentId");
+  const currentUser = c.get("user");
+  const body = (await c.req.json().catch(() => null)) as {
+    reason?: string;
+    target_role?: "fire" | "police" | "tanod";
+    photo_label?: string;
+    photo_id?: string;
+  } | null;
+  const targetRole = body?.target_role;
+  const photoId = body?.photo_id?.trim() || null;
+  const photoPrefix = body?.photo_label ? `${body.photo_label} rejected: ` : "";
+  const reason = `${photoPrefix}${body?.reason?.trim() || "Proof of completion photo did not meet BDRRMO verification requirements. Please refill and resubmit."}`;
+
+  if (photoId) {
+    const mediaRow = await db.prepare(`
+      SELECT storage_key FROM incident_media
+      WHERE incident_media_id = ? AND incident_id = ?
+      LIMIT 1
+    `).bind(photoId, incidentId).first<{ storage_key: string | null }>().catch(() => null);
+
+    if (mediaRow?.storage_key && c.env.geofix167_uploads) {
+      await c.env.geofix167_uploads.delete(mediaRow.storage_key).catch(() => {});
+    }
+  }
+
+  const statements = [];
+  if (photoId) {
+    statements.push(
+      db.prepare(`
+        DELETE FROM incident_media
+        WHERE incident_media_id = ? AND incident_id = ?
+      `).bind(photoId, incidentId),
+    );
+  }
+  if (!targetRole || targetRole === "fire" || targetRole === "police") {
+    statements.push(
+      targetRole
+        ? db.prepare(`
+            UPDATE responder_dispatches
+            SET status = 'ON_SCENE'
+            WHERE incident_id = ? AND lower(target_role) = ? AND status != 'DECLINED'
+          `).bind(incidentId, targetRole)
+        : db.prepare(`
+            UPDATE responder_dispatches
+            SET status = 'ON_SCENE'
+            WHERE incident_id = ? AND status != 'DECLINED'
+          `).bind(incidentId),
+    );
+  }
+  if (!targetRole || targetRole === "tanod") {
+    statements.push(
+      db.prepare(`
+        UPDATE tanod_assignments
+        SET assignment_status_id = 5, completed_at = NULL
+        WHERE incident_id = ? AND assignment_status_id != 3
+      `).bind(incidentId),
+    );
+  }
+  statements.push(
+    db.prepare(`
+      UPDATE incident_reports
+      SET incident_status_id = 8, updated_at = datetime('now')
+      WHERE incident_id = ? AND incident_status_id NOT IN (10, 11, 12)
+    `).bind(incidentId),
+    db.prepare(`
+      INSERT INTO incident_status_events
+        (incident_status_event_id, incident_id, from_incident_status_id, to_incident_status_id, changed_by_user_id, note)
+      VALUES (?, ?, 9, 8, ?, ?)
+    `).bind(crypto.randomUUID(), incidentId, currentUser.id, `[COMPLETION REJECTED] ${reason}`),
+  );
+
+  await db.batch(statements);
+
+  return c.json({ ok: true, status: "ON_SCENE", target_role: targetRole || "all", reason });
 });
 
 route.post("/incidents/:incidentId/note", async (c) => {
@@ -402,6 +579,25 @@ route.post("/incidents/:incidentId/close", async (c) => {
   const incidentId = c.req.param("incidentId");
   const currentUser = c.get("user");
 
+  // Completion-gated closure: require ALL dispatched responders to have submitted completion reports
+  const [unfinishedAgency, unfinishedTanod, totalAgency, totalTanod] = await Promise.all([
+    db.prepare(`SELECT COUNT(*) AS cnt FROM responder_dispatches WHERE incident_id = ? AND status NOT IN ('COMPLETED', 'DECLINED')`).bind(incidentId).first<{ cnt: number }>(),
+    db.prepare(`SELECT COUNT(*) AS cnt FROM tanod_assignments WHERE incident_id = ? AND assignment_status_id NOT IN (3, 6)`).bind(incidentId).first<{ cnt: number }>(),
+    db.prepare(`SELECT COUNT(*) AS cnt FROM responder_dispatches WHERE incident_id = ? AND status != 'DECLINED'`).bind(incidentId).first<{ cnt: number }>(),
+    db.prepare(`SELECT COUNT(*) AS cnt FROM tanod_assignments WHERE incident_id = ? AND assignment_status_id != 3`).bind(incidentId).first<{ cnt: number }>(),
+  ]);
+
+  const totalDispatched = Number(totalAgency?.cnt || 0) + Number(totalTanod?.cnt || 0);
+  const remainingUnfinished = Number(unfinishedAgency?.cnt || 0) + Number(unfinishedTanod?.cnt || 0);
+
+  if (totalDispatched === 0 || remainingUnfinished > 0) {
+    return c.json({
+      error: totalDispatched === 0
+        ? "Cannot close yet — no responders have been dispatched."
+        : `Cannot close yet — ${remainingUnfinished} dispatched responder(s) have not submitted their completion report.`,
+    }, 409);
+  }
+
   await db.batch([
     db.prepare(`
       UPDATE incident_reports
@@ -419,11 +615,21 @@ route.post("/incidents/:incidentId/close", async (c) => {
       WHERE incident_id = ?
     `).bind(incidentId),
     db.prepare(`
+      UPDATE responder_resources
+      SET availability_status = 'AVAILABLE', updated_at = datetime('now')
+      WHERE responder_resource_id IN (
+        SELECT responder_resource_id FROM tanod_assignments WHERE incident_id = ?
+      )
+    `).bind(incidentId),
+    db.prepare(`
       INSERT INTO incident_status_events
         (incident_status_event_id, incident_id, from_incident_status_id, to_incident_status_id, changed_by_user_id, note)
-      VALUES (?, ?, 9, 10, ?, 'BDRRMO authorized coordinated multi-unit closure')
+      VALUES (?, ?, 9, 10, ?, 'BDRRMO verified completion and authorized closure')
     `).bind(crypto.randomUUID(), incidentId, currentUser.id),
   ]);
+
+  // Generate summarized completion report snapshot so Admin receives only the summary once closed
+  await ensureIncidentReportSnapshot(db, incidentId, currentUser.id, "BDRRMO verified completion and authorized closure").catch(() => null);
 
   return c.json({ ok: true, status: "CLOSED" });
 });

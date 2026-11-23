@@ -17,10 +17,12 @@ async function hashToken(token: string): Promise<string> {
 export const requireAuth = createMiddleware<AppEnv>(
   async (c, next) => {
     // Native mobile clients authenticate with a Bearer token; browsers use the session cookie.
+    // WebSocket upgrades may pass the token via ?token= query parameter.
     const authHeader = c.req.header("Authorization");
+    const isWsUpgrade = c.req.header("Upgrade")?.toLowerCase() === "websocket";
     const token = authHeader?.startsWith("Bearer ")
       ? authHeader.slice(7)
-      : getCookie(c, "geofix_session");
+      : (isWsUpgrade ? c.req.query("token") : undefined) || getCookie(c, "geofix_session");
 
     if (!token) {
       return c.json({ error: "Authentication required." }, 401);

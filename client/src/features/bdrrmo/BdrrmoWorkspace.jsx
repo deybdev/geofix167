@@ -9,7 +9,6 @@ import {
   Download,
   Flame,
   Handshake,
-  Lock,
   MapPin,
   MapPinned,
   Maximize2,
@@ -774,27 +773,30 @@ function HandoverView({ tab, onOpen, onIncident }) {
 function IncidentDrawer({ incident: initialIncident, onClose }) {
   const {
     incidents,
-    handovers,
-    responders,
+    departmentCounts,
     batchDispatch,
     broadcastNote,
-    verifyClosureForAdmin,
+    rejectServerIncident,
+    rejectCompletionReport,
     closeServerIncident,
   } = useBdrrmoDemo();
 
   const incident = incidents.find((i) => i.id === initialIncident.id) ?? initialIncident;
 
-  const fireLocked = Boolean(incident.lockedDepartments?.fire);
-  const policeLocked = Boolean(incident.lockedDepartments?.police);
+  const fireSuggested = Boolean(incident.lockedDepartments?.fire);
+  const policeSuggested = Boolean(incident.lockedDepartments?.police);
 
-  const [includeFire, setIncludeFire] = useState(fireLocked);
-  const [includePolice, setIncludePolice] = useState(policeLocked);
-  const [selectedTanodId, setSelectedTanodId] = useState("");
+  const [includeFire, setIncludeFire] = useState(fireSuggested);
+  const [includePolice, setIncludePolice] = useState(policeSuggested);
+  const includeTanod = true;
   const [tacticalNoteDraft, setTacticalNoteDraft] = useState("");
   const [showLiveTrackingMap, setShowLiveTrackingMap] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
-  const [verifiedComplete, setVerifiedComplete] = useState(false);
+  const [rejectMode, setRejectMode] = useState(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [rejectingPhoto, setRejectingPhoto] = useState(null);
+  const [rejectCompletionReason, setRejectCompletionReason] = useState("");
   const [chatMessages, setChatMessages] = useState([]);
   const [chatDraft, setChatDraft] = useState("");
   const [sendingChat, setSendingChat] = useState(false);
@@ -860,40 +862,34 @@ function IncidentDrawer({ incident: initialIncident, onClose }) {
     };
   }, [onClose]);
 
-  const availableTanods = responders.filter(
-    (r) =>
-      !["UNAVAILABLE", "OUT_OF_SERVICE"].includes(r.availabilityStatus) &&
-      (!r.resourceType || r.resourceType === "TANOD"),
-  );
   const dispatchedUnits = incident.dispatchedUnits || [];
-  const linkedHandovers = handovers.filter(
-    (h) => h.incidentId === incident.incidentId || h.incidentId === incident.id,
-  );
+  const alreadyDispatched = dispatchedUnits.length > 0;
+  const dispatchedRoles = new Set(dispatchedUnits.map((u) => String(u.role || "").toLowerCase()));
 
   // Live validations
   const incidentErrors = validateIncident(incident);
-  const selectedTanod = responders.find((r) => r.id === selectedTanodId) || null;
   const dispatchErrors = [];
-  if (!(includeFire || fireLocked || includePolice || policeLocked || selectedTanodId)) {
-    dispatchErrors.push("Select at least one department (BFP / Police) or a Tanod.");
+  if (!alreadyDispatched && !(includeFire || includePolice || includeTanod)) {
+    dispatchErrors.push("Select at least one department (BFP, Police, or Tanod).");
   }
-  if (selectedTanod && ["UNAVAILABLE", "OUT_OF_SERVICE"].includes(selectedTanod.availabilityStatus)) {
-    dispatchErrors.push("Selected Tanod is offline or out of service.");
-  }
-  const canBatchDispatch = dispatchErrors.length === 0 && incident.incidentStatusCode !== "CLOSED";
+  const canBatchDispatch =
+    !alreadyDispatched && dispatchErrors.length === 0 && incident.incidentStatusCode !== "CLOSED";
 
   const pendingUnits = dispatchedUnits.filter(
     (u) => !["COMPLETED", "CANCELLED", "DECLINED"].includes(u.status),
   );
+  const hasCompletionReport = dispatchedUnits.length > 0 && pendingUnits.length === 0;
+
   const closureWarnings = [];
   if (dispatchedUnits.length === 0) {
     closureWarnings.push("No responder units have been dispatched yet.");
   }
-  if (pendingUnits.length > 0) {
-    closureWarnings.push(`${pendingUnits.length} dispatched unit(s) are still active on this incident.`);
-  }
-  if (linkedHandovers.some((h) => h.qrStatusCode === "PENDING_ACCEPTANCE")) {
-    closureWarnings.push("A hospital QR handover is still pending acceptance.");
+  if (!hasCompletionReport) {
+    closureWarnings.push(
+      pendingUnits.length > 0
+        ? `Waiting for ${pendingUnits.length} remaining responder(s) to submit their completion report.`
+        : "Awaiting all dispatched responders to submit their completion reports.",
+    );
   }
 
   const hasCoordinates = Number.isFinite(Number(incident.lat)) && Number.isFinite(Number(incident.lng));
@@ -912,15 +908,14 @@ function IncidentDrawer({ incident: initialIncident, onClose }) {
     setSubmitting(true);
     try {
       const departments = [];
-      if (includeFire || fireLocked) departments.push("fire");
-      if (includePolice || policeLocked) departments.push("police");
+      if (includeFire) departments.push("fire");
+      if (includePolice) departments.push("police");
+      if (includeTanod) departments.push("tanod");
       await batchDispatch(incident.incidentId, {
         departments,
-        tanod_unit_id: selectedTanodId || null,
         tactical_note: tacticalNoteDraft.trim() || undefined,
       });
       setTacticalNoteDraft("");
-      setSelectedTanodId("");
       toast.add({
         type: "success",
         title: "Dispatch sent",
@@ -951,18 +946,48 @@ function IncidentDrawer({ incident: initialIncident, onClose }) {
     }
   }
 
-  async function handleVerifyForAdmin() {
-    if (submitting) return;
+  async function handleRejectIncident() {
+    if (!rejectMode || submitting) return;
     setSubmitting(true);
     try {
-      await verifyClosureForAdmin(incident.incidentId);
+      await rejectServerIncident(incident.incidentId, {
+        falseReport: rejectMode === "false",
+        reason: rejectReason.trim(),
+      });
+      setRejectMode(null);
+      setRejectReason("");
       toast.add({
         type: "success",
-        title: "Verified & forwarded to Admin",
-        description: `${incident.id} resolution verified by BDRRMO and sent to Admin for final closure.`,
+        title: rejectMode === "false" ? "Flagged as False Report" : "Incident Rejected",
+        description: `${incident.id} has been closed and removed from active dispatch.`,
+      });
+      onClose();
+    } catch (err) {
+      toast.add({ type: "error", title: "Action failed", description: err.message });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleRejectCompletion() {
+    if (!rejectingPhoto || submitting) return;
+    setSubmitting(true);
+    try {
+      await rejectCompletionReport(incident.incidentId, {
+        reason: rejectCompletionReason.trim(),
+        targetRole: rejectingPhoto.targetRole,
+        photoLabel: rejectingPhoto.label,
+        photoId: rejectingPhoto.id,
+      });
+      setRejectingPhoto(null);
+      setRejectCompletionReason("");
+      toast.add({
+        type: "success",
+        title: `${rejectingPhoto.label} rejected`,
+        description: "The responder has been notified to refill their completion form.",
       });
     } catch (err) {
-      toast.add({ type: "error", title: "Verification failed", description: err.message });
+      toast.add({ type: "error", title: "Action failed", description: err.message });
     } finally {
       setSubmitting(false);
     }
@@ -977,7 +1002,7 @@ function IncidentDrawer({ incident: initialIncident, onClose }) {
       toast.add({
         type: "success",
         title: "Incident closed",
-        description: `${incident.id} closed and synced to Admin.`,
+        description: `${incident.id} closed and summary report sent to Admin.`,
       });
     } catch (err) {
       toast.add({ type: "error", title: "Closure failed", description: err.message });
@@ -1073,74 +1098,79 @@ function IncidentDrawer({ incident: initialIncident, onClose }) {
           )}
 
           {incident.incidentStatusCode !== "CLOSED" && (
-            <DrawerSection title="Single / Batch Dispatch (BFP, Police & Tanod Transport)" icon={UserCheck}>
+            <DrawerSection title="Single / Batch Dispatch (BFP, Police & Tanod)" icon={UserCheck}>
               <div
                 className={`space-y-3 rounded-lg border border-[#e0e7eb] bg-[#f8fafb] p-3.5 ${
-                  incident.bdrrmoVerified ? "pointer-events-none opacity-50" : ""
+                  alreadyDispatched ? "opacity-60" : ""
                 }`}
               >
-                <div className="grid grid-cols-2 gap-2">
-                  <label
-                    className={`flex items-center justify-between rounded-lg border px-3 py-2.5 text-[11px] font-bold transition ${
-                      fireLocked
-                        ? "cursor-not-allowed border-[#f3d3d3] bg-[#fdecea] text-[#dc2626]"
+                <p className="text-[10px] text-[#60738f]">
+                  {alreadyDispatched
+                    ? "Units have already been dispatched to this incident. All dispatch options are locked."
+                    : "Toggle departments below. Dispatching automatically assigns the next available responder from each selected queue."}
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    disabled={alreadyDispatched}
+                    onClick={() => setIncludeFire((v) => !v)}
+                    className={`flex flex-col items-start rounded-lg border px-3 py-2.5 text-left transition ${
+                      alreadyDispatched
+                        ? "cursor-not-allowed border-[#d6dde2] bg-[#eef2f4] text-[#7c8ba3]"
                         : includeFire
-                          ? "border-(--gf-green) bg-(--gf-green-soft) text-(--gf-green)"
-                          : "border-[#dfe7ea] bg-white text-[#263246]"
+                          ? "border-(--gf-green) bg-(--gf-green-soft) text-(--gf-green) ring-1 ring-(--gf-green)"
+                          : "border-[#dfe7ea] bg-white text-[#263246] hover:border-(--gf-green)"
                     }`}
                   >
-                    <span className="flex items-center gap-1.5">
-                      <input
-                        type="checkbox"
-                        checked={includeFire || fireLocked}
-                        disabled={fireLocked}
-                        onChange={(e) => setIncludeFire(e.target.checked)}
-                      />
-                      <Flame size={13} className="text-[#dc2626]" />
-                      BFP (Fire)
+                    <span className="flex items-center gap-1.5 text-[11px] font-bold">
+                      <Flame size={13} className={alreadyDispatched ? "text-[#94a3b8]" : "text-[#dc2626]"} />
+                      BFP
                     </span>
-                    {fireLocked && <Lock size={12} title="Auto-locked for Fire incidents" />}
-                  </label>
+                    <span className="mt-1 text-[9px] font-semibold text-[#60738f]">
+                      {alreadyDispatched && dispatchedRoles.has("fire")
+                        ? "Dispatched"
+                        : `${departmentCounts.fire} available`}
+                    </span>
+                  </button>
 
-                  <label
-                    className={`flex items-center justify-between rounded-lg border px-3 py-2.5 text-[11px] font-bold transition ${
-                      policeLocked
-                        ? "cursor-not-allowed border-[#cbd5f5] bg-[#eef2fb] text-[#4c6fbf]"
+                  <button
+                    type="button"
+                    disabled={alreadyDispatched}
+                    onClick={() => setIncludePolice((v) => !v)}
+                    className={`flex flex-col items-start rounded-lg border px-3 py-2.5 text-left transition ${
+                      alreadyDispatched
+                        ? "cursor-not-allowed border-[#d6dde2] bg-[#eef2f4] text-[#7c8ba3]"
                         : includePolice
-                          ? "border-(--gf-green) bg-(--gf-green-soft) text-(--gf-green)"
-                          : "border-[#dfe7ea] bg-white text-[#263246]"
+                          ? "border-(--gf-green) bg-(--gf-green-soft) text-(--gf-green) ring-1 ring-(--gf-green)"
+                          : "border-[#dfe7ea] bg-white text-[#263246] hover:border-(--gf-green)"
                     }`}
                   >
-                    <span className="flex items-center gap-1.5">
-                      <input
-                        type="checkbox"
-                        checked={includePolice || policeLocked}
-                        disabled={policeLocked}
-                        onChange={(e) => setIncludePolice(e.target.checked)}
-                      />
-                      <Shield size={13} className="text-[#4c6fbf]" />
-                      Police (PNP)
+                    <span className="flex items-center gap-1.5 text-[11px] font-bold">
+                      <Shield size={13} className={alreadyDispatched ? "text-[#94a3b8]" : "text-[#4c6fbf]"} />
+                      Police
                     </span>
-                    {policeLocked && <Lock size={12} title="Auto-locked for Crime incidents" />}
-                  </label>
-                </div>
+                    <span className="mt-1 text-[9px] font-semibold text-[#60738f]">
+                      {alreadyDispatched && dispatchedRoles.has("police")
+                        ? "Dispatched"
+                        : `${departmentCounts.police} available`}
+                    </span>
+                  </button>
 
-                <div>
-                  <label className="block text-[9px] font-bold uppercase tracking-wide text-[#7184a0]">
-                    Assign Available Tanod (Emergency Patient Transport)
-                  </label>
-                  <select
-                    value={selectedTanodId}
-                    onChange={(e) => setSelectedTanodId(e.target.value)}
-                    className="mt-1 h-9 w-full rounded-md border border-[#dfe7ea] bg-white px-2.5 text-[11px] font-semibold text-[#263246] outline-none focus:border-(--gf-green)"
+                  <button
+                    type="button"
+                    disabled
+                    className="flex cursor-not-allowed flex-col items-start rounded-lg border border-[#d6dde2] bg-[#eef2f4] px-3 py-2.5 text-left text-[#64748b] opacity-75"
                   >
-                    <option value="">— Optional: No Tanod transport assigned —</option>
-                    {availableTanods.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name} ({t.unit}) — {t.availabilityStatus}
-                      </option>
-                    ))}
-                  </select>
+                    <span className="flex items-center gap-1.5 text-[11px] font-bold">
+                      <UserCheck size={13} className="text-[#64748b]" />
+                      Tanod
+                    </span>
+                    <span className="mt-1 text-[9px] font-semibold text-[#60738f]">
+                      {alreadyDispatched && dispatchedRoles.has("tanod")
+                        ? "Dispatched"
+                        : `Auto-selected (${departmentCounts.tanod} avail)`}
+                    </span>
+                  </button>
                 </div>
 
                 {dispatchErrors.length > 0 && (
@@ -1154,11 +1184,70 @@ function IncidentDrawer({ incident: initialIncident, onClose }) {
                   type="button"
                   disabled={!canBatchDispatch || submitting}
                   onClick={handleBatchDispatch}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-md bg-(--gf-green) py-2.5 text-[11px] font-bold text-white transition hover:bg-(--gf-green-dark) disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex w-full items-center justify-center gap-1.5 rounded-md bg-(--gf-green) py-2.5 text-[11px] font-bold text-white transition hover:bg-(--gf-green-dark) disabled:cursor-not-allowed disabled:bg-[#94a3b8] disabled:opacity-60"
                 >
                   <Truck size={14} />
-                  {submitting ? "Dispatching..." : "Dispatch / Batch Dispatch Selected Units"}
+                  {alreadyDispatched
+                    ? "Units Already Dispatched"
+                    : submitting
+                      ? "Dispatching..."
+                      : "Dispatch / Batch Dispatch Selected Units"}
                 </button>
+
+                {!alreadyDispatched && (
+                  <div className="border-t border-[#e2e8eb] pt-2.5">
+                    {rejectMode ? (
+                      <div className="space-y-2 rounded-md border border-[#f3d3d3] bg-[#fdecea]/60 p-2.5">
+                        <p className="text-[10px] font-bold text-[#991b1b]">
+                          {rejectMode === "false" ? "Flag as False Report" : "Reject Emergency Report"}
+                        </p>
+                        <input
+                          value={rejectReason}
+                          onChange={(e) => setRejectReason(e.target.value)}
+                          placeholder="Optional reason or remarks..."
+                          className="h-8 w-full rounded border border-[#f3d3d3] bg-white px-2.5 text-[11px] text-[#263246] outline-none"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRejectMode(null);
+                              setRejectReason("");
+                            }}
+                            className="flex-1 rounded border border-[#dfe7ea] bg-white py-1.5 text-[10px] font-bold text-[#60738f]"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            disabled={submitting}
+                            onClick={handleRejectIncident}
+                            className="flex-1 rounded bg-[#dc2626] py-1.5 text-[10px] font-bold text-white disabled:opacity-40"
+                          >
+                            {submitting ? "Saving..." : rejectMode === "false" ? "Confirm False Report" : "Confirm Reject"}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setRejectMode("reject")}
+                          className="flex-1 rounded-md border border-[#dfe7ea] bg-white py-1.5 text-[10px] font-bold text-[#60738f] transition hover:border-[#dc2626] hover:text-[#dc2626]"
+                        >
+                          Reject Report
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setRejectMode("false")}
+                          className="flex-1 rounded-md border border-[#f3d3d3] bg-[#fdecea] py-1.5 text-[10px] font-bold text-[#dc2626] transition hover:bg-[#dc2626] hover:text-white"
+                        >
+                          Flag as False Report
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </DrawerSection>
           )}
@@ -1195,7 +1284,7 @@ function IncidentDrawer({ incident: initialIncident, onClose }) {
                       {
                         id: incident.id,
                         title: incident.title,
-                        category: fireLocked ? "fire" : policeLocked ? "crime" : "emergency",
+                        category: fireSuggested ? "fire" : policeSuggested ? "crime" : "emergency",
                         status: incident.incidentStatusCode,
                         lat: Number(incident.lat),
                         lng: Number(incident.lng),
@@ -1361,33 +1450,90 @@ function IncidentDrawer({ incident: initialIncident, onClose }) {
               <div className="grid grid-cols-2 gap-2">
                 {incident.photos.map((photo, idx) => {
                   const fname = String(photo.filename || "");
-                  const label = /^fire-/i.test(fname)
-                    ? "BFP Completion Proof"
+                  const targetRole = /^fire-/i.test(fname)
+                    ? "fire"
                     : /^police-/i.test(fname)
+                      ? "police"
+                      : /^(tanod-|transport-proof)/i.test(fname)
+                        ? "tanod"
+                        : null;
+                  const isResponderPhoto = Boolean(targetRole || photo.by_staff);
+                  const label = targetRole === "fire"
+                    ? "BFP Completion Proof"
+                    : targetRole === "police"
                       ? "Police Completion Proof"
-                      : /^tanod-/i.test(fname)
+                      : targetRole === "tanod"
                         ? "Tanod Transport Proof"
                         : photo.by_staff
                           ? `Responder Proof #${idx + 1}`
                           : `Reporter Photo #${idx + 1}`;
                   return (
-                    <a
+                    <div
                       key={photo.id}
-                      href={`/api/reports/${encodeURIComponent(incident.incidentId)}/photos/${encodeURIComponent(photo.id)}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="relative block h-[120px] overflow-hidden rounded-lg border border-[#dfe7ea] bg-slate-100"
+                      className="overflow-hidden rounded-lg border border-[#dfe7ea] bg-white"
                     >
-                      <img
-                        src={`/api/reports/${encodeURIComponent(incident.incidentId)}/photos/${encodeURIComponent(photo.id)}`}
-                        alt={photo.filename}
-                        loading="lazy"
-                        className="h-full w-full object-cover"
-                      />
-                      <span className="absolute bottom-1 left-1 rounded bg-slate-900/75 px-1.5 py-0.5 text-[8px] font-bold text-white">
-                        {label}
-                      </span>
-                    </a>
+                      <a
+                        href={`/api/reports/${encodeURIComponent(incident.incidentId)}/photos/${encodeURIComponent(photo.id)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="relative block h-[120px] bg-slate-100"
+                      >
+                        <img
+                          src={`/api/reports/${encodeURIComponent(incident.incidentId)}/photos/${encodeURIComponent(photo.id)}`}
+                          alt={photo.filename}
+                          loading="lazy"
+                          className="h-full w-full object-cover"
+                        />
+                        <span className="absolute bottom-1 left-1 rounded bg-slate-900/75 px-1.5 py-0.5 text-[8px] font-bold text-white">
+                          {label}
+                        </span>
+                      </a>
+                      {isResponderPhoto && incident.incidentStatusCode !== "CLOSED" && (
+                        <div className="border-t border-[#edf0f2] bg-[#f8fafb] p-1.5">
+                          {rejectingPhoto?.id === photo.id ? (
+                            <div className="space-y-1.5">
+                              <input
+                                value={rejectCompletionReason}
+                                onChange={(e) => setRejectCompletionReason(e.target.value)}
+                                placeholder="Reason for rejecting this photo..."
+                                className="h-7 w-full rounded border border-[#f3d3d3] bg-white px-2 text-[10px] text-[#263246] outline-none"
+                              />
+                              <div className="flex gap-1">
+                                <button
+                                  type="button"
+                                  disabled={submitting}
+                                  onClick={handleRejectCompletion}
+                                  className="flex-1 rounded bg-[#dc2626] py-1 text-[9px] font-bold text-white disabled:opacity-40"
+                                >
+                                  {submitting ? "..." : "Confirm"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setRejectingPhoto(null);
+                                    setRejectCompletionReason("");
+                                  }}
+                                  className="rounded border border-[#dfe7ea] bg-white px-2 py-1 text-[9px] font-bold text-[#60738f]"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setRejectingPhoto({ id: photo.id, label, targetRole });
+                                setRejectCompletionReason("");
+                              }}
+                              className="w-full rounded border border-[#f3d3d3] bg-[#fdecea] py-1 text-[9px] font-bold text-[#dc2626] transition hover:bg-[#dc2626] hover:text-white"
+                            >
+                              Reject Photo
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   );
                 })}
               </div>
@@ -1400,22 +1546,30 @@ function IncidentDrawer({ incident: initialIncident, onClose }) {
         <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-[#edf0f2] bg-(--gf-green-soft) px-5 py-3">
           {incident.incidentStatusCode === "CLOSED" ? (
             <span className="flex items-center gap-1 text-[10px] font-semibold text-(--gf-green)">
-              <CheckCircle2 size={12} /> Incident is closed and synced to Admin.
+              <CheckCircle2 size={12} /> Incident is closed and summary sent to Admin.
             </span>
-          ) : incident.bdrrmoVerified ? (
-            <span className="flex items-center gap-1 text-[10px] font-semibold text-(--gf-green)">
-              <CheckCircle2 size={12} /> Verified by BDRRMO — forwarded to Admin for final closure.
-            </span>
-          ) : closureWarnings.length > 0 ? (
+          ) : !hasCompletionReport ? (
             <span className="flex items-center gap-1 text-[10px] font-semibold text-[#e69500]">
-              <TriangleAlert size={11} /> {closureWarnings[0]}
+              <TriangleAlert size={11} /> {closureWarnings[0] || "Awaiting all dispatched responders to submit completion reports."}
             </span>
           ) : (
             <span className="flex items-center gap-1 text-[10px] font-semibold text-(--gf-green)">
-              <CheckCircle2 size={12} /> All units completed — ready for BDRRMO verification & closure.
+              <CheckCircle2 size={12} /> All responders completed — ready to verify &amp; authorize closure.
             </span>
           )}
-          <div className="ml-auto flex items-center gap-2">
+
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {hasCompletionReport && (
+              <a
+                href={`/api/reports/${encodeURIComponent(incident.incidentId)}/handover-summary`}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 rounded-md border border-(--gf-green) bg-white px-3 py-2 text-[10px] font-bold text-(--gf-green) transition hover:bg-(--gf-green-soft)"
+              >
+                <Download size={12} />
+                Summary PDF
+              </a>
+            )}
             <button
               type="button"
               onClick={onClose}
@@ -1423,26 +1577,15 @@ function IncidentDrawer({ incident: initialIncident, onClose }) {
             >
               Close
             </button>
-            {incident.incidentStatusCode !== "CLOSED" && !incident.bdrrmoVerified && (
-              verifiedComplete ? (
-                <button
-                  type="button"
-                  disabled={submitting}
-                  onClick={handleVerifyForAdmin}
-                  className="rounded-md bg-(--gf-green) px-3.5 py-2 text-[10px] font-bold text-white transition hover:bg-(--gf-green-dark) disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  {submitting ? "Sending..." : "Send Back to Admin for Final Closure"}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  disabled={submitting}
-                  onClick={() => setVerifiedComplete(true)}
-                  className="rounded-md bg-(--gf-green) px-3.5 py-2 text-[10px] font-bold text-white transition hover:bg-(--gf-green-dark) disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Verify Complete
-                </button>
-              )
+            {incident.incidentStatusCode !== "CLOSED" && (
+              <button
+                type="button"
+                disabled={submitting || !hasCompletionReport}
+                onClick={() => setConfirmCloseOpen(true)}
+                className="rounded-md bg-(--gf-green) px-3.5 py-2 text-[10px] font-bold text-white transition hover:bg-(--gf-green-dark) disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Verify &amp; Authorize Closure
+              </button>
             )}
           </div>
         </footer>

@@ -1,7 +1,7 @@
 // Shared status helpers for responder dispatches (badges, filters, map pins).
 
-export const ACTIVE_DISPATCH_STATUSES = ['DISPATCHED', 'ACCEPTED', 'EN_ROUTE', 'ON_SCENE', 'IN_PROGRESS', 'PENDING'];
-export const NAVIGABLE_DISPATCH_STATUSES = ['DISPATCHED', 'ACCEPTED', 'EN_ROUTE', 'ON_SCENE', 'IN_PROGRESS'];
+export const ACTIVE_DISPATCH_STATUSES = ['DISPATCHED', 'ACCEPTED', 'EN_ROUTE', 'ON_SCENE', 'IN_PROGRESS', 'FOR_FUNDING', 'PENDING'];
+export const NAVIGABLE_DISPATCH_STATUSES = ['DISPATCHED', 'ACCEPTED', 'EN_ROUTE', 'ON_SCENE', 'IN_PROGRESS', 'FOR_FUNDING'];
 
 // One colour per lifecycle stage, independent of incident type.
 export const STATUS_STYLES = {
@@ -9,6 +9,7 @@ export const STATUS_STYLES = {
   IN_PROGRESS: { label: 'In Progress', bg: 'bg-blue-50', text: 'text-blue-700', dot: '#2563EB' },
   EN_ROUTE: { label: 'En Route', bg: 'bg-blue-50', text: 'text-blue-700', dot: '#2563EB' },
   ON_SCENE: { label: 'On Scene', bg: 'bg-sky-50', text: 'text-sky-700', dot: '#0284C7' },
+  FOR_FUNDING: { label: 'For Funding', bg: 'bg-amber-50', text: 'text-amber-800', dot: '#D97706' },
   PENDING: { label: 'Pending', bg: 'bg-amber-50', text: 'text-amber-800', dot: '#D97706' },
   COMPLETED: { label: 'Completed', bg: 'bg-green-50', text: 'text-[#1F7A4D]', dot: '#1F7A4D' },
   DECLINED: { label: 'Declined', bg: 'bg-slate-100', text: 'text-slate-600', dot: '#64748B' },
@@ -18,7 +19,9 @@ export function getStatusStyle(item) {
   let key = item?.status;
   if (key === 'DISPATCHED') key = 'ASSIGNED';
   if (key === 'ACCEPTED') key = 'IN_PROGRESS';
-  if (item?.is_maintenance && item?.inspection_done && !['COMPLETED', 'PENDING', 'DECLINED'].includes(item.status)) {
+  if (item?.is_maintenance && item?.for_funding && !['COMPLETED', 'DECLINED'].includes(item.status)) {
+    key = 'FOR_FUNDING';
+  } else if (item?.is_maintenance && item?.inspection_done && !['COMPLETED', 'PENDING', 'DECLINED', 'FOR_FUNDING'].includes(item.status)) {
     key = 'IN_PROGRESS';
   }
   return (

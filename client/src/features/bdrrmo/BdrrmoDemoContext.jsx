@@ -23,6 +23,7 @@ export function BdrrmoDemoProvider({ children }) {
   const [assignments, setAssignments] = useState([]);
   const [supportRequests, setSupportRequests] = useState([]);
   const [responders, setResponders] = useState([]);
+  const [departmentCounts, setDepartmentCounts] = useState({ fire: 0, police: 0, tanod: 0 });
   const [handovers, setHandovers] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [sync, setSync] = useState({ state: "syncing", lastUpdated: now() });
@@ -132,6 +133,13 @@ export function BdrrmoDemoProvider({ children }) {
           }))
         : [];
       setResponders(liveResponders);
+      if (data.departmentCounts && typeof data.departmentCounts === "object") {
+        setDepartmentCounts({
+          fire: Number(data.departmentCounts.fire) || 0,
+          police: Number(data.departmentCounts.police) || 0,
+          tanod: Number(data.departmentCounts.tanod) || 0,
+        });
+      }
 
       const liveHandovers = Array.isArray(data.handovers)
         ? data.handovers.map((h) => ({
@@ -219,23 +227,50 @@ export function BdrrmoDemoProvider({ children }) {
     return data;
   };
 
-  const verifyClosureForAdmin = async (serverIncidentId, note) => {
+  const rejectServerIncident = async (serverIncidentId, { falseReport = false, reason = "" } = {}) => {
     const res = await fetch(
-      `/api/bdrrmo/incidents/${encodeURIComponent(serverIncidentId)}/verify-closure`,
+      `/api/bdrrmo/incidents/${encodeURIComponent(serverIncidentId)}/reject`,
       {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ note }),
+        body: JSON.stringify({ false_report: falseReport, reason }),
       },
     );
     const data = await res.json().catch(() => null);
-    if (!res.ok) throw new Error(data?.error || "Could not verify resolution for Admin.");
+    if (!res.ok) throw new Error(data?.error || "Could not reject incident.");
     addNotification({
       incidentId: serverIncidentId,
-      type: "VERIFICATION",
-      title: "Verified & forwarded to Admin",
-      body: `Incident ${serverIncidentId} resolution verified by BDRRMO and forwarded to Admin for final closure.`,
+      type: "CLOSURE",
+      title: falseReport ? "Flagged as False Report" : "Incident rejected",
+      body: `Incident ${serverIncidentId} was ${falseReport ? "flagged as a false report" : "rejected"} by BDRRMO.`,
+    });
+    await fetchLiveOverview();
+    return data;
+  };
+
+  const rejectCompletionReport = async (serverIncidentId, { reason = "", targetRole, photoLabel, photoId } = {}) => {
+    const res = await fetch(
+      `/api/bdrrmo/incidents/${encodeURIComponent(serverIncidentId)}/reject-completion`,
+      {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reason,
+          ...(targetRole ? { target_role: targetRole } : {}),
+          ...(photoLabel ? { photo_label: photoLabel } : {}),
+          ...(photoId ? { photo_id: photoId } : {}),
+        }),
+      },
+    );
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(data?.error || "Could not reject completion report.");
+    addNotification({
+      incidentId: serverIncidentId,
+      type: "CLOSURE",
+      title: "Completion proof rejected",
+      body: `Responders on ${serverIncidentId} were notified to refill their completion report.`,
     });
     await fetchLiveOverview();
     return data;
@@ -255,7 +290,7 @@ export function BdrrmoDemoProvider({ children }) {
       incidentId: serverIncidentId,
       type: "CLOSURE",
       title: "Incident closed",
-      body: `Incident ${serverIncidentId} closed and synced with Admin.`,
+      body: `Incident ${serverIncidentId} closed and summary sent to Admin.`,
     });
     await fetchLiveOverview();
     return data;
@@ -267,6 +302,7 @@ export function BdrrmoDemoProvider({ children }) {
     supportRequests,
     handovers,
     responders,
+    departmentCounts,
     notifications,
     unreadCount: notifications.filter((n) => !n.read).length,
     sync,
@@ -275,7 +311,8 @@ export function BdrrmoDemoProvider({ children }) {
     markAllRead,
     batchDispatch,
     broadcastNote,
-    verifyClosureForAdmin,
+    rejectServerIncident,
+    rejectCompletionReport,
     closeServerIncident,
   };
 

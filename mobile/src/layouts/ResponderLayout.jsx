@@ -7,7 +7,7 @@ import {
   MessageCircle,
   UserRound,
 } from 'lucide-react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useRoute } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import tw from 'twrnc';
 
@@ -57,13 +57,67 @@ const NAV_ITEMS_BY_ROLE = {
     NAV_ITEMS[1], // History
     NAV_ITEMS[3], // Profile
   ],
+
+  tanod: [
+    NAV_ITEMS[0], // Dashboard
+    MESSAGES_ITEM,
+    NAV_ITEMS[2], // Map
+    NAV_ITEMS[1], // History
+    NAV_ITEMS[3], // Profile
+  ],
 };
 
 const ROLE_LABELS = {
   bdrrmo: 'BDRRMO',
   police: 'Police',
   fire: 'BFP',
+  tanod: 'Tanod',
 };
+
+const HIDDEN_NAV_ROUTES = new Set([
+  'Messages',
+  'Call',
+  'IncidentDetails',
+  'HistoryDetails',
+  'Map',
+  'Navigation',
+]);
+
+export function ResponderNavBar({ currentRoute, onNavigate }) {
+  const { user } = useAuth();
+  const role = String(user?.role || '').toLowerCase();
+  const navItems = NAV_ITEMS_BY_ROLE[role] || NAV_ITEMS;
+
+  if (HIDDEN_NAV_ROUTES.has(currentRoute)) return null;
+
+  return (
+    <SafeAreaView edges={['bottom']} style={tw`bg-slate-50 px-3 pb-2 pt-1`}>
+      <View
+        style={[
+          tw`flex-row rounded-3xl border border-slate-200 bg-white px-1.5 py-1.5`,
+          {
+            shadowColor: '#0F172A',
+            shadowOpacity: 0.08,
+            shadowRadius: 10,
+            shadowOffset: { width: 0, height: 4 },
+            elevation: 8,
+          },
+        ]}
+      >
+        {navItems.map((item) => (
+          <NavTab
+            key={item.route}
+            item={item}
+            isActive={currentRoute === item.route}
+            onPress={() => {
+              if (currentRoute !== item.route) onNavigate(item.route);
+            }}
+          />
+        ))}
+      </View>
+    </SafeAreaView>
+  );
+}
 
 
 function getInitials(name) {
@@ -110,13 +164,11 @@ function NavTab({ item, isActive, onPress }) {
 
 export default function ResponderLayout({ children }) {
   const { user, onDuty, toggleDuty } = useAuth();
-  const navigation = useNavigation();
   const { name: currentRoute } = useRoute();
   const role = String(user?.role || '').toLowerCase();
-  const navItems = NAV_ITEMS_BY_ROLE[role] || NAV_ITEMS;
 
   return (
-    <SafeAreaView style={tw`flex-1 bg-slate-50`} edges={['top', 'bottom']}>
+    <SafeAreaView style={tw`flex-1 bg-slate-50`} edges={['top']}>
       {currentRoute !== 'Map' && currentRoute !== 'Navigation' && currentRoute !== 'IncidentDetails' && currentRoute !== 'HistoryDetails' && currentRoute !== 'Messages' && currentRoute !== 'Call' && currentRoute !== 'History' && currentRoute !== 'Profile' ? (
         <>
           {/* Header */}
@@ -170,35 +222,6 @@ export default function ResponderLayout({ children }) {
       <View style={tw`flex-1`}>
         <View style={tw`flex-1`}>{children}</View>
       </View>
-
-      {/* Bottom navigation (hidden on full-screen Map, Navigation, IncidentDetails, HistoryDetails, Messages, and Call) */}
-      {currentRoute !== 'Messages' && currentRoute !== 'Call' && currentRoute !== 'IncidentDetails' && currentRoute !== 'HistoryDetails' && currentRoute !== 'Map' && currentRoute !== 'Navigation' ? (
-        <View style={tw`px-3 pb-2 pt-1`}>
-          <View
-            style={[
-              tw`flex-row rounded-3xl border border-slate-200 bg-white px-1.5 py-1.5`,
-              {
-                shadowColor: '#0F172A',
-                shadowOpacity: 0.08,
-                shadowRadius: 10,
-                shadowOffset: { width: 0, height: 4 },
-                elevation: 8,
-              },
-            ]}
-          >
-            {navItems.map((item) => (
-              <NavTab
-                key={item.route}
-                item={item}
-                isActive={currentRoute === item.route}
-                onPress={() => {
-                  if (currentRoute !== item.route) navigation.navigate(item.route);
-                }}
-              />
-            ))}
-          </View>
-        </View>
-      ) : null}
     </SafeAreaView>
   );
 }

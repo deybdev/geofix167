@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Image, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
-import { usePreventRemove } from '@react-navigation/native';
+import { ActivityIndicator, Alert, Image, Keyboard, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
+import { useNavigation, usePreventRemove } from '@react-navigation/native';
 import { CheckCircle2, Clock, Wrench } from 'lucide-react-native';
 import tw from 'twrnc';
 import { useAuth } from '../../context/AuthContext';
-import { getReportAttachments, getReportDetails, updateReportDetails } from '../../services/residentService';
+import { discardReport, getReportAttachments, getReportDetails, updateReportDetails } from '../../services/residentService';
 import ReportMedia, { ReportAction } from '../../components/resident/ReportMedia';
-import { canEditReport, canUploadReport, editPayload, formatReportTime } from '../../utils/residentReport';
+import { canEditReport, editPayload, formatReportTime } from '../../utils/residentReport';
 
 export default function ReportDetails({ route }) {
   const publicId = route?.params?.publicId;
@@ -16,6 +16,7 @@ export default function ReportDetails({ route }) {
 }
 
 function Details({ publicId, user }) {
+  const navigation = useNavigation();
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(Boolean(publicId));
   const [error, setError] = useState(publicId ? '' : 'Report unavailable. Return to My Reports and select a report.');
@@ -110,9 +111,37 @@ function Details({ publicId, user }) {
     }
   }
 
+  const isRejected = Number(report?.status_id) === 11 || String(report?.status_label || '').toLowerCase().includes('reject');
+
+  function confirmDiscard() {
+    Alert.alert(
+      'Discard Draft Report?',
+      'This will permanently remove your rejected draft report. Are you sure?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Discard Report',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setSaving(true);
+              await discardReport(publicId);
+              if (navigation.canGoBack()) navigation.goBack();
+            } catch (err) {
+              setEditError(err?.message || 'Unable to discard report.');
+            } finally {
+              setSaving(false);
+            }
+          },
+        },
+      ],
+    );
+  }
+
   const busy = loading || mediaLoading || saving || uploadBusy;
-  return <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={tw`p-4 pb-8`}
+  return <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={tw`p-4 pb-8`}
     refreshControl={<RefreshControl refreshing={loading} enabled={!editing && !saving && !mediaLoading && !uploadBusy} onRefresh={() => { if (!editing && !busy) refresh(); }} tintColor="#1F7A4D" colors={['#1F7A4D']} />}>
+    <Pressable onPress={Keyboard.dismiss}>
     {loading && !report && <View style={tw`items-center py-8`}><ActivityIndicator color="#1F7A4D" /><Text style={tw`mt-3 text-slate-600`}>Loading report...</Text></View>}
     {!!error && <View style={tw`rounded-xl bg-red-50 p-4`}><Text accessibilityRole="alert" style={tw`text-red-800`}>{error}</Text>
       {!!publicId && <ReportAction label="Retry report" onPress={refresh} disabled={busy || editing} />}</View>}
@@ -127,6 +156,32 @@ function Details({ publicId, user }) {
         <Field label="Official reference" value={report.reference_number || report.public_id} />
         <Field label="Submitted" value={formatReportTime(report.created_at)} />
       </View>
+      {isRejected && !editing && (
+        <View style={tw`mt-3 rounded-2xl border border-red-200 bg-red-50 p-4`}>
+          <Text style={tw`text-sm font-extrabold text-red-800`}>
+            Submitted Report Rejected
+          </Text>
+          <Text style={tw`mt-1 text-xs leading-5 text-red-700`}>
+            Your report was rejected. You can modify the details to resubmit it, or discard this draft report.
+          </Text>
+          <View style={tw`mt-3 flex-row gap-2.5`}>
+            <Pressable
+              onPress={startEditing}
+              disabled={busy}
+              style={tw`flex-1 items-center rounded-xl bg-[#1F7A4D] py-2.5`}
+            >
+              <Text style={tw`text-xs font-bold text-white`}>Modify &amp; Resubmit</Text>
+            </Pressable>
+            <Pressable
+              onPress={confirmDiscard}
+              disabled={busy}
+              style={tw`flex-1 items-center rounded-xl border border-red-300 bg-white py-2.5`}
+            >
+              <Text style={tw`text-xs font-bold text-red-700`}>Discard Draft</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
       {!!notice && <Text accessibilityLiveRegion="polite" style={tw`mt-3 rounded-xl bg-green-50 p-3 text-green-800`}>{notice}</Text>}
       {editable && !editing && <ReportAction label="Edit Details" onPress={startEditing} disabled={busy} />}
       {!editable && <Text style={tw`mt-3 text-slate-600`}>Details can only be edited before verification or dispatch. Assigned priority is read-only.</Text>}
@@ -140,7 +195,7 @@ function Details({ publicId, user }) {
         <ReportAction label="Cancel" onPress={() => { setEditing(false); setEditError(''); }} disabled={saving} />
       </View>}
       <ReportMedia reportId={publicId} attachments={report.attachments || []} mediaError={report.attachments_error}
-        canUpload={canUploadReport(report, user)} disabled={loading || saving || editing || mediaLoading} onBusy={setUploadBusy} onReload={reloadMedia}
+        canUpload={false} disabled={loading || saving || editing || mediaLoading} onBusy={setUploadBusy} onReload={reloadMedia}
         onResult={(attachments, attachments_error) => setReport(previous => ({ ...previous, attachments, attachments_error }))} />
       {mediaLoading && <ActivityIndicator style={tw`mt-3`} color="#1F7A4D" />}
       {report.report_type === 'infrastructure' && (
@@ -156,6 +211,7 @@ function Details({ publicId, user }) {
         </View>)}
       </View> : <Text style={tw`text-slate-600`}>No status history available yet.</Text>}
     </>}
+    </Pressable>
   </ScrollView>;
 }
 
@@ -167,6 +223,7 @@ function MaintenanceProgressSection({ progress, reportStatusId }) {
   const isVerifiedFixed = Boolean(progress?.verified_fixed) || Number(reportStatusId) === 10;
   const isAssigned = Boolean(progress?.assigned_tanod) || Number(reportStatusId) >= 6;
   const isInspected = Boolean(progress?.inspection_done) || isVerifiedFixed;
+  const isForFunding = Boolean(progress?.for_funding) && !isVerifiedFixed && !progress?.repair_done;
   const isRepaired = Boolean(progress?.repair_done) || isVerifiedFixed;
 
   const steps = [
@@ -189,6 +246,18 @@ function MaintenanceProgressSection({ progress, reportStatusId }) {
           ? 'Site inspected & arrival photos uploaded'
           : 'Awaiting on-site inspection by Tanod',
     },
+    ...(isForFunding
+      ? [
+        {
+          key: 'for_funding',
+          label: 'For Funding',
+          done: true,
+          detail: progress?.for_funding_note
+            ? `Admin note: "${progress.for_funding_note}"`
+            : 'Marked For Funding by Admin while materials/budget are arranged',
+        },
+      ]
+      : []),
     {
       key: 'repaired',
       label: 'Proof of Repair Submitted',
@@ -197,7 +266,9 @@ function MaintenanceProgressSection({ progress, reportStatusId }) {
         ? `Repair note: "${progress.repair_note}"`
         : isRepaired
           ? 'Final repair proof uploaded for Admin verification'
-          : 'Repair work in progress',
+          : isForFunding
+            ? 'Pending funding approval & materials'
+            : 'Repair work in progress',
     },
     {
       key: 'verified',
