@@ -7,6 +7,8 @@ const expiredMessage = "This incident has been resolved. This tracking link has 
 const invalidMessage = "This tracking link is invalid or no longer available.";
 
 type TrackingRecord = {
+  category: string | null;
+  categories: string;
   token_hash: string;
   expires_at: string;
   revoked_at: string | null;
@@ -67,7 +69,7 @@ route.get("/:token/status", async (c) => {
   const link = await db.prepare(`SELECT t.token_hash, t.expires_at, t.revoked_at,
       s.code AS status_code, s.display_name AS status_label,
       r.latitude AS incident_latitude, r.longitude AS incident_longitude,
-      r.submitted_at, r.closed_at
+      r.category, r.categories, r.submitted_at, r.closed_at
     FROM tracking_links t
     JOIN incident_reports r ON r.incident_id = t.report_id
     JOIN incident_statuses s ON s.incident_status_id = r.incident_status_id
@@ -192,6 +194,7 @@ route.get("/:token/status", async (c) => {
         : link.status_label;
 
   return c.json({
+    category: link.category, categories: link.categories,
     status_label: statusLabel,
     timeline: eventTimeline,
     responder: ["OFFERED", "DISPATCHED", "ACCEPTED", "EN_ROUTE", "ON_SCENE"].includes(assignmentStatus) ? responder : null,

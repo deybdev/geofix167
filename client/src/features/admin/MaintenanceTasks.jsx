@@ -1,3 +1,4 @@
+import ReportCategories from "../../shared/components/ReportCategories";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Camera, CheckCircle2, Clock, Download, Eye, EyeOff, FileText, FileUp, History, Languages, Link2,
@@ -351,7 +352,7 @@ function IntakeCard({ item, onReview }) {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-1.5">
             <Chip className="bg-(--gf-green-tint-2) text-(--gf-green)">{item.reportId}</Chip>
-            <Chip className="bg-[#eef2f4] text-[#60738f]">{item.category}</Chip>
+            <Chip className="bg-[#eef2f4] text-[#60738f]"><ReportCategories report={item} /></Chip>
           </div>
           <h3 className="mt-2 text-[15px] font-bold leading-snug text-[#263246]">{item.issue}</h3>
         </div>
@@ -460,7 +461,7 @@ function IntakeReviewDrawer({ item, tanods, onClose, onConfirmIngest, logAudit }
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-[14px] font-bold text-(--gf-green)">{item.reportId}</h2>
               <Chip className="bg-[#fff1c6] text-[#e69500]">Intake Review</Chip>
-              <Chip className="bg-[#eef2f4] text-[#60738f]">{item.category}</Chip>
+              <Chip className="bg-[#eef2f4] text-[#60738f]"><ReportCategories report={item} /></Chip>
             </div>
             <p className="mt-0.5 truncate text-[10px] text-[#60738f]">{item.issue} • {item.location}</p>
           </div>
@@ -478,7 +479,7 @@ function IntakeReviewDrawer({ item, tanods, onClose, onConfirmIngest, logAudit }
           <DrawerSection title="Intake Report & Reporter" icon={ShieldCheck}>
             <div>
               <InfoRow label="Report ID">{item.reportId}</InfoRow>
-              <InfoRow label="Category">{item.category}</InfoRow>
+              <InfoRow label="Category"><ReportCategories report={item} /></InfoRow>
               <InfoRow label="Reporter">
                 <span className="inline-flex items-center gap-1">
                   {item.reporter.type === "guest"
@@ -1599,6 +1600,7 @@ export default function MaintenanceTasks() {
             lat: report.latitude == null ? null : Number(report.latitude),
             lng: report.longitude == null ? null : Number(report.longitude),
             category: report.category || "Maintenance",
+            categories: report.categories,
             geotag: {
               source: report.pin_manually_adjusted ? "Pin adjusted" : "GPS pin",
               accuracy: accuracy == null ? "Not available" : `±${Math.round(accuracy)} m`,
@@ -1670,6 +1672,7 @@ export default function MaintenanceTasks() {
               originReportId: st.originReportId,
               reporter: st.reporter,
               category: st.category,
+              categories: st.categories,
               location: st.location,
               zone: existing?.zone || ZONES[0],
               lat: st.lat,

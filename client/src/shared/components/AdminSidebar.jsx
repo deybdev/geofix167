@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { ChevronDown, LogOut, Menu } from "lucide-react";
+import { useState } from "react";
+import { LogOut, Menu } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ADMIN_NAVIGATION } from "../../router/adminNavigation";
 import { PATHS } from "../../router/paths";
@@ -11,9 +11,7 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
-  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [isSignOutDialogOpen, setIsSignOutDialogOpen] = useState(false);
-  const accountRef = useRef(null);
 
   const displayName =
     user?.name ||
@@ -28,29 +26,10 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
       .join("")
       .toUpperCase() || "BA";
 
-  useEffect(() => {
-    if (!accountMenuOpen) return undefined;
-    const handlePointerDown = (event) => {
-      if (accountRef.current && !accountRef.current.contains(event.target)) {
-        setAccountMenuOpen(false);
-      }
-    };
-    const handleKeyDown = (event) => {
-      if (event.key === "Escape") setAccountMenuOpen(false);
-    };
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [accountMenuOpen]);
-
   async function handleSignOut() {
     try {
       await signOut();
       setIsSignOutDialogOpen(false);
-      setAccountMenuOpen(false);
       toast.add({
         title: "Logout successful",
         description: "You have been safely logged out.",
@@ -125,7 +104,7 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
                 )}
                 <button
                   type="button"
-                  title={open ? undefined : label}
+                  title={label}
                   onClick={() => {
                     if (path) {
                       navigateTo(path);
@@ -151,49 +130,13 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
             );
           })}
         </nav>
-        <div ref={accountRef} className={`absolute bottom-4 left-2 right-2`}>
-          {accountMenuOpen && (
-            <div
-              role="menu"
-              aria-label="Account options"
-              className={`absolute bottom-[calc(100%+8px)] ${open ? "left-0 right-0" : "left-0 w-[220px]"} overflow-hidden rounded-xl border border-[#e5eaed] bg-white p-1.5 shadow-xl`}
-            >
-              <div className="px-2.5 py-2">
-                <p className="truncate text-[11px] font-bold text-[#263246]">{displayName}</p>
-                <p className="mt-0.5 truncate text-[9px] text-slate-400">System Administrator</p>
-              </div>
-              <div className="my-1 h-px bg-[#eef1f3]" />
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setAccountMenuOpen(false);
-                  setIsSignOutDialogOpen(true);
-                }}
-                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[11px] font-semibold text-red-600 transition hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
-              >
-                <LogOut size={14} />
-                Log out
-              </button>
-            </div>
-          )}
-          <button
-            type="button"
-            onClick={() => setAccountMenuOpen((value) => !value)}
-            aria-haspopup="menu"
-            aria-expanded={accountMenuOpen}
-            aria-label="Account menu"
-            title={open ? undefined : displayName}
-            className={`flex w-full items-center gap-2 rounded-xl border border-[#e5eaed] bg-[#f8fafb] p-2 text-left transition hover:border-(--gf-green-border) hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--gf-green) ${open ? "" : "md:justify-center md:px-0"}`}
-          >
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-(--gf-green) text-[9px] font-bold text-white">
-              {initials}
-            </span>
-            <span className={`min-w-0 flex-1 ${open ? "" : "md:hidden"}`}>
-              <strong className="block truncate text-[10px] text-[#263246]">{displayName}</strong>
-              <span className="block text-[8px] text-slate-400">System Administrator</span>
-            </span>
-            {open && <ChevronDown size={12} className={`shrink-0 text-slate-400 transition-transform ${accountMenuOpen ? "rotate-180" : ""}`} />}
+        <div className="absolute bottom-4 left-2 right-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
+          <div className="flex items-center gap-2">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-(--gf-green) text-[9px] font-bold text-white">{initials}</span>
+            {open && <span className="min-w-0 truncate text-xs font-semibold" title={displayName}>{displayName}</span>}
+          </div>
+          <button type="button" title="Log out" aria-label="Log out" onClick={() => setIsSignOutDialogOpen(true)} className="mt-2 flex min-h-9 w-full items-center justify-center gap-2 rounded-lg text-xs font-semibold text-red-700 hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-300">
+            <LogOut size={14} />{open && "Log out"}
           </button>
         </div>
       </aside>

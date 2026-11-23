@@ -15,6 +15,7 @@ function toMapReport(report) {
     id: report.incident_id,
     reportNumber: "",
     type: report.is_emergency ? "sudden" : "maintenance",
+    categories: report.categories,
     category: report.incident_category || report.category,
     title: report.title,
     location: report.location_description || report.landmark_description || "Location not provided",
