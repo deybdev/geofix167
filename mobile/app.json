@@ -1,0 +1,47 @@
+{
+  "expo": {
+    "name": "mobile",
+    "slug": "mobile",
+    "version": "1.0.0",
+    "scheme": "geofix167",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "softwareKeyboardLayoutMode": "pan",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "@react-native-community/datetimepicker",
+      "expo-secure-store",
+      "expo-web-browser",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow GeoFix 167 to capture report evidence and scan your Barangay ID.",
+          "recordAudioAndroid": true,
+          "microphonePermission": "Allow GeoFix 167 to record sound with report evidence videos.",
+          "barcodeScannerEnabled": true
+        }
+      ],
+      "expo-video",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow GeoFix 167 to choose report evidence from your photos and videos.",
+          "cameraPermission": "Allow GeoFix 167 to capture report evidence and scan your Barangay ID.",
+          "microphonePermission": "Allow GeoFix 167 to record sound with report evidence videos."
+        }
+      ],
+      "expo-audio"
+    ]
+  }
+}

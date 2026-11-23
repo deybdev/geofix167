@@ -1,5 +1,17 @@
 // Initial data for Barangay 167 GeoFix Landing Page
 
+export const BRAND = {
+  name: "GeoFix 167",
+  barangay: "Barangay 167",
+  zone: "Zone 15 · District 1",
+  city: "Caloocan City",
+  area: "Llano",
+  tagline: "Tulung-tulong… Sama-sama sa Pagsulong!",
+  motto: "Aksyon at Malasakit",
+  hotline: "668-338-3141",
+  serviceArea: "2.87 sq. km",
+};
+
 export const INITIAL_REPORTS = [
   {
     id: "REP-123",
@@ -139,36 +151,6 @@ export const INITIAL_BDRRMO_UNITS = [
     status: "On Site (Molave Drainage)",
     lat: 14.7368,
     lng: 121.0152,
-  },
-];
-
-export const BARANGAY_ANNOUNCEMENTS = [
-  {
-    id: "ANN-1",
-    date: "Today, 8:30 AM",
-    tag: "Clean & Green",
-    badgeColor: "bg-emerald-100 text-emerald-800",
-    title: "Barangay De-Clogging & Cleanliness Drive",
-    content:
-      "Barangay Announcements feed Barangay 167 in (Caloocan 167) - Caloocan City: De-clogging and desilting operations scheduled across Molave, Sampaguita, and Prosera Streets this Saturday starting 7:00 AM. Residents are requested to coordinate waste segregation with Barangay Agents!",
-  },
-  {
-    id: "ANN-2",
-    date: "Yesterday",
-    tag: "BDRRMO Advisory",
-    badgeColor: "bg-amber-100 text-amber-800",
-    title: "Heavy Rainfall Alert & Emergency Hotline Standby",
-    content:
-      "PAGASA monsoon rains forecast for Northern Caloocan. BDRRMO response teams are stationed on 24/7 emergency alert. Report waterlogged areas immediately via GeoFix 167 or call Hotline 668-338-3141.",
-  },
-  {
-    id: "ANN-3",
-    date: "Nov 3, 2026",
-    tag: "Health & Safety",
-    badgeColor: "bg-blue-100 text-blue-800",
-    title: "Free Anti-Rabies Vaccination & Health Center Medical Mission",
-    content:
-      "Caloocan City Health Department in partnership with Barangay 167 will conduct free pet anti-rabies vaccination and adult blood pressure checkups at the Barangay Covered Court this coming Tuesday from 8:00 AM to 3:00 PM.",
   },
 ];
 

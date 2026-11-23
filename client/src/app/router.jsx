@@ -3,7 +3,6 @@ import {
   BrowserRouter,
   Routes,
   Route,
-  Navigate,
 } from "react-router-dom";
 
 import { AuthProvider } from "../shared/context/AuthProvider";
@@ -30,14 +29,18 @@ import AuthLayout from "../layouts/AuthLayout";
 
 import ResidentDashboard from "../features/resident/Home";
 import AdminDashboard from "../features/admin/AdminDashboard";
-import IncidentReports from "../features/admin/IncidentReports";
+import IncidentReports from "../features/admin/incident-reports";
 import MaintenanceTasks from "../features/admin/MaintenanceTasks";
 import ResolutionVerification from "../features/admin/ResolutionVerification";
 import AccomplishmentLog from "../features/admin/AccomplishmentLog";
 import Residents from "../features/admin/Residents";
 import ReportsAnalytics from "../features/admin/ReportsAnalytics";
+import IncidentReportPrint from "../features/admin/IncidentReportPrint";
 import AdminSettings from "../features/admin/Settings";
 import ResponderDashboard from "../features/responder/ResponderDashboard";
+import AdminDispatch from "../features/admin/AdminDispatch";
+import Announcements from "../features/admin/Announcements";
+import RegistrationReview from "../features/admin/RegistrationReview";
 
 export default function AppRouter() {
   return (
@@ -84,10 +87,14 @@ export default function AppRouter() {
             <Route path="/admin" element={<AdminLayout />}>
               <Route index element={<AdminDashboard />} />
               <Route path="incident-reports" element={<IncidentReports />} />
+              <Route path="incident-reports/:id/report" element={<IncidentReportPrint />} />
+              <Route path="dispatch" element={<AdminDispatch />} />
               <Route path="maintenance-tasks" element={<MaintenanceTasks />} />
               <Route path="resolution-verification" element={<ResolutionVerification />} />
+              <Route path="announcements" element={<Announcements />} />
               <Route path="accomplishment-log" element={<AccomplishmentLog />} />
               <Route path="residents" element={<Residents />} />
+              <Route path="registrations" element={<RegistrationReview />} />
               <Route path="reports-analytics" element={<ReportsAnalytics />} />
               <Route path="settings" element={<AdminSettings />} />
             </Route>

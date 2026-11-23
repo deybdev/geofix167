@@ -1,14 +1,14 @@
 import AppRouter from "../router";
 import { Toaster } from "../shared/components/ui/toast";
+import ErrorBoundary from "../pages/errors/ErrorBoundary";
 
 const App = () => {
   return (
-    <>
+    <ErrorBoundary>
       <AppRouter />
 
       <Toaster
-        duration={Infinity}
-        timeout={3500}
+        timeout={4500}
         toastClassName="
           bg-white
           shadow-lg
@@ -26,7 +26,7 @@ const App = () => {
           ml-2
         "
       />
-    </>
+    </ErrorBoundary>
   );
 };
 

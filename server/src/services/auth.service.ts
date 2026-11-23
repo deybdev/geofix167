@@ -1,6 +1,6 @@
 
 import bcrypt from "bcryptjs";
-import type { AppEnv, AuthUser } from "../types/env";
+import type { AppEnv, AuthUser, UserRole } from "../types/env";
 import {
   findUserByMobileNumber,
   type UserRecord,
@@ -37,6 +37,8 @@ async function hashToken(token: string): Promise<string> {
     .join("");
 }
 
+export { hashToken };
+
 function createToken(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
 
@@ -46,20 +48,44 @@ function createToken(): string {
     .replace(/=+$/, "");
 }
 
+// Creates an additional standalone session (used for mobile refresh tokens).
+export async function createMobileSession(
+  db: Database,
+  userId: string,
+  days: number,
+): Promise<string> {
+  const token = createToken();
+  const tokenHash = await hashToken(token);
+  const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+
+  await createSession(db, userId, tokenHash, expiresAt);
+
+  return token;
+}
+
 export async function login(
   db: Database,
   mobileNumber: string,
   password: string,
+  allowedRoles?: readonly UserRole[],
 ): Promise<LoginResult> {
   const user: UserRecord | null = await findUserByMobileNumber(db, mobileNumber);
 
-  if (!user || !(await bcrypt.compare(password, user.password))) {
+  if (!user || !(await bcrypt.compare(password, user.password_hash))) {
     throw new AuthError("Invalid mobile number or password.", 401);
   }
 
-  if (user.is_verified !== 1) {
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
+    // Deliberately identical to the invalid-credentials message so the
+    // restricted client never reveals which accounts exist.
+    throw new AuthError("Invalid mobile number or password.", 401);
+  }
+
+  if (user.account_status !== "ACTIVE") {
     throw new AuthError(
-      "Your account has not been verified.",
+      user.account_status === "UNVERIFIED"
+        ? "Your account has not been verified."
+        : "Your account is unavailable.",
       403,
     );
   }
@@ -70,16 +96,15 @@ export async function login(
     Date.now() + 7 * 24 * 60 * 60 * 1000,
   );
 
-  await createSession(db, user.id, tokenHash, expiresAt);
+  await createSession(db, user.user_id, tokenHash, expiresAt);
 
   return {
     token,
     expiresAt,
     user: {
-      id: user.id,
-      public_id: user.public_id,
-      full_name: user.full_name,
-      mobile_number: user.mobile_number,
+        id: user.user_id,
+        full_name: `${user.first_name} ${user.last_name}`.trim(),
+        mobile_number: user.mobile_number,
       role: user.role,
     },
   };

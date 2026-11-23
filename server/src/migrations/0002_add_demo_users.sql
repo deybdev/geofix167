@@ -9,7 +9,7 @@ INSERT OR IGNORE INTO users (
 VALUES
 (
     'usr_demo_admin_001',
-    'Admin',
+    'Louise Moreno',
     '09123123123',
     '$2b$12$JR1vp6bRLpq3RWPYfEbXoO8oexk8LiDdRuEbYB5JR4RohAYLl5Kg.',
     'admin',
@@ -17,7 +17,7 @@ VALUES
 ),
 (
     'usr_demo_resident_001',
-    'Resident',
+    'Neo Herminigildo',
     '09246246246',
     '$2b$12$JR1vp6bRLpq3RWPYfEbXoO8oexk8LiDdRuEbYB5JR4RohAYLl5Kg.',
     'resident',
@@ -25,7 +25,7 @@ VALUES
 ),
 (
     'usr_demo_responder_001',
-    'Responder',
+    'Renus Manipon',
     '09369369369',
     '$2b$12$JR1vp6bRLpq3RWPYfEbXoO8oexk8LiDdRuEbYB5JR4RohAYLl5Kg.',
     'responder',
