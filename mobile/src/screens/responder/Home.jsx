@@ -58,7 +58,7 @@ function formatDeadline(value) {
 }
 
 export default function ResponderHome() {
-  const { user, onDuty, toggleDuty } = useAuth();
+  const { user, onDuty, toggleDuty, dutyBusy } = useAuth();
   const isPolice = ['police', 'fire'].includes(String(user?.role || '').toLowerCase());
   const navigation = useNavigation();
   const alarmPlayer = useAudioPlaylist({
@@ -250,6 +250,7 @@ export default function ResponderHome() {
     }
   }
 
+  if (onDuty === null) return <Text style={tw`p-4`}>Duty status unconfirmed.</Text>;
   if (!onDuty) {
     return (
       <View style={tw`flex-1 items-center justify-center bg-slate-50 px-8`}>
@@ -263,6 +264,7 @@ export default function ResponderHome() {
           Switch to On Duty to receive and accept new emergency reports assigned to your unit.
         </Text>
         <Pressable
+          disabled={dutyBusy}
           onPress={() => void toggleDuty(true)}
           style={({ pressed }) => [
             tw`mt-6 flex-row items-center gap-2 rounded-full bg-[#1F7A4D] px-6 py-3.5 shadow-sm`,

@@ -90,14 +90,21 @@ export async function markArrivedOnScene(dispatchId, payload = {}) {
   return data;
 }
 
+function confirmedDuty(data) {
+  if (data?.ok !== true || typeof data.on_duty !== 'boolean') throw new Error('Invalid duty status response.');
+  return data.on_duty;
+}
+
 export async function getResponderDutyStatus() {
   const { data } = await api.get('/responder/dispatches/duty-status');
-  return Boolean(data?.on_duty ?? true);
+  return confirmedDuty(data);
 }
 
 export async function updateResponderDutyStatus(onDuty) {
+  if (typeof onDuty !== 'boolean') throw new Error('Duty status must be a boolean.');
   const { data } = await api.patch('/responder/dispatches/duty-status', {
-    on_duty: Boolean(onDuty),
+    on_duty: onDuty,
   });
-  return Boolean(data?.on_duty ?? onDuty);
+  if (confirmedDuty(data) !== onDuty) throw new Error('Duty change was not confirmed.');
+  return data.on_duty;
 }

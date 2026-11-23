@@ -1,5 +1,5 @@
 
-import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 
 import {
   login as loginService,
@@ -29,38 +29,40 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(false);
   const [isRestoring, setIsRestoring] = useState(true);
-  const [onDuty, setOnDuty] = useState(true);
+  const [duty, setDuty] = useState({});
+  const dutyRequest = useRef(null);
+  const owner = user?.id;
+  const role = user?.role;
+  const onDuty = duty.owner === owner ? duty.confirmed ?? null : null;
+  const dutyError = duty.owner === owner ? duty.error : null;
+  const dutyBusy = duty.owner !== owner || !!duty.pending;
+
+  const requestDuty = useCallback(async (value) => {
+    if (!owner || dutyRequest.current) return;
+    const token = {};
+    dutyRequest.current = token;
+    setDuty(current => ({ ...(current.owner === owner ? current : {}), owner, pending: true, error: null }));
+    try {
+      const confirmed = value === undefined ? await getResponderDutyStatus() : await updateResponderDutyStatus(value);
+      if (dutyRequest.current === token) setDuty({ owner, confirmed });
+    } catch (error) {
+      if (dutyRequest.current === token) setDuty(current => ({ ...current, pending: false, retryValue: value,
+        error: error.response?.data?.error || 'Duty status could not be confirmed. Please retry.' }));
+    } finally {
+      if (dutyRequest.current === token) dutyRequest.current = null;
+    }
+  }, [owner]);
 
   useEffect(() => {
-    const role = String(user?.role || '').toLowerCase();
-    if (!user?.id || !['bdrrmo', 'police', 'fire', 'tanod'].includes(role)) {
-      setOnDuty(true);
-      return undefined;
-    }
-    let active = true;
-    getResponderDutyStatus()
-      .then((duty) => {
-        if (active) setOnDuty(duty);
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, [user?.id, user?.role]);
+    setDuty({});
+    if (['bdrrmo', 'police', 'fire', 'tanod'].includes(String(role).toLowerCase())) void requestDuty();
+    return () => { dutyRequest.current = null; };
+  }, [requestDuty, role]);
 
-  const toggleDuty = useCallback(async (explicitValue) => {
-    let nextValue = true;
-    setOnDuty((current) => {
-      nextValue = typeof explicitValue === 'boolean' ? explicitValue : !current;
-      return nextValue;
-    });
-    try {
-      await updateResponderDutyStatus(nextValue);
-    } catch {
-      // Keep local duty toggle responsive even when offline
-    }
-    return nextValue;
-  }, []);
+  const toggleDuty = (value) => {
+    if (typeof onDuty === 'boolean') return requestDuty(value ?? !onDuty);
+  };
+  const retryDuty = () => requestDuty(duty.retryValue);
 
   useEffect(() => {
     let active = true;
@@ -264,7 +266,7 @@ export function AuthProvider({ children }) {
         loading,
         isRestoring,
         onDuty,
-        setOnDuty,
+        dutyError, dutyBusy, retryDuty,
         toggleDuty,
         signIn,
         signInWithGoogle,
