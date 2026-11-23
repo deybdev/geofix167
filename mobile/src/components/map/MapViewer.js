@@ -14,7 +14,6 @@ import {
   Flame,
   ShieldAlert,
   Wrench,
-  AlertTriangle,
   Ambulance,
   MapPin,
   Navigation,
@@ -47,7 +46,7 @@ const CATEGORY_META = {
   incident: { Icon: Ambulance, color: '#2563EB' },
   crime: { Icon: ShieldAlert, color: '#7C3AED' },
   infrastructure: { Icon: Wrench, color: '#D97706' },
-  emergency: { Icon: AlertTriangle, color: '#EA580C' },
+  emergency: { Icon: MapPin, color: '#EA580C' },
 };
 
 /* -------------------------------------------------------------------------- */
@@ -262,7 +261,7 @@ const IncidentMarker = memo(function IncidentMarker({
             tw`h-11 w-11 items-center justify-center rounded-full`,
             {
               backgroundColor: category.color,
-              borderWidth: selected ? 3 : 2,
+              borderWidth: selected ? 4 : 3,
               borderColor,
               elevation: selected ? 10 : 5,
               shadowColor: '#000',
@@ -272,7 +271,14 @@ const IncidentMarker = memo(function IncidentMarker({
             },
           ]}
         >
-          <Icon size={20} color="#FFFFFF" />
+          <View
+            style={[
+              tw`h-7 w-7 items-center justify-center rounded-full`,
+              { backgroundColor: '#FFFFFF' },
+            ]}
+          >
+            <Icon size={17} color={category.color} />
+          </View>
 
           <View
             style={[
@@ -302,19 +308,75 @@ const IncidentMarker = memo(function IncidentMarker({
 });
 
 function ResponderMarker({ tracker }) {
-  const category = tracker.category ? resolveCategory(tracker.category) : null;
-  const Icon = category?.Icon || Navigation;
-  const color = category?.color || tracker.color || '#EC4899';
+  const roleValue = String(tracker.roleCode || tracker.role || tracker.category || '').toLowerCase();
+  const role = roleValue.includes('fire') || roleValue.includes('bfp')
+    ? 'fire'
+    : roleValue.includes('police') || roleValue.includes('pnp')
+      ? 'police'
+      : roleValue.includes('tanod')
+        ? 'tanod'
+        : roleValue.includes('bdrrmo')
+          ? 'bdrrmo'
+          : roleValue;
+  const responderMeta = {
+    fire: { Icon: Flame, color: '#DC2626', label: 'BFP' },
+    police: { Icon: ShieldAlert, color: '#2563EB', label: 'PNP' },
+    tanod: { Icon: MapPin, color: '#15803D', label: 'TANOD' },
+    bdrrmo: { Icon: Wrench, color: '#D97706', label: 'BDRRMO' },
+  };
+  const meta = responderMeta[role] || {
+    Icon: tracker.category ? resolveCategory(tracker.category).Icon : Navigation,
+    color: tracker.color || '#EC4899',
+    label: 'UNIT',
+  };
+  const { Icon, color, label } = meta;
 
   return (
-    <Marker coordinate={toLatLng(tracker)} tracksViewChanges={false} zIndex={200}>
-      <View
-        style={[
-          tw`h-10 w-10 items-center justify-center rounded-full border-[3px] border-white`,
-          { backgroundColor: color, elevation: 6 },
-        ]}
-      >
-        <Icon size={19} color="#FFFFFF" />
+    <Marker
+      coordinate={toLatLng(tracker)}
+      tracksViewChanges={false}
+      zIndex={200}
+      anchor={{ x: 0.5, y: 1 }}
+    >
+      <View collapsable={false} style={{ width: 62, height: 64, alignItems: 'center' }}>
+        <View
+          style={[
+            tw`h-11 w-11 items-center justify-center rounded-full border-[3px] border-white`,
+            {
+              backgroundColor: color,
+              elevation: 7,
+              shadowColor: '#0F172A',
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.28,
+              shadowRadius: 3,
+            },
+          ]}
+        >
+          <View style={tw`h-7 w-7 items-center justify-center rounded-full bg-white`}>
+            <Icon size={17} color={color} />
+          </View>
+        </View>
+        <View
+          style={{
+            width: 0,
+            height: 0,
+            marginTop: -1,
+            borderLeftWidth: 6,
+            borderRightWidth: 6,
+            borderTopWidth: 8,
+            borderLeftColor: 'transparent',
+            borderRightColor: 'transparent',
+            borderTopColor: color,
+          }}
+        />
+        <View
+          style={[
+            tw`mt-0.5 rounded-full border border-white px-1.5 py-0.5`,
+            { backgroundColor: color, elevation: 4 },
+          ]}
+        >
+          <Text style={tw`text-[8px] font-black text-white`}>{label}</Text>
+        </View>
       </View>
     </Marker>
   );
