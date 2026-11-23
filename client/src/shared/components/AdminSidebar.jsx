@@ -82,11 +82,10 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
         />
       )}
       <aside
-        className={`fixed inset-y-0 left-0 z-30 border-r border-[#e4e9ec] bg-white px-3 py-4 shadow-xl transition-[width,transform] duration-300 ${
-          open
+        className={`fixed inset-y-0 left-0 z-30 border-r border-[#e4e9ec] bg-white px-3 py-4 shadow-xl transition-[width,transform] duration-300 ${open
             ? "w-[250px] translate-x-0"
             : "w-[72px] -translate-x-full md:translate-x-0"
-        }`}
+          }`}
       >
         <div className={`mb-6 ${open ? "relative flex items-center justify-between gap-2 px-1 py-1" : "flex flex-col items-center gap-4 px-0"}`}>
           {!open && <button
@@ -146,13 +145,11 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
                       navigateTo(path);
                     }
                   }}
-                  className={`group relative flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--gf-green) ${
-                    open ? "" : "md:justify-center md:px-0"
-                  } ${
-                    active
+                  className={`group relative flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--gf-green) ${open ? "" : "md:justify-center md:px-0"
+                    } ${active
                       ? "bg-(--gf-green) text-white"
                       : "text-(--gf-ink) hover:bg-(--gf-green-soft)"
-                  }`}
+                    }`}
                 >
                   <Icon size={14} strokeWidth={1.8} className="shrink-0" />
                   <span className={`min-w-0 flex-1 truncate ${open ? "" : "md:hidden"}`}>{label}</span>
@@ -160,9 +157,8 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
                     <ChevronDown
                       size={14}
                       aria-hidden="true"
-                      className={`shrink-0 transition-transform duration-150 motion-reduce:transition-none ${
-                        active ? "text-white/90" : "text-(--gf-slate)"
-                      } ${expanded ? "rotate-180" : ""}`}
+                      className={`shrink-0 transition-transform duration-150 motion-reduce:transition-none ${active ? "text-white/90" : "text-(--gf-slate)"
+                        } ${expanded ? "rotate-180" : ""}`}
                     />
                   )}
                   {!open && (
@@ -174,36 +170,22 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
                 {hasChildren && expanded && open && (
                   <div
                     id={`sidebar-submenu-${key}`}
-                    className="mt-1 space-y-0.5 pl-3"
+                    className="ml-4 mt-1.5 space-y-0.5 border-l border-(--gf-border) pl-3"
                   >
                     {children.map((child) => {
                       const childActive = location.pathname === child.path;
-                      const ChildIcon = child.icon;
                       return (
                         <button
                           key={child.key}
                           type="button"
                           onClick={() => navigateTo(child.path)}
                           aria-current={childActive ? "page" : undefined}
-                          className={`group/sub flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[10px] leading-snug transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--gf-green) ${
-                            childActive
-                              ? "bg-(--gf-green-tint) font-semibold text-(--gf-green-dark)"
-                              : "font-medium text-(--gf-slate) hover:bg-(--gf-green-soft) hover:text-(--gf-green-dark)"
-                          }`}
+                          className={`relative block w-full rounded-md px-2 py-1.5 text-left text-[10px] leading-snug transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--gf-green) ${childActive
+                              ? "font-semibold text-(--gf-green-dark) before:absolute before:-left-[13px] before:inset-y-1 before:w-[2px] before:rounded-full before:bg-(--gf-green)"
+                              : "font-medium text-(--gf-slate) hover:bg-(--gf-green-soft) hover:text-(--gf-ink)"
+                            }`}
                         >
-                          {ChildIcon && (
-                            <ChildIcon
-                              size={13}
-                              strokeWidth={1.8}
-                              aria-hidden="true"
-                              className={`shrink-0 transition-colors ${
-                                childActive
-                                  ? "text-(--gf-green-dark)"
-                                  : "text-slate-400 group-hover/sub:text-(--gf-green-dark)"
-                              }`}
-                            />
-                          )}
-                          <span className="min-w-0 flex-1 truncate">{child.label}</span>
+                          <span className="block truncate">{child.label}</span>
                         </button>
                       );
                     })}

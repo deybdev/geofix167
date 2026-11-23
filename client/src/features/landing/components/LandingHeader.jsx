@@ -6,6 +6,7 @@ import {
   X,
   Shield,
   AlertTriangle,
+  ArrowRight,
   House,
   Info,
   MapPin,
@@ -62,13 +63,13 @@ export default function LandingHeader({ onReportClick }) {
   const servicesSubLinks = [
     {
       label: "Barangay Services",
-      description: "Community assistance & public requests",
+      caption: "Request help & public services",
       href: PATHS.services,
       icon: Wrench,
     },
     {
       label: "Barangay Announcements",
-      description: "Official advisories, schedules & notices",
+      caption: "Advisories, schedules & notices",
       href: PATHS.announcements,
       icon: Megaphone,
     },
@@ -119,9 +120,11 @@ export default function LandingHeader({ onReportClick }) {
                       aria-haspopup="menu"
                       onClick={() => setServicesMenuOpen((current) => !current)}
                       className={`relative inline-flex items-center gap-1.5 whitespace-nowrap py-2 text-[13px] font-bold transition-colors ${
-                        isServicesGroupActive || servicesMenuOpen
+                        isServicesGroupActive
                           ? "text-(--public-action) after:absolute after:inset-x-0 after:-bottom-1 after:h-0.5 after:rounded-full after:bg-(--gf-green)"
-                          : "text-slate-600 hover:text-(--public-action)"
+                          : servicesMenuOpen
+                            ? "text-(--public-action)"
+                            : "text-slate-600 hover:text-(--public-action)"
                       }`}
                     >
                       <span>{link.label}</span>
@@ -138,18 +141,13 @@ export default function LandingHeader({ onReportClick }) {
                       aria-label="Barangay Services and Announcements"
                       aria-hidden={!servicesMenuOpen}
                       inert={!servicesMenuOpen ? "" : undefined}
-                      className={`absolute left-1/2 top-full z-50 mt-3 w-76 -translate-x-1/2 overflow-hidden rounded-xl border border-(--gf-border) bg-white shadow-[0_16px_38px_-12px_rgb(15_23_42/0.2)] transition-[opacity,transform,visibility] duration-150 ease-out motion-reduce:transition-none ${
+                      className={`absolute left-0 top-full z-50 mt-3 w-[312px] overflow-hidden rounded-b-xl rounded-t-sm border border-(--public-line) border-t-2 border-t-(--public-action) bg-white shadow-[0_18px_40px_-14px_rgb(16_59_43/0.22)] transition-[opacity,transform,visibility] duration-150 ease-out motion-reduce:transition-none ${
                         servicesMenuOpen
                           ? "visible translate-y-0 opacity-100"
                           : "invisible -translate-y-1.5 opacity-0 pointer-events-none"
                       }`}
                     >
-                      <div className="border-b border-(--gf-line) bg-(--gf-surface) px-3.5 py-2">
-                        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-(--gf-slate)">
-                          Barangay 167 Directory
-                        </p>
-                      </div>
-                      <div className="space-y-1 p-2">
+                      <div className="divide-y divide-(--public-line)">
                         {link.children.map((sub) => {
                           const SubIcon = sub.icon;
                           const subActive =
@@ -165,38 +163,38 @@ export default function LandingHeader({ onReportClick }) {
                                 setServicesMenuOpen(false);
                                 setMobileMenuOpen(false);
                               }}
-                              className={`group/item flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors ${
+                              className={`group/item flex items-center gap-3.5 px-4 py-3.5 transition-colors ${
                                 subActive
-                                  ? "bg-(--gf-green-soft) ring-1 ring-inset ring-(--gf-green-border)"
-                                  : "hover:bg-slate-50"
+                                  ? "border-l-[3px] border-l-(--public-action) bg-(--gf-green-soft)"
+                                  : "border-l-[3px] border-l-transparent hover:bg-(--gf-green-soft)/60"
                               }`}
                             >
                               <span
                                 aria-hidden="true"
-                                className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg transition-colors ${
+                                className={`grid h-10 w-10 shrink-0 place-items-center rounded-lg transition-colors ${
                                   subActive
                                     ? "bg-(--public-action) text-white"
                                     : "bg-(--gf-green-soft) text-(--public-action) group-hover/item:bg-(--public-action) group-hover/item:text-white"
                                 }`}
                               >
-                                <SubIcon size={16} strokeWidth={2} />
+                                <SubIcon size={17} strokeWidth={2} />
                               </span>
                               <span className="min-w-0 flex-1">
                                 <span
-                                  className={`block whitespace-nowrap text-[13px] font-bold leading-snug ${
+                                  className={`block whitespace-nowrap text-[13px] font-bold leading-snug transition-colors ${
                                     subActive
                                       ? "text-(--public-action)"
-                                      : "text-(--gf-ink) group-hover/item:text-(--public-action)"
+                                      : "text-(--public-text-strong) group-hover/item:text-(--public-action)"
                                   }`}
                                 >
                                   {sub.label}
                                 </span>
-                                <span className="mt-0.5 block truncate text-[11px] font-medium text-(--gf-slate)">
-                                  {sub.description}
+                                <span className="mt-0.5 block whitespace-nowrap text-[11px] font-medium text-(--public-text-muted)">
+                                  {sub.caption}
                                 </span>
                               </span>
-                              <ChevronRight
-                                size={14}
+                              <ArrowRight
+                                size={15}
                                 aria-hidden="true"
                                 className={`shrink-0 transition-transform duration-150 motion-reduce:transition-none ${
                                   subActive
