@@ -246,39 +246,6 @@ export async function updateReportDetails(id, { description_sanitized, location_
   }));
 }
 
-export const SAMPLE_NOTIFICATIONS = [
-  {
-    id: 1,
-    title: "Team Dispatched",
-    body: "A maintenance team has been dispatched to address your drainage report.",
-    type: "report_update",
-    ref_id: "rpt_a1b2c3d4",
-    is_read: 0,
-    created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 2,
-    title: "Report Submitted",
-    body: "Your report about clogged drainage has been received and is under review.",
-    type: "report_update",
-    ref_id: "rpt_a1b2c3d4",
-    is_read: 0,
-    created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 3,
-    title: "Report Resolved",
-    body: "Your pothole report on Balagtas St. has been resolved. Thank you for reporting!",
-    type: "report_update",
-    ref_id: "rpt_i9j0k1l2",
-    is_read: 1,
-    created_at: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-];
-
-// Simulated async helpers — swap these for real axios calls later.
-const delay = (ms = 300) => new Promise((res) => setTimeout(res, ms));
-
 export async function getAnnouncements({ signal } = {}) {
   const response = await api.get('/announcements', { signal });
   if (!Array.isArray(response.data?.announcements)) {
@@ -300,15 +267,16 @@ export async function getNotifications({ signal, cursor } = {}) {
   return response;
 }
 
-export async function markNotificationRead(id) {
-  await delay(100);
-  const n = SAMPLE_NOTIFICATIONS.find((n) => n.id === id);
-  if (n) n.is_read = 1;
-  return { data: { ok: true } };
+async function patchRead(path) {
+  const response = await api.patch(path);
+  if (response.data?.ok !== true) throw new Error('Unable to confirm notification read status.');
+  return response;
 }
 
-export async function markAllNotificationsRead() {
-  await delay(100);
-  SAMPLE_NOTIFICATIONS.forEach((n) => { n.is_read = 1; });
-  return { data: { ok: true } };
+export function markNotificationRead(id) {
+  return patchRead(`/notifications/${encodeURIComponent(id)}/read`);
+}
+
+export function markAllNotificationsRead() {
+  return patchRead('/notifications/read-all');
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -8,7 +8,8 @@ import {
   ToastAndroid,
   Platform,
 } from "react-native";
-import { useNavigation } from "@react-navigation/native";
+import { getNotifications } from "../services/residentService";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   House,
@@ -75,7 +76,7 @@ const initialsOf = (name = "") =>
     .join("") || "R";
 
 // ───────────────────────── Layout ─────────────────────────
-export default function ResidentLayout({ children, getNotifications, routeName }) {
+export default function ResidentLayout({ children, routeName }) {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { user, signOut } = useAuth();
@@ -93,26 +94,16 @@ export default function ResidentLayout({ children, getNotifications, routeName }
   const fullName = user?.full_name || "Resident";
   const firstName = useMemo(() => fullName.split(" ")[0], [fullName]);
 
-  useEffect(() => {
-    if (!getNotifications) return;
-    let mounted = true;
-
-    (async () => {
-      try {
-        const result = await getNotifications();
-        if (!mounted) return;
-        setUnread(
-          Array.isArray(result) ? result.length : (result?.unreadCount ?? 0),
-        );
-      } catch (e) {
-        console.error("Unable to load notifications:", e);
-      }
-    })();
-
-    return () => {
-      mounted = false;
-    };
-  }, [routeName, getNotifications]);
+  useFocusEffect(useCallback(() => {
+    if (!showChrome || !user) return;
+    const controller = new AbortController();
+    getNotifications({ signal: controller.signal })
+      .then(({ data }) => {
+        if (!controller.signal.aborted) setUnread(data.unread_count);
+      })
+      .catch(() => {}); // Keep the last confirmed badge until the next focus.
+    return () => controller.abort();
+  }, [showChrome, user]));
 
   const go = (screen) => {
     if (routeName !== screen) navigation.navigate(screen);
