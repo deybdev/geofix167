@@ -17,15 +17,14 @@ export const QUEUES = [
 const CLOSED_STATUSES = ["Verified Fixed", "Duplicate", "Handed Over"];
 
 export function queuesFor(report) {
-  if (CLOSED_STATUSES.includes(report.status)) return ["resolved"];
-  const keys = [];
+  const monitored = isEmergency(report) && (report.forwardedAt || report.statusCode === "FORWARDED_TO_BDRRMO"
+    || report.dispatchedUnits?.some((unit) => unit.dispatcher_role === "bdrrmo"));
+  const keys = monitored ? ["dispatch-tracking"] : [];
+  if (CLOSED_STATUSES.includes(report.status)) return [...keys, "resolved"];
   if (!isEmergency(report) && report.status === "Reported") keys.push("pending-triage");
   else if (isEmergency(report)) keys.push("active-emergencies");
   else keys.push("infrastructure");
   if (report.external?.length) keys.push("external-agencies");
-  if (report.responders && isEmergency(report) && report.status === "In Progress" && report.fieldStage !== "Completed") {
-    keys.push("dispatch-tracking");
-  }
   return keys;
 }
 
@@ -34,7 +33,7 @@ export const EMPTY_QUEUE_MESSAGES = {
   "active-emergencies": "No active emergencies right now.",
   "external-agencies": "No external agency units have been requested.",
   infrastructure: "No infrastructure reports are currently in progress.",
-  "dispatch-tracking": "No active responder assignments — assign one via Field Ops on an active emergency.",
+  "dispatch-tracking": "No emergencies forwarded yet.",
   resolved: "No resolved reports yet.",
 };
 

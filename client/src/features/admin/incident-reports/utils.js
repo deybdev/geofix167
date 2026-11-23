@@ -36,17 +36,22 @@ function formatApiReportDate(value) {
     : "Date unavailable";
 }
 
-export function formatTimestamp(value) {
-  if (!value) return "Time unavailable";
+export function parseTimestamp(value) {
+  if (!value) return NaN;
   const utc = /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/.test(value) ? value.replace(" ", "T") + "Z" : value;
-  return new Date(utc).toLocaleString();
+  return Date.parse(utc);
+}
+
+export function formatTimestamp(value) {
+  const time = parseTimestamp(value);
+  return Number.isFinite(time) ? new Date(time).toLocaleString() : "Time unavailable";
 }
 
 export function formatForwardedTime(value) {
   return value ? "Forwarded " + formatTimestamp(value) : "Forwarding time unavailable";
 }
 
-function mapApiReport(item) {
+function mapApiReport(item, fetchedAt) {
   const latitude = item.latitude == null ? null : Number(item.latitude);
   const longitude = item.longitude == null ? null : Number(item.longitude);
   const hasCoordinates = Number.isFinite(latitude) && Number.isFinite(longitude);
@@ -87,10 +92,14 @@ function mapApiReport(item) {
     reporterType: reporterType === "guest" ? "guest" : "resident",
     date: formatApiReportDate(submittedAt),
     submittedAt,
+    statusCode: item.status_code,
+    fetchedAt,
     history: item.history ?? [],
     forwardedAt: item.forwarded_at,
     month: submittedAt ? new Date(submittedAt).toLocaleDateString("en-US", { month: "long", year: "numeric" }) : "",
-    team: String(item.assigned_team ?? "").trim() || classification.assignedTeam,
+    team: classification.isEmergency
+      ? (item.dispatched_units ?? []).filter((unit) => !["DECLINED", "CANCELLED"].includes(unit.status)).map((unit) => unit.name).join(", ") || "Unassigned"
+      : String(item.assigned_team ?? "").trim() || classification.assignedTeam,
     status,
     ...(hasCoordinates ? { lat: latitude, lng: longitude } : {}),
     evidence: [],

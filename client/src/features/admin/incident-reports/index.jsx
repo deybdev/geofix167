@@ -45,6 +45,7 @@ export default function IncidentReports() {
   }
 
   const [reports, setReports] = useState([]);
+  const [reportsError, setReportsError] = useState("");
   const [menuFor, setMenuFor] = useState(null);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("All Statuses");
@@ -71,17 +72,23 @@ export default function IncidentReports() {
 
   useEffect(() => {
     let active = true;
-    let warned = false;
+    let busy = false;
+    const controller = new AbortController();
     const loadApiReports = async () => {
+      if (document.hidden || busy) return;
+      busy = true;
       try {
         const response = await fetch("/api/reports", {
           credentials: "include",
           cache: "no-store",
+          signal: controller.signal,
         });
         if (!response.ok) throw new Error("Reports could not be loaded from the server.");
         const result = await response.json();
         if (!active || !Array.isArray(result.reports)) return;
-        const apiReports = result.reports.map(mapApiReport);
+        setReportsError("");
+        const fetchedAt = Date.now();
+        const apiReports = result.reports.map((item) => mapApiReport(item, fetchedAt));
         setReports((current) => {
           const currentById = new Map(current.map((report) => [report.id, report]));
           return apiReports.map((latest) => {
@@ -97,16 +104,18 @@ export default function IncidentReports() {
           });
         });
       } catch (error) {
-        if (!warned) {
-          warned = true;
-          console.warn("Unable to load server incident reports:", error);
-        }
+        if (active) setReportsError(error.message || "Could not refresh reports.");
+      } finally {
+        busy = false;
       }
     };
     void loadApiReports();
-    const timer = window.setInterval(loadApiReports, 5000);
+    const timer = window.setInterval(loadApiReports, 6000);
+    document.addEventListener("visibilitychange", loadApiReports);
     return () => {
       active = false;
+      controller.abort();
+      document.removeEventListener("visibilitychange", loadApiReports);
       window.clearInterval(timer);
     };
   }, []);
@@ -263,6 +272,7 @@ export default function IncidentReports() {
 
   return (
     <div className="space-y-3">
+      {reportsError && <p role="alert">{reportsError} Retrying automatically.</p>}
       <section className="sticky top-0 z-30 rounded-lg border border-[#e2e8eb] bg-white/95 p-4 backdrop-blur">
         <div className="gf-tabs">
           {QUEUES.map((queue) => {
@@ -292,7 +302,7 @@ export default function IncidentReports() {
       </section>
 
       {tab === "dispatch-tracking" ? (
-        <TrackingBoard reports={filteredReports} onOpenFieldOps={openFieldOps} />
+        <TrackingBoard reports={filteredReports} />
       ) : (
         <section className="rounded-lg border border-[#e2e8eb] bg-white p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

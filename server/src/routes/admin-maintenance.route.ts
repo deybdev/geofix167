@@ -156,6 +156,11 @@ route.post("/ingest", async (c) => {
     return c.json({ error: "incident_id is required." }, 400);
   }
 
+  const report = await db.prepare("SELECT is_emergency FROM incident_reports WHERE incident_id = ?")
+    .bind(body.incident_id).first<{ is_emergency: number }>();
+  if (!report) return c.json({ error: "Report not found." }, 404);
+  if (report.is_emergency) return c.json({ error: "Sudden incidents cannot be assigned as Tanod maintenance tasks." }, 409);
+
   let resource = body.unit_id
     ? await db.prepare(`
         SELECT responder_resource_id, responder_user_id, display_name

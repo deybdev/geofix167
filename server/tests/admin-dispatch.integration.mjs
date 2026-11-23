@@ -24,8 +24,9 @@ INSERT INTO users VALUES('admin','Admin','User','09123123123','hash',1,1),('resi
 for (const file of ['0005_guest_incidents.sql', '0006_review_alerts.sql', '0007_dispatch_support.sql', '0012_community_audit.sql', '0015_admin_dispatch.sql', '0017_report_attachments.sql', '0018_guest_report_intake.sql', '0019_resident_report_notifications.sql', '0020_guest_report_location_metadata.sql', '0021_guest_report_urgency.sql', '0022_normalize_maintenance_categories.sql', '0028_responder_dispatches.sql', '0029_dispatch_coordinates.sql', '0033_live_tracking.sql']) {
   sql.exec(readFileSync(resolve(serverRoot, `src/migrations/${file}`), 'utf8'));
 }
+sql.exec("INSERT INTO roles VALUES (4,'bdrrmo'),(5,'fire'); INSERT INTO users VALUES ('bdrrmo','Dispatch','Officer','123','hash',4,1),('fire','Fire','Responder','456','hash',5,1)");
 const sha256 = async (value) => Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))).toString('hex');
-for (const [id, role] of [['admin', 'admin'], ['resident', 'resident']]) {
+for (const [id, role] of [['admin', 'admin'], ['resident', 'resident'], ['bdrrmo', 'bdrrmo'], ['fire', 'fire']]) {
   const token = `${id}-session`;
   sql.prepare('INSERT INTO user_sessions_and_devices (user_id, token_hash, expires_at) VALUES(?,?,?)').run(id, await sha256(token), '2099-01-01');
 }
@@ -178,3 +179,21 @@ assert.equal(requested.count, 1);
 assert.equal((await request(`/admin/dispatch/reports/${reportIds[3]}/verify`, 'POST', { decision: 'REJECTED', reason: 'Invalid' }, 'admin')).status, 409, 'closed workflow states cannot be re-verified');
 assert.equal((await request('/admin/dispatch/reports', 'GET', undefined, 'resident')).status, 403);
 console.log('PASS admin dispatch integration: role guards, seeding, verification, atomic dispatch, unit availability, DRRMO request, and invalid transitions');
+
+const dispatchTeam = await request('/responder/dispatches', 'POST', {
+  incident_id: emergencyReportId, incident_title: emergency.title, incident_category: emergency.category,
+  target_roles: ['fire'], urgency: 'High', vehicle_name: 'Fire Truck 1',
+}, 'bdrrmo');
+assert.equal(dispatchTeam.status, 201);
+const assignment = sql.prepare('SELECT responder_dispatch_id AS id FROM responder_dispatches WHERE incident_id = ?').get(emergencyReportId);
+assert.equal((await request('/responder/dispatches/' + assignment.id + '/status', 'PATCH', {status:'ACCEPTED'}, 'fire')).status, 200);
+assert.equal((await request('/responder/location', 'POST', {assignment_id:assignment.id, lat:14.73, lng:121.01}, 'fire')).status, 200);
+const monitorResponse = await request('/reports', 'GET', undefined, 'admin');
+assert.equal(monitorResponse.status, 200);
+const monitored = (await monitorResponse.json()).reports.find(report => report.incident_id === emergencyReportId);
+const team = monitored.dispatched_units[0];
+assert.ok(monitored.forwarded_at && monitored.history.length >= 2);
+assert.deepEqual([team.name, team.dispatched_by, team.dispatcher_role, team.responder, team.contact, team.status],
+  ['Fire Truck 1', 'Dispatch Officer', 'bdrrmo', 'Fire Responder', '456', 'ACCEPTED']);
+assert.equal(team.location.lat, 14.73);
+console.log('PASS monitor: forwarded timestamp, dispatcher, team, responder, timeline and last location');
