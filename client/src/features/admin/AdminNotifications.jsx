@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { Bell, CheckCircle, CircleAlert, ClipboardCheck, Radio, UserRound, Volume2, VolumeX } from "lucide-react";
+import { Bell, CheckCircle, CircleAlert, ClipboardCheck, Radio, UserRound } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { createNotificationRequests } from "../../shared/context/notificationRequests";
 import { applyNotificationRead, mergeNotificationPage } from "../../shared/context/notificationPages";
 
 const inbox = "/api/admin/notifications";
-const soundKey = "geofix.admin.notification-sound";
 const icons = {
   emergency_forwarded: CircleAlert, DECLINED: CircleAlert, registration_pending: UserRound,
   maintenance_intake: ClipboardCheck, maintenance_verification: ClipboardCheck,
@@ -26,25 +25,9 @@ function relativeTime(stamp, now) {
   return Math.floor(seconds / 86400) + "d ago";
 }
 
-function chime(context) {
-  if (context?.state !== "running") return;
-  const oscillator = context.createOscillator();
-  const gain = context.createGain();
-  const start = context.currentTime;
-  oscillator.frequency.value = 740;
-  gain.gain.setValueAtTime(0.08, start);
-  gain.gain.exponentialRampToValueAtTime(0.001, start + 0.15);
-  oscillator.connect(gain).connect(context.destination);
-  oscillator.start(start);
-  oscillator.stop(start + 0.16);
-}
-
 export default function AdminNotifications() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const [enabled, setEnabled] = useState(() => localStorage.getItem(soundKey) !== "off");
-  const sound = useRef(enabled);
-  const audio = useRef(null);
   const newest = useRef(null);
   const wrapper = useRef(null);
   const trigger = useRef(null);
@@ -68,7 +51,6 @@ export default function AdminNotifications() {
           const previous = newest.current;
           if (previous && page.notifications.some(item => !item.is_read && !previous.ids.has(item.id) && item.created_at >= previous.time)) {
             setAnnouncement("New notification. " + page.unread_count + " unread.");
-            if (sound.current) chime(audio.current);
           }
           newest.current = { ids: new Set(page.notifications.map(item => item.id)), time: page.notifications[0]?.created_at ?? "" };
         }
@@ -94,23 +76,6 @@ export default function AdminNotifications() {
   }, []);
 
   useEffect(() => {
-    const unlock = () => {
-      const AudioEngine = window.AudioContext ?? window.webkitAudioContext;
-      if (!AudioEngine || !sound.current) return;
-      audio.current ??= new AudioEngine();
-      if (audio.current.state === "suspended") void audio.current.resume().catch(() => {});
-    };
-    window.addEventListener("click", unlock);
-    window.addEventListener("keydown", unlock);
-    return () => {
-      window.removeEventListener("click", unlock);
-      window.removeEventListener("keydown", unlock);
-      if (audio.current) void audio.current.close().catch(() => {});
-      audio.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
     if (!open) return;
     const outside = (event) => { if (!wrapper.current?.contains(event.target)) setOpen(false); };
     const escape = (event) => {
@@ -126,21 +91,12 @@ export default function AdminNotifications() {
     };
   }, [open]);
 
-  const toggleSound = () => {
-    sound.current = !enabled;
-    setEnabled(!enabled);
-    localStorage.setItem(soundKey, enabled ? "off" : "on");
-  };
   async function select(item) {
     if (!item.is_read && !await channel.current?.markRead(item.id)) return;
     setOpen(false);
     if (item.link_path.startsWith("/admin/")) navigate(item.link_path);
   }
-  const SoundIcon = enabled ? Volume2 : VolumeX;
   return <>
-    <button type="button" onClick={toggleSound} aria-pressed={enabled} className="inline-flex h-9 items-center gap-1 rounded-lg border border-emerald-200 px-2 text-xs font-bold text-emerald-800">
-      <SoundIcon size={15} /> Sound: {enabled ? "ON" : "OFF"}
-    </button>
     <div className="relative" ref={wrapper}>
       <button ref={trigger} type="button" aria-label={"Notifications, " + data.unread_count + " unread"} aria-expanded={open} aria-controls="admin-inbox"
         className="relative grid h-9 w-9 place-items-center rounded-full border text-emerald-800" onClick={() => { setOpen(!open); if (!open) channel.current?.refresh(); }}>
