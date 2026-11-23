@@ -25,3 +25,10 @@ export const handovers = [
   { id:"QH-027",incidentId:"GF-102",receiver:"Hospital ER Staff",receiverType:"HOSPITAL",organization:"District Hospital",officer:"Nurse A. Reyes",method:"Protected QR",qrStatusCode:"ACCEPTED",createdAt:"Nov 19, 8:32 AM",acceptedAt:"Nov 19, 8:39 AM",expiresAt:"Nov 19, 9:02 AM",remarks:"Patient received at ER entrance; capability acknowledgment requires BDRRMO review.",authenticatedReceiver:false },
   { id:"QH-026",incidentId:"GF-103",receiver:"Patient companion",receiverType:"COMPANION",organization:"External receiver",officer:"M. Santos",method:"Protected QR",qrStatusCode:"NEEDS_CORRECTION",createdAt:"Nov 19, 8:20 AM",acceptedAt:"Nov 19, 8:27 AM",expiresAt:"Nov 19, 8:50 AM",remarks:"Receiver role needs clarification.",authenticatedReceiver:false },
 ];
+
+export const vehicles = [
+  { id: "V-01", name: "Tanod Patrol Unit 1", type: "Patrol Motorcycle", plate: "BRGY-167-01", capacity: "2 personnel", availabilityStatus: "AVAILABLE", location: "Barangay Hall", updated: "Now" },
+  { id: "V-02", name: "Tanod Patrol Unit 2", type: "Patrol Motorcycle", plate: "BRGY-167-02", capacity: "2 personnel", availabilityStatus: "BUSY", location: "Gate 2", updated: "2 min ago" },
+  { id: "V-03", name: "Emergency Transport Van", type: "Transport Van", plate: "BRGY-167-03", capacity: "6 personnel / 1 patient", availabilityStatus: "AVAILABLE", location: "Barangay Hall", updated: "Now" },
+  { id: "V-04", name: "Response Tricycle", type: "Tricycle", plate: "BRGY-167-04", capacity: "3 personnel", availabilityStatus: "OUT_OF_SERVICE", location: "Motorpool", updated: "15 min ago" },
+];

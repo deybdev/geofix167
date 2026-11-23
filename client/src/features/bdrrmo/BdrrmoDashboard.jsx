@@ -4,14 +4,8 @@ import { useNavigate } from "react-router-dom";
 import { PATHS } from "../../router/paths";
 import MapViewer from "../../shared/components/MapViewer";
 import { AVAILABILITY_STATUS, INCIDENT_STATUS, PRIORITY, displayStatus } from "./statusModel";
+import { statusTone, tone } from "./constants";
 import { useBdrrmoDemo } from "./BdrrmoDemoContext";
-
-const tone = {
-  P1: "bg-[#fdecea] text-[#dc2626]",
-  P2: "bg-[#fff1c6] text-[#e69500]",
-  P3: "bg-[#eef2fb] text-[#4c6fbf]",
-  P4: "bg-[#eef2f4] text-[#60738f]",
-};
 
 export default function BdrrmoDashboard() {
   const navigate = useNavigate();
@@ -23,7 +17,7 @@ export default function BdrrmoDashboard() {
     ["Awaiting Dispatch", incidents.filter((i) => i.incidentStatusCode === "FORWARDED_TO_BDRRMO" && !assignments.some((a) => a.incidentId === i.id)).length, Radio, "text-[#e69500] bg-[#fff1c6]", PATHS.bdrrmoDispatchResponders],
     ["Available Units", responders.filter((r) => r.availabilityStatus === "AVAILABLE").length, UsersRound, "text-(--gf-green) bg-(--gf-green-soft)", PATHS.bdrrmoDispatchResponders],
     ["Busy Units", responders.filter((r) => r.availabilityStatus === "BUSY").length, ShieldAlert, "text-[#4c6fbf] bg-[#eef2fb]", PATHS.bdrrmoDispatchResponders],
-    ["For Closure", incidents.filter((i) => i.incidentStatusCode === "FOR_CLOSURE_REVIEW").length, CheckSquare2, "text-[#e69500] bg-[#fff1c6]", PATHS.bdrrmoHandoverCompletion],
+    ["For Closure", incidents.filter((i) => i.incidentStatusCode === "FOR_CLOSURE_REVIEW").length, CheckSquare2, "text-[#e69500] bg-[#fff1c6]", PATHS.bdrrmoIncidents],
     ["QR Handovers", handovers.length, Clock3, "text-(--gf-green) bg-(--gf-green-soft)", PATHS.bdrrmoHandoverCompletion],
   ];
 
@@ -132,7 +126,7 @@ export default function BdrrmoDashboard() {
                     <strong className="block text-xs text-[#263246]">{r.name}</strong>
                     <span className="text-[10px] text-[#60738f]">{r.unit}</span>
                   </div>
-                  <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${r.availabilityStatus === "AVAILABLE" ? "bg-(--gf-green-tint-2) text-(--gf-green)" : "bg-[#fdecea] text-[#dc2626]"}`}>
+                  <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${statusTone(r.availabilityStatus)}`}>
                     {displayStatus(AVAILABILITY_STATUS, r.availabilityStatus)}
                   </span>
                 </div>
