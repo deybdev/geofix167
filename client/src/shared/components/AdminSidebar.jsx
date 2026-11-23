@@ -146,22 +146,28 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
                       navigateTo(path);
                     }
                   }}
-                  className={`group relative flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12px] font-medium transition-colors ${
+                  className={`group relative flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-[12px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--gf-green) ${
                     open ? "" : "md:justify-center md:px-0"
                   } ${
                     active
-                      ? "bg-(--gf-green) text-white"
-                      : "text-[#263246] hover:bg-(--gf-green-soft)"
+                      ? "bg-(--gf-green) text-white shadow-xs"
+                      : "text-(--gf-ink) hover:bg-(--gf-green-soft)"
                   }`}
                 >
-                  <Icon size={14} strokeWidth={1.8} />
+                  <Icon size={15} strokeWidth={1.8} className="shrink-0" />
                   <span className={`min-w-0 flex-1 truncate ${open ? "" : "md:hidden"}`}>{label}</span>
                   {hasChildren && open && (
-                    <ChevronDown
-                      size={14}
-                      className={`shrink-0 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
+                    <span
                       aria-hidden="true"
-                    />
+                      className={`grid h-5 w-5 shrink-0 place-items-center rounded-md transition-colors ${
+                        active ? "bg-white/15 text-white" : "text-(--gf-slate) group-hover:text-(--gf-green-dark)"
+                      }`}
+                    >
+                      <ChevronDown
+                        size={13}
+                        className={`transition-transform duration-150 motion-reduce:transition-none ${expanded ? "rotate-180" : ""}`}
+                      />
+                    </span>
                   )}
                   {!open && (
                     <span className="pointer-events-none absolute left-[calc(100%+10px)] z-50 hidden whitespace-nowrap rounded-md bg-slate-900 px-2.5 py-1.5 text-[12px] text-white shadow-lg group-hover:md:block">
@@ -172,7 +178,7 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
                 {hasChildren && expanded && open && (
                   <div
                     id={`sidebar-submenu-${key}`}
-                    className="ml-5 mt-1 space-y-0.5 border-l border-(--gf-green-border) py-1 pl-2"
+                    className="ml-4 mt-1 space-y-1 border-l-2 border-(--gf-green-border) py-1 pl-2.5"
                   >
                     {children.map((child) => {
                       const childActive = location.pathname === child.path;
@@ -182,13 +188,21 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
                           type="button"
                           onClick={() => navigateTo(child.path)}
                           aria-current={childActive ? "page" : undefined}
-                          className={`block w-full rounded-md px-2.5 py-2 text-left text-[11px] leading-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--gf-green) ${
+                          className={`group/sub flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[10px] leading-snug transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--gf-green) ${
                             childActive
-                              ? "bg-(--gf-green-soft) font-semibold text-(--gf-green)"
-                              : "font-medium text-slate-600 hover:bg-(--gf-green-soft) hover:text-(--gf-green)"
+                              ? "bg-(--gf-green-tint) font-semibold text-(--gf-green-dark)"
+                              : "font-medium text-(--gf-slate) hover:bg-(--gf-green-soft) hover:text-(--gf-green-dark)"
                           }`}
                         >
-                          {child.label}
+                          <span
+                            aria-hidden="true"
+                            className={`h-1.5 w-1.5 shrink-0 rounded-full transition-colors ${
+                              childActive
+                                ? "bg-(--gf-green)"
+                                : "bg-slate-300 group-hover/sub:bg-(--gf-green)"
+                            }`}
+                          />
+                          <span className="min-w-0 flex-1 truncate">{child.label}</span>
                         </button>
                       );
                     })}

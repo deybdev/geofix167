@@ -696,22 +696,7 @@ export default function GuestReportForm({
             <a href={savedTrackingUrl} className="text-[10px] font-bold text-emerald-800 underline underline-offset-2">Reopen tracking</a>
           </aside>}
           <fieldset>
-            <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
-              <legend className="text-xs font-bold text-slate-700">Sudden incidents</legend>
-              <span
-                aria-live="polite"
-                className={`text-[11px] font-semibold tabular-nums ${
-                  selectedCategories.length >= MAX_SUDDEN_CATEGORIES ? "text-(--gf-red)" : "text-slate-600"
-                }`}
-              >
-                {selectedCategories.length} of {MAX_SUDDEN_CATEGORIES} selected
-                {selectedCategories.length >= MAX_SUDDEN_CATEGORIES && (
-                  <span className="ml-1.5 rounded-full bg-red-50 px-1.5 py-0.5 text-[10px] font-bold text-red-700 ring-1 ring-inset ring-red-200">
-                    Maximum of {MAX_SUDDEN_CATEGORIES}
-                  </span>
-                )}
-              </span>
-            </div>
+            <legend className="mb-1 text-xs font-bold text-slate-700">Sudden incidents</legend>
             <p className="mb-2 text-[10px] text-slate-500">Guests can report sudden incidents only. Sign in as a registered resident to report maintenance issues.</p>
             <div className="space-y-2">
               {categories.map((item) => {
@@ -774,11 +759,6 @@ export default function GuestReportForm({
                     {disabled && (
                       <span className="shrink-0 text-[10px] font-medium text-slate-500">
                         Maximum of {MAX_SUDDEN_CATEGORIES}
-                      </span>
-                    )}
-                    {urgencyKey === "high" && (
-                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold leading-none ${tone.badge}`}>
-                        {tone.label}
                       </span>
                     )}
                   </label>
