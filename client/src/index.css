@@ -680,6 +680,10 @@ button.landing-service-row,button.landing-accomplishment-row{cursor:pointer;font
   text-align: left;
   font-size: 12px;
 }
+.gf-table.incident-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
 .gf-table thead {
   background: var(--gf-surface);
   font-size: 10px;

@@ -1,3 +1,4 @@
+import { notify } from "../services/notifications";
 import type { AppEnv } from "../types/env";
 import type { GuestPhotoInsert } from "../services/attachment.service";
 import type { ListReportsQuery } from "../validators/report.schema";
@@ -92,6 +93,7 @@ const PUBLIC_REPORT_COLUMNS = `
         ELSE 'Pinned on map' END
     ELSE r.location_description
   END AS location_description,
+  (SELECT min(e.created_at) FROM incident_status_events e WHERE e.incident_id = r.incident_id AND e.to_incident_status_id = 5) AS forwarded_at,
   r.submitted_at, r.updated_at, r.closed_at,
   r.closed_by_user_id, r.parent_incident_id,
   r.reported_by_user_id AS reporter_user_id,
@@ -122,6 +124,7 @@ const PUBLIC_REPORT_COLUMNS = `
 
 export async function createIncidentReportBundle(db: Database, params: {
   report: InsertIncidentReportParams;
+  actorId?: string | null;
   statusEvent: IncidentStatusEventRecord;
   languageFlags: LanguageFlagRecord[];
   guestSession: InsertGuestSessionParams | null;
@@ -183,6 +186,10 @@ export async function createIncidentReportBundle(db: Database, params: {
     "INSERT INTO audit_logs (audit_log_id, actor_user_id, action, entity_type, entity_id, incident_id, metadata_json) VALUES (?, ?, 'REPORT_CREATED', 'INCIDENT_REPORT', ?, ?, ?)"
   ).bind(params.creationAudit.id, r.reported_by_user_id, params.creationAudit.key, r.incident_id,
     JSON.stringify({ guest_session_id: r.guest_session_id })));
+  statements.push(notify(db, {
+    type: r.is_emergency ? "emergency_forwarded" : "maintenance_intake", actorId: params.actorId ?? r.reported_by_user_id,
+    reportId: r.incident_id, eventId: r.incident_id, body: r.title,
+  }));
   await db.batch(statements);
 }
 
@@ -266,6 +273,9 @@ export async function updateIncidentReportStatus(db: Database, id: string, fromS
       SELECT ?, ?, ?, ?, ?, ?, datetime('now') WHERE changes() = 1`).bind(
         eventId, id, fromStatus, toStatus, actorId, note ?? null),
   ];
+  if (toStatus === 9) statements.push(notify(db, {
+    type: "resolution_ready", eventId: id, reportId: id, actorId, afterChange: true,
+  }));
   if (terminal) {
     // Snapshot affected assignments. The unique status event gates all later writes.
     statements.push(db.prepare(`INSERT INTO tanod_assignment_events

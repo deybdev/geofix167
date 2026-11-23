@@ -16,7 +16,7 @@ CREATE TABLE user_sessions_and_devices(user_id TEXT, token_hash TEXT, expires_at
 INSERT INTO roles VALUES(1,'resident'),(2,'admin'); INSERT INTO account_statuses VALUES(1,'ACTIVE');
 INSERT INTO users VALUES('a','A','Resident','1',1,1,NULL),('b','B','Resident','2',1,1,NULL),('admin','Staff','Admin','3',2,1,NULL);`);
 sql.exec('CREATE TABLE auth_rate_limits (rate_limit_key TEXT NOT NULL, action TEXT NOT NULL, window_started_at TEXT NOT NULL, attempt_count INTEGER NOT NULL DEFAULT 0, blocked_until TEXT, PRIMARY KEY (rate_limit_key, action))');
-for (const file of ['0005_guest_incidents.sql','0006_review_alerts.sql','0007_dispatch_support.sql','0009_qr_handovers.sql','0012_community_audit.sql','0015_admin_dispatch.sql','0017_report_attachments.sql','0018_guest_report_intake.sql', '0019_resident_report_notifications.sql','0020_guest_report_location_metadata.sql','0021_guest_report_urgency.sql','0022_normalize_maintenance_categories.sql','0028_responder_dispatches.sql','0029_dispatch_coordinates.sql','0033_live_tracking.sql','0034_incident_report_snapshots.sql']) sql.exec(readFileSync(join(repoRoot,'server/src/migrations',file),'utf8'));
+for (const file of ['0005_guest_incidents.sql','0006_review_alerts.sql','0007_dispatch_support.sql','0009_qr_handovers.sql','0012_community_audit.sql','0015_admin_dispatch.sql','0017_report_attachments.sql','0018_guest_report_intake.sql', '0019_resident_report_notifications.sql','0020_guest_report_location_metadata.sql','0021_guest_report_urgency.sql','0022_normalize_maintenance_categories.sql','0028_responder_dispatches.sql','0029_dispatch_coordinates.sql','0033_live_tracking.sql','0034_incident_report_snapshots.sql','0037_admin_notifications.sql']) sql.exec(readFileSync(join(repoRoot,'server/src/migrations',file),'utf8'));
 const hash = async s => Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s))).toString('hex');
 for (const id of ['a','b','admin']) sql.prepare('INSERT INTO user_sessions_and_devices(user_id,token_hash,expires_at) VALUES(?,?,?)').run(id,await hash(id),'2099-01-01');
 const db = {prepare(query) { const stmt = sql.prepare(query); let args=[]; return { bind(...v){args=v;return this}, async first(){return stmt.get(...args) ?? null}, async all(){return {results:stmt.all(...args)}}, async run(){return {meta:{changes:Number(stmt.run(...args).changes)}}} }; }, async batch(statements){sql.exec('BEGIN');try {const results=[];for(const stmt of statements) results.push(await stmt.run());sql.exec('COMMIT');return results}catch(e){sql.exec('ROLLBACK');throw e}}};
@@ -69,7 +69,7 @@ const suddenIntake={...guestPayload,title:'Guest sudden report',guest_alias:'Sud
 const maintenanceIntake={...guestPayload,title:'Guest maintenance report',guest_alias:'Maintenance Reporter',classification:'maintenance',is_emergency:0,incident_category:'Drainage / Flooding',priority_level:'MEDIUM',latitude:14.7292,longitude:121.0161,accuracy_meters:28,within_barangay_boundary:0,reverse_geocoded_address:'Bonifacio Street'};
 const suddenResponse=await request('/','POST',guestForm({...suddenIntake,description:''}));assert.equal(suddenResponse.status,201);const suddenBody=await suddenResponse.json();const suddenReport=suddenBody.report;
 const maintenanceResponse=await request('/','POST',guestForm(maintenanceIntake));assert.equal(maintenanceResponse.status,201);const maintenanceReport=(await maintenanceResponse.json()).report;
-assert.match(suddenReport.reference_number,/^GF-\d{3}$/);assert.equal(suddenReport.title,suddenIntake.title);assert.equal(suddenReport.classification,'sudden');assert.equal(suddenReport.priority_code,'P2');assert.equal(suddenReport.assigned_team,'BDRRMO Response');assert.equal(suddenReport.reporter_name,suddenIntake.guest_alias);assert.equal(suddenReport.latitude,suddenIntake.latitude);assert.equal(suddenReport.longitude,suddenIntake.longitude);assert.equal(suddenReport.accuracy_meters,7);assert.equal(suddenReport.location_description,'Roxas Boulevard');assert.equal(suddenReport.status_label,'Submitted');
+assert.match(suddenReport.reference_number,/^GF-\d{3}$/);assert.equal(suddenReport.title,suddenIntake.title);assert.equal(suddenReport.classification,'sudden');assert.equal(suddenReport.priority_code,'P2');assert.equal(suddenReport.assigned_team,'BDRRMO Response');assert.equal(suddenReport.reporter_name,suddenIntake.guest_alias);assert.equal(suddenReport.latitude,suddenIntake.latitude);assert.equal(suddenReport.longitude,suddenIntake.longitude);assert.equal(suddenReport.accuracy_meters,7);assert.equal(suddenReport.location_description,'Roxas Boulevard');assert.equal(suddenReport.status_label,'Forwarded to BDRRMO');
 assert.equal(maintenanceReport.classification,'maintenance');assert.equal(maintenanceReport.priority_code,'P3');assert.equal(maintenanceReport.assigned_team,'Maintenance Team A');assert.equal(maintenanceReport.within_barangay_boundary,0);
 assert.match(suddenBody.tracking_url,/^http:\/\/localhost:5173\/track\/[A-Za-z0-9_-]{43}$/);
 const trackingToken=new URL(suddenBody.tracking_url).pathname.split('/').at(-1);
@@ -78,7 +78,7 @@ assert.equal(sql.prepare('SELECT count(*) AS n FROM tracking_links WHERE report_
 assert.equal(sql.prepare('SELECT count(*) AS n FROM tracking_links WHERE report_id=? AND length(token_hash)=64').get(suddenReport.incident_id).n,1);
 const trackingRequest=async (method='GET',body,account='')=>app.request(`/api/track/${trackingToken}/status`,{method,headers:{...(account?{Cookie:`geofix_session=${account}`}:{})}},env);
 let publicTracking=await trackingRequest();assert.equal(publicTracking.status,200);assert.equal(publicTracking.headers.get('Cache-Control'),'no-store, private');
-let publicTrackingBody=await publicTracking.json();assert.equal(publicTrackingBody.status_label,'Awaiting review');assert.equal(publicTrackingBody.timeline[0].label,'Report received');assert.deepEqual(Object.keys(publicTrackingBody).sort(),['eta_minutes','incident_location','responder','responder_location','status_label','timeline']);
+let publicTrackingBody=await publicTracking.json();assert.equal(publicTrackingBody.status_label,'Forwarded to BDRRMO');assert.equal(publicTrackingBody.timeline[0].label,'Report received');assert.deepEqual(Object.keys(publicTrackingBody).sort(),['eta_minutes','incident_location','responder','responder_location','status_label','timeline']);
 assert.equal('reporter_name' in publicTrackingBody,false);assert.equal('photos' in publicTrackingBody,false);
 const adminIntakes=await request('/','GET',undefined,'admin');assert.equal(adminIntakes.status,200);const adminRows=(await adminIntakes.json()).reports;
 for(const expected of [suddenReport,maintenanceReport]) { const row=adminRows.find((item)=>item.incident_id===expected.incident_id);assert.ok(row);assert.equal(row.reference_number,expected.reference_number);assert.equal(row.title,expected.title);assert.equal(row.reporter_name,expected.reporter_name);assert.ok(row.location_description);assert.ok(row.submitted_at);assert.ok(row.assigned_team);assert.equal(row.accuracy_meters,expected.accuracy_meters); }
@@ -112,7 +112,7 @@ assert.equal(second.status,200);assert.equal(second.idempotent_replay,true);
 assert.equal(second.report.incident_id,first.report.incident_id);assert.equal(second.status_events,undefined);
 assert.equal(second.report.callback_mobile_number,'09123456789');assert.equal(second.report.status_events.length,1);
 assert.notEqual((await create(replayBody,'b')).report.incident_id,first.report.incident_id);
-const guestCreated=await create({...guestPayload,idempotency_key:'guest-key'},null);
+const guestCreated=await create({...maintenanceIntake,idempotency_key:'guest-key'},null);
 const guestReplay=await create({...guestPayload,idempotency_key:'guest-key',guest_session_id:guestCreated.report.guest_session_id},null,guestCreated.report.guest_access_token);
 assert.equal(guestReplay.status,200);assert.equal(guestReplay.report.incident_id,guestCreated.report.incident_id);
 assert.equal(guestReplay.report.guest_access_token,undefined);
@@ -142,9 +142,9 @@ assert.equal((await request('/'+resident.incident_id,'GET',undefined,'bdrrmo')).
 assert.equal((await request('/'+resident.incident_id,'GET',undefined,'tanod')).status,404);
 sql.exec("INSERT INTO responder_resources(responder_resource_id,resource_type,display_name,availability_status) VALUES('unit','TANOD','Unit','BUSY'),('tracking-unit','TANOD','Tracking Unit','BUSY')");
 const emergencyVerified=await app.request(`/api/admin/dispatch/reports/${suddenReport.incident_id}/verify`,{method:'POST',headers:{'Content-Type':'application/json',Cookie:'geofix_session=admin'},body:JSON.stringify({decision:'VERIFIED'})},env);
-assert.equal(emergencyVerified.status,200);
+assert.equal(emergencyVerified.status,409);
 sql.prepare('INSERT INTO tanod_assignments(tanod_assignment_id,incident_id,tanod_user_id,responder_resource_id,assignment_status_id,assigned_by_user_id) VALUES(?,?,?,?,?,?)')
-  .run('tracking-assignment',suddenReport.incident_id,'tanod','tracking-unit',1,'admin');
+  .run('tracking-assignment',suddenReport.incident_id,'tanod','tracking-unit',1,'bdrrmo');
 const acceptedTracking=await app.request('/api/responder/dispatches/tracking-assignment/status',{method:'PATCH',headers:{'Content-Type':'application/json',Cookie:'geofix_session=tanod'},body:JSON.stringify({status:'ACCEPTED'})},env);
 assert.equal(acceptedTracking.status,200);
 const locationUpdate=await app.request('/api/responder/location',{method:'POST',headers:{'Content-Type':'application/json',Cookie:'geofix_session=tanod'},body:JSON.stringify({assignment_id:'tracking-assignment',lat:14.731, lng:121.014, accuracy:9, heading:135})},env);
@@ -173,6 +173,7 @@ assert.equal(sql.prepare("SELECT availability_status FROM responder_resources WH
 assert.equal((await transition(resident.incident_id,2,'tanod')).status,403);
 assert.equal((await transition(resident.incident_id,2,'bdrrmo')).status,200);
 assert.equal(sql.prepare('SELECT closed_at FROM incident_reports WHERE incident_id=?').get(resident.incident_id).closed_at,null);
+assert.equal((await transition(suddenReport.incident_id,9,"bdrrmo")).status,200);
 const resolvedTrack=await app.request(`/api/reports/${suddenReport.incident_id}/resolve`,{method:'POST',headers:{Cookie:'geofix_session=admin'}},env);
 assert.equal(resolvedTrack.status,200);
 const resolvedBody=await resolvedTrack.json();
@@ -267,7 +268,7 @@ const mobilePhoto = (uploadId = crypto.randomUUID()) => {
 };
 const mobileReports = [];
 for (const emergency of [0, 1]) {
-  const input = { ...payload, is_emergency: emergency, incident_category: 'fire', priority_level: 'CRITICAL', idempotency_key: crypto.randomUUID() };
+  const input = { ...payload, is_emergency: emergency, incident_category: emergency ? 'fire' : 'drainage', priority_level: 'CRITICAL', idempotency_key: crypto.randomUUID() };
   const response = await mobileRequest('', 'POST', input);
   assert.equal(response.status, 201, `Bearer-only ${emergency ? 'emergency' : 'regular'} creation`);
   const created = await response.json();
@@ -275,7 +276,7 @@ for (const emergency of [0, 1]) {
   assert.equal(report.reported_by_user_id, 'a');
   assert.equal(report.guest_session_id, null);
   assert.equal(report.is_emergency, emergency);
-  assert.equal(report.priority_code, 'P1');
+  assert.equal(report.priority_code, emergency ? 'P1' : 'P2');
   assert.equal(sql.prepare('SELECT count(*) n FROM tracking_links WHERE report_id=?').get(report.incident_id).n, emergency);
   assert.equal(Boolean(created.tracking_url), Boolean(emergency));
   const replay = await mobileRequest('', 'POST', input);

@@ -136,6 +136,7 @@ export async function submitIncidentReport(
   const priority = guestSubmission
     ? guestPriorityCode(guestUrgency ?? reportCatalog.guestUrgency.maintenanceDefault)
     : resolveCategoryPriority(category, input.is_emergency === 1);
+  const initialStatusId = input.is_emergency === 1 ? 5 : 1;
   const assignedTeam = classification?.assignedTeam ?? (input.is_emergency === 1 ? "BDRRMO Response" : "Maintenance Team A");
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
@@ -183,6 +184,7 @@ export async function submitIncidentReport(
   } : undefined;
   try {
     await createIncidentReportBundle(db, {
+      actorId: user?.id ?? null,
       creationAudit,
       trackingLink,
       guestSession: guestId && token ? {
@@ -192,7 +194,7 @@ export async function submitIncidentReport(
       guestPhotos: preparedPhotos.rows,
       report: {
         incident_id: id, reported_by_user_id: userId, guest_session_id: guestId,
-        incident_status_id: 1, category, priority_code: priority,
+        incident_status_id: initialStatusId, category, priority_code: priority,
         is_emergency: input.is_emergency === 1 ? 1 : 0,
         title: cleanSingleLine(input.title) || `${category} Incident Report`, description_original: description,
         description_sanitized: language.sanitizedText, callback_mobile_number: input.callback_contact?.trim() || null,
@@ -207,8 +209,8 @@ export async function submitIncidentReport(
       },
       statusEvent: {
         incident_status_event_id: crypto.randomUUID(), incident_id: id,
-        from_incident_status_id: null, to_incident_status_id: 1,
-        changed_by_user_id: userId, note: "Initial report submitted", created_at: now,
+        from_incident_status_id: null, to_incident_status_id: initialStatusId,
+        changed_by_user_id: userId, note: input.is_emergency ? "Emergency forwarded to BDRRMO on submission." : "Initial report submitted", created_at: now,
       },
       languageFlags,
     });
@@ -288,6 +290,7 @@ export async function updateReportStatus(db: Database, id: string,
   }
   const report = await findIncidentReportById(db, id);
   if (!report) throw new ReportError("Incident report not found.", 404);
+  if (user.role === "admin" && report.is_emergency) throw new ReportError("Emergency reports are managed by BDRRMO.", 403);
   const status = await findIncidentStatus(db, input.status_id);
   if (!status) throw new ReportError("Unknown incident status.", 400);
   if (!STATUS_TRANSITIONS[report.incident_status_id]?.includes(input.status_id)) {

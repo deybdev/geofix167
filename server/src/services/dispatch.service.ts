@@ -1,3 +1,4 @@
+import { notify } from "./notifications";
 import type { AppEnv } from "../types/env";
 
 type Database = AppEnv["Bindings"]["geofix167_db"];
@@ -48,6 +49,8 @@ export async function dispatchIncidentToResponder(db: Database, input: DispatchI
       SELECT ?, ?, 1, ?, 'Dispatched by administrator'
       WHERE EXISTS (SELECT 1 FROM tanod_assignments WHERE tanod_assignment_id = ?)`)
       .bind(assignmentEventId, assignmentId, input.dispatchedByUserId, assignmentId),
+    notify(db, { type: "team_dispatched", actorId: input.dispatchedByUserId, eventId: assignmentId,
+      reportId: input.incidentId, assignmentId, afterChange: true }),
   ]);
 
   return result[0]?.meta.changes ? { assignmentId } : null;
