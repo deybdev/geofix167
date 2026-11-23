@@ -42,6 +42,7 @@ import {
   getNearestHospitals,
   getResponderDispatches,
   markArrivedOnScene,
+  updateResponderDispatchStatus,
   postResponderLocation,
   requestFieldBackup,
   submitMaintenanceInspection,
@@ -608,6 +609,33 @@ export default function ResponderMap() {
     }
   };
 
+  const startingResponse = useRef(false);
+  const startResponse = async () => {
+    if (!activeAssignment?.id || activeAssignment.is_maintenance || activeAssignment.status !== 'ACCEPTED' || busy || startingResponse.current) return;
+    const id = activeAssignment.id;
+    startingResponse.current = true;
+    setBusy(true);
+    setError('');
+    try {
+      const saved = await updateResponderDispatchStatus(id, 'EN_ROUTE');
+      if (saved.status !== 'EN_ROUTE') throw new Error('Start was not confirmed.');
+      setActiveAssignment(current => current?.id === id && current.status === 'ACCEPTED'
+        ? { ...current, status: saved.status } : current);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not confirm the response. Tap Start Response to retry.');
+    } finally {
+      startingResponse.current = false;
+      setBusy(false);
+    }
+  };
+
+  const startAction = activeAssignment?.status === 'ACCEPTED' && !activeAssignment.is_maintenance && (
+    <Pressable accessibilityRole="button" disabled={busy} onPress={startResponse}
+      style={tw`mt-2 items-center rounded-xl bg-[#1F7A4D] py-3`}>
+      <Text style={tw`text-xs font-bold text-white`}>Start Response</Text>
+    </Pressable>
+  );
+
   const handleArrivedOnScene = async () => {
     if (!activeAssignment || busy || activeAssignment.status === 'ON_SCENE') return;
     setBusy(true);
@@ -1015,6 +1043,8 @@ export default function ResponderMap() {
           </View>
 
           <View style={tw`absolute right-3 top-24 gap-2`}>
+            {startAction}
+            {!!error && <Text accessibilityRole="alert" style={tw`max-w-48 rounded bg-white p-2 text-red-700`}>{error}</Text>}
             <Pressable
               onPress={() => setCompassResetKey((k) => k + 1)}
               style={tw`h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white shadow-md`}
@@ -1307,6 +1337,7 @@ export default function ResponderMap() {
               <Text style={tw`mt-2 text-xs font-semibold text-red-600`}>{error}</Text>
             ) : null}
 
+            {startAction}
             {/* Primary Turn-by-Turn Navigation CTA */}
             <Pressable
               onPress={() => {

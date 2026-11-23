@@ -431,6 +431,35 @@ route.patch("/:dispatchId/status", async (c) => {
     return c.json({ error: "Tanods cannot mark tasks as Completed. Submit proof for Admin verification." }, 403);
   }
 
+  if (status.data === "EN_ROUTE") {
+    const db = c.env.geofix167_db;
+    const user = c.get("user");
+    const agency = await db.prepare("SELECT incident_id, status FROM responder_dispatches WHERE responder_dispatch_id = ? AND (target_role = ? OR ? = 'bdrrmo')")
+      .bind(dispatchId, user.role, user.role).first<{ incident_id: string; status: string | null }>();
+    const assignment = agency ?? (user.role === "tanod" ? await db.prepare("SELECT incident_id, CASE WHEN assignment_status_id = 4 THEN 'EN_ROUTE' END AS status FROM tanod_assignments WHERE tanod_assignment_id = ? AND tanod_user_id = ?")
+      .bind(dispatchId, user.id).first<{ incident_id: string; status: string | null }>() : null);
+    if (!assignment) return c.json({ error: "Dispatch not found." }, 404);
+    if (assignment.status === "EN_ROUTE") return c.json({ ok: true, status: status.data });
+    const advance = agency
+      ? db.prepare("UPDATE responder_dispatches SET status = 'EN_ROUTE' WHERE responder_dispatch_id = ? AND status = 'ACCEPTED' AND (target_role = ? OR ? = 'bdrrmo')")
+        .bind(dispatchId, user.role, user.role)
+      : db.prepare("UPDATE tanod_assignments SET assignment_status_id = 4 WHERE tanod_assignment_id = ? AND tanod_user_id = ? AND assignment_status_id = 2")
+        .bind(dispatchId, user.id);
+    const statements = [advance];
+    if (!agency) statements.push(db.prepare(`INSERT INTO tanod_assignment_events
+      (tanod_assignment_event_id, tanod_assignment_id, assignment_status_id, changed_by_user_id, note)
+      SELECT ?, ?, 4, ?, 'Responder status: EN_ROUTE' WHERE changes() = 1`).bind(crypto.randomUUID(), dispatchId, user.id));
+    statements.push(db.prepare(`INSERT INTO incident_status_events
+      (incident_status_event_id, incident_id, from_incident_status_id, to_incident_status_id, changed_by_user_id, note)
+      SELECT ?, incident_id, incident_status_id, 7, ?, 'Responder updated live tracking status'
+      FROM incident_reports WHERE incident_id = ? AND incident_status_id IN (5,6,13) AND changes() = 1`)
+      .bind(crypto.randomUUID(), user.id, assignment.incident_id),
+      db.prepare("UPDATE incident_reports SET incident_status_id = 7, updated_at = datetime('now') WHERE incident_id = ? AND changes() = 1").bind(assignment.incident_id));
+    const [updated] = await db.batch(statements);
+    if (!updated?.meta.changes) return c.json({ error: "Only an accepted dispatch can start a response." }, 409);
+    return c.json({ ok: true, status: status.data });
+  }
+
   const result = await c.env.geofix167_db.prepare(`
     UPDATE responder_dispatches
     SET status = ?

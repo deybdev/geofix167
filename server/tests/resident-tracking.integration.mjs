@@ -110,6 +110,9 @@ assert.equal(trackingState(report).report.status, 'dispatched');
 const fire = report.dispatched_units.find(unit => unit.role === 'fire').id;
 const police = report.dispatched_units.find(unit => unit.role === 'police').id;
 const status = async (assignment, value, role) => expectResponse(await request(`/responder/dispatches/${assignment}/status`, 'PATCH', { status: value }, role), 200);
+const start = () => request(`/responder/dispatches/${fire}/status`, 'PATCH', { status: 'EN_ROUTE' }, 'fire');
+assert.equal((await start()).status, 409);
+assert.equal((await read()).dispatched_units.find(unit => unit.id === fire).status, 'DISPATCHED');
 await status(fire, 'ACCEPTED', 'fire');
 await expectResponse(await request('/responder/location', 'POST', { assignment_id: fire, lat: 14.731, lng: 121.011, accuracy: 5, heading: 90 }, 'fire'), 200);
 report = await read();
@@ -118,19 +121,33 @@ assert.equal(report.dispatched_units.find(unit => unit.id === fire).status, 'ACC
 assert.ok(report.dispatched_units.find(unit => unit.id === fire).location);
 assert.equal(trackingState(report).report.status, 'dispatched', 'Actual acceptance + GPS payload must remain assigned');
 console.log('PASS actual acceptance response: parent ASSIGNED (6), unit ACCEPTED, live GPS; mobile stage dispatched');
-await status(fire, 'EN_ROUTE', 'fire');
+sql.exec("CREATE TRIGGER fail_start BEFORE INSERT ON incident_status_events WHEN NEW.to_incident_status_id=7 BEGIN SELECT RAISE(ABORT,'test save failure'); END");
+const oldError = console.error;
+try {
+  console.error = () => {};
+  assert.equal((await start()).status, 500);
+} finally {
+  console.error = oldError;
+  sql.exec('DROP TRIGGER fail_start');
+}
+assert.equal((await read()).dispatched_units.find(unit => unit.id === fire).status, 'ACCEPTED');
+await expectResponse(await start(), 200);
+await expectResponse(await start(), 200); // Retry after a lost success response.
 report = await read(); assert.equal(report.status_id, 7);
 assert.equal(trackingState(report).report.status, 'on_the_way');
 await expectResponse(await request(`/responder/dispatches/${fire}/arrive`, 'POST', { incident_id: id }, 'fire'), 200);
 report = await read(); assert.equal(report.status_id, 8);
 assert.equal(trackingState(report).report.status, 'arrived');
+assert.equal((await start()).status, 409);
+assert.equal((await read()).status_id, 8);
 await status(police, 'ACCEPTED', 'police');
+await expectResponse(await request(`/responder/dispatches/${police}/arrive`, 'POST', { incident_id: id }, 'police'), 200);
 await expectResponse(await request(`/responder/dispatches/${fire}/complete-agency`, 'POST', { incident_id: id, summary: 'Fire unit completed its assignment' }, 'fire'), 201);
 report = await read();
 assert.equal(report.status_id, 9);
 assert.equal(report.is_terminal, false);
 assert.equal(report.dispatched_units.find(unit => unit.id === fire).status, 'COMPLETED');
-assert.equal(report.dispatched_units.find(unit => unit.id === police).status, 'ACCEPTED');
+assert.equal(report.dispatched_units.find(unit => unit.id === police).status, 'ON_SCENE');
 assert.equal(trackingState(report).report.status, 'closure_review');
 assert.equal(trackingState(report).responder.id, police, 'The remaining active unit stays visible during review');
 assert.equal((await request(`/reports/${id}`, 'GET', undefined, 'other')).status, 404);
