@@ -38,14 +38,6 @@ const FOCUS_DELTA = 0.006;
 const FALLBACK_CENTER = { latitude: 14.75, longitude: 121.02 };
 const BASEMAPS = ['street', 'satellite'];
 const NAVIGATION_MAP_STYLE = [
-  { elementType: 'geometry', stylers: [{ color: '#0F172A' }] },
-  { elementType: 'labels.text.fill', stylers: [{ color: '#94A3B8' }] },
-  { elementType: 'labels.text.stroke', stylers: [{ color: '#0F172A' }] },
-  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#1E293B' }] },
-  { featureType: 'road.arterial', elementType: 'geometry', stylers: [{ color: '#273549' }] },
-  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#273549' }] },
-  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#1E293B' }] },
-  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#064A5C' }] },
   { featureType: 'poi', elementType: 'labels', stylers: [{ visibility: 'off' }] },
 ];
 
@@ -461,6 +453,7 @@ export default function MapViewer({
   showBoundary = true,
   highlightBoundary = true,
   fitPoints = null,
+  topInset = null,
   bottomInset = 0,
   variant = 'viewer',
   onBack,
@@ -478,6 +471,7 @@ export default function MapViewer({
   disableIncidentSheet = false,
 }) {
   const insets = useSafeAreaInsets();
+  const resolvedTopInset = topInset ?? insets.top;
   const mapRef = useRef(null);
 
   const [basemap, setBasemap] = useState('street');
@@ -690,21 +684,21 @@ export default function MapViewer({
           longitudeDelta: 0.012,
         }}
         mapType={basemap === 'satellite' ? 'satellite' : 'standard'}
+        userInterfaceStyle="light"
         customMapStyle={navigationMode ? NAVIGATION_MAP_STYLE : undefined}
         pitchEnabled={navigationMode}
         rotateEnabled={navigationMode}
         showsBuildings={navigationMode}
         showsCompass
         showsScale
-        showsTraffic={navigationMode}
+        showsTraffic={false}
         onMapReady={() => setMapReady(true)}
         onPress={handleMapPress}
         onPanDrag={handleNavigationPan}
         minZoomLevel={MIN_ZOOM}
         maxZoomLevel={MAX_ZOOM}
       >
-        {highlightBoundary &&
-          showBoundary &&
+        {showBoundary &&
           BOUNDARY_RINGS.map((coordinates, index) => (
             <Polygon
               key={`boundary-${index}`}
@@ -760,8 +754,8 @@ export default function MapViewer({
             <Polyline
               key={route.id}
               coordinates={coordinates}
-              strokeColor={navigationMode ? '#1AD1FF' : route.color || '#10B981'}
-              strokeWidth={navigationMode ? 7 : 4}
+              strokeColor={navigationMode ? '#15803D' : route.color || '#1F7A4D'}
+              strokeWidth={navigationMode ? 10 : 6}
               lineCap="round"
               lineJoin="round"
               lineDashPattern={route.dashed === false ? undefined : [8, 7]}
@@ -809,7 +803,7 @@ export default function MapViewer({
       {/* Top-left: back, label, legend */}
       {isViewer && !navigationMode && (
         <View
-          style={[tw`absolute left-3 right-16`, { top: insets.top + 12 }]}
+          style={[tw`absolute left-3 right-16`, { top: resolvedTopInset + 12 }]}
           pointerEvents="box-none"
         >
           <View style={tw`flex-row items-start gap-2`}>
@@ -849,7 +843,7 @@ export default function MapViewer({
         <View
           style={[
             tw`absolute right-3 items-end gap-2`,
-            { top: insets.top + 12 },
+            { top: resolvedTopInset + 12 },
           ]}
         >
           {showBasemapControl ? (
