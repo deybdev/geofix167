@@ -301,11 +301,8 @@ route.post("/incidents/:incidentId/dispatch", requireRole("bdrrmo"), async (c) =
   const statements = [];
 
   for (const role of selectedDepts) {
-<<<<<<< HEAD
     if (role === "tanod") continue;
-=======
     const assignmentId = crypto.randomUUID();
->>>>>>> 33678143854e6845f3cbe33923a3ea998ce2efc5
     statements.push(
       db.prepare(`
         INSERT INTO responder_dispatches
@@ -356,11 +353,8 @@ route.post("/incidents/:incidentId/dispatch", requireRole("bdrrmo"), async (c) =
         }>();
 
     if (resource) {
-<<<<<<< HEAD
       tanodDispatched = true;
-=======
       const assignmentId = crypto.randomUUID();
->>>>>>> 33678143854e6845f3cbe33923a3ea998ce2efc5
       statements.push(
         db.prepare(`
           INSERT INTO tanod_assignments

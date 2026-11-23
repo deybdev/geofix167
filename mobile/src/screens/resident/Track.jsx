@@ -36,6 +36,7 @@ import {
   sendIncidentMessage,
 } from '../../services/responderMessageService';
 import { getReportDetails } from '../../services/residentService';
+import { subscribeToTracking } from '../../services/residentTracking';
 
 /* -----------------------------------------
    CONSTANTS
@@ -130,11 +131,22 @@ const ROUTE_RETRY_MS = 15000; // wait this long after a failed route request
 
 const routeCache = new Map();
 
+function getCaloocanTrafficProfile() {
+  const hour = new Date().getHours();
+  if ((hour >= 6 && hour <= 9) || (hour >= 16 && hour <= 20)) {
+    return { multiplier: 1.65, avgSpeedKmh: 15, turnPenaltySec: 20 };
+  }
+  if (hour > 9 && hour < 16) {
+    return { multiplier: 1.35, avgSpeedKmh: 21, turnPenaltySec: 14 };
+  }
+  return { multiplier: 1.1, avgSpeedKmh: 30, turnPenaltySec: 8 };
+}
+
 async function requestRoadRoute(from, to) {
   const url =
     `${ROUTING_BASE_URL}/route/v1/${ROUTING_PROFILE}/` +
     `${from.lng},${from.lat};${to.lng},${to.lat}` +
-    '?overview=full&geometries=geojson&alternatives=false&steps=false';
+    '?overview=full&geometries=geojson&alternatives=false&steps=true';
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ROUTE_TIMEOUT_MS);
@@ -151,10 +163,20 @@ async function requestRoadRoute(from, to) {
       throw new Error('No route found');
     }
 
+    const distanceKm = route.distance / 1000;
+    const totalSteps = (route.legs || []).reduce(
+      (sum, leg) => sum + ((leg.steps || []).length || 0),
+      0,
+    );
+    const profile = getCaloocanTrafficProfile();
+    const osrmTrafficSec = route.duration * profile.multiplier + totalSteps * profile.turnPenaltySec;
+    const urbanSpeedSec = (distanceKm / profile.avgSpeedKmh) * 3600 + totalSteps * profile.turnPenaltySec;
+    const realisticSec = Math.max(osrmTrafficSec, urbanSpeedSec);
+
     return {
       points: coordinates.map(([lng, lat]) => ({ lat, lng })),
       distance: route.distance,
-      duration: route.duration,
+      duration: realisticSec,
     };
   } finally {
     clearTimeout(timer);
@@ -558,6 +580,8 @@ function TrackingSession({ reportId }) {
     location: null,
   });
   const [responder, setResponder] = useState(null);
+  const [selectedUnitId, setSelectedUnitId] = useState(null);
+  const [unitRoutes, setUnitRoutes] = useState({});
   const [dispatchedUnits, setDispatchedUnits] = useState([]);
   const [roadRoute, setRoadRoute] = useState([]); // route pushed by the backend (optional)
   const [routeInfo, setRouteInfo] = useState(null); // route we fetched: { points, distance, duration }
@@ -738,9 +762,44 @@ function TrackingSession({ reportId }) {
     ];
   }, [report.location, report.status]);
 
+  const activeResponder = useMemo(() => {
+    if (selectedUnitId) {
+      const picked = dispatchedUnits.find((u) => u.id === selectedUnitId);
+      if (picked) return picked;
+    }
+    return responder;
+  }, [selectedUnitId, dispatchedUnits, responder]);
+
+  useEffect(() => {
+    if (!report.location || !dispatchedUnits.length) return undefined;
+    let active = true;
+    const unitsWithGps = dispatchedUnits.filter(
+      (u) => u.location && Number.isFinite(u.location.lat) && Number.isFinite(u.location.lng),
+    );
+    unitsWithGps.forEach((unit) => {
+      fetchRoadRoute(unit.location, report.location)
+        .then((info) => {
+          if (!active) return;
+          setUnitRoutes((prev) => ({
+            ...prev,
+            [unit.id]: {
+              etaMin: Math.max(1, Math.round((info.duration || 60) / 60)),
+              distance: info.distance,
+              points: info.points,
+              duration: info.duration,
+            },
+          }));
+        })
+        .catch(() => {});
+    });
+    return () => {
+      active = false;
+    };
+  }, [dispatchedUnits, report.location]);
+
   const routeFromBackend = roadRoute.length > 1;
-  const responderLat = responder?.location?.lat;
-  const responderLng = responder?.location?.lng;
+  const responderLat = activeResponder?.location?.lat;
+  const responderLng = activeResponder?.location?.lng;
   const hasResponderPoint = Number.isFinite(responderLat) && Number.isFinite(responderLng);
 
   useEffect(() => {
@@ -830,6 +889,7 @@ function TrackingSession({ reportId }) {
         roleCode: u.roleCode,
         role: u.role,
         type: 'responder',
+        icon: 'car',
         stale: false,
       }));
 
@@ -846,6 +906,7 @@ function TrackingSession({ reportId }) {
           roleCode: responder?.roleCode,
           role: responder?.role,
           type: 'responder',
+          icon: 'car',
           stale,
         },
       ]
@@ -1193,17 +1254,49 @@ function TrackingSession({ reportId }) {
                 {dispatchedUnits.length > 1 && (
                   <View style={tw`mt-2.5 rounded-2xl border border-slate-200 bg-slate-50 p-2.5`}>
                     <Text style={tw`text-[10px] font-extrabold uppercase text-slate-500`}>
-                      Dispatched Responders ({dispatchedUnits.length} Units)
+                      Dispatched Responders ({dispatchedUnits.length} Units) — Tap to focus
                     </Text>
                     <View style={tw`mt-1.5 gap-1.5`}>
-                      {dispatchedUnits.map((unit) => (
-                        <View key={unit.id} style={tw`flex-row items-center justify-between`}>
-                          <Text style={tw`text-xs font-bold text-slate-800`}>{unit.name}</Text>
-                          <Text style={tw`text-[10px] font-extrabold text-[#1F7A4D]`}>
-                            {unit.status} {unit.location ? '• Live GPS' : ''}
-                          </Text>
-                        </View>
-                      ))}
+                      {dispatchedUnits.map((unit) => {
+                        const uRoute = unitRoutes[unit.id];
+                        const isSelected = (activeResponder?.id || responder?.id) === unit.id;
+                        const isUnitArrived = unit.status === 'ON_SCENE' || unit.status === 'COMPLETED';
+                        return (
+                          <Pressable
+                            key={unit.id}
+                            onPress={() => {
+                              setSelectedUnitId(unit.id);
+                              if (uRoute) {
+                                setRouteInfo({
+                                  points: uRoute.points,
+                                  distance: uRoute.distance,
+                                  duration: uRoute.duration,
+                                });
+                              } else {
+                                setRouteInfo(null);
+                                lastRouteFetchRef.current = 0;
+                              }
+                            }}
+                            style={tw`flex-row items-center justify-between rounded-xl px-2.5 py-2 ${
+                              isSelected ? 'border border-[#1F7A4D] bg-green-50' : 'bg-white'
+                            }`}
+                          >
+                            <View style={tw`flex-1 pr-2`}>
+                              <Text style={tw`text-xs font-bold text-slate-800`}>{unit.name}</Text>
+                              <Text style={tw`text-[10px] text-slate-500`}>
+                                {unit.status} {unit.location ? '• Live GPS' : '• Waiting GPS'}
+                              </Text>
+                            </View>
+                            <Text style={tw`text-xs font-extrabold text-[#1F7A4D]`}>
+                              {isUnitArrived
+                                ? 'Arrived'
+                                : uRoute
+                                  ? `${uRoute.etaMin} min • ${formatDistance(uRoute.distance)}`
+                                  : 'Calculating…'}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
                     </View>
                   </View>
                 )}

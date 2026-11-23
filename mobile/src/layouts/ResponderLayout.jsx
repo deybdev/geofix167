@@ -164,7 +164,6 @@ function NavTab({ item, isActive, onPress }) {
 
 export default function ResponderLayout({ children }) {
   const { user, onDuty, toggleDuty, dutyBusy, dutyError, retryDuty } = useAuth();
-  const navigation = useNavigation();
   const { name: currentRoute } = useRoute();
   const role = String(user?.role || '').toLowerCase();
 

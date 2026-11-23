@@ -48,6 +48,7 @@ import {
   requestFieldBackup,
   submitMaintenanceInspection,
   submitMaintenanceRepair,
+  updateResponderDispatchStatus,
 } from '../../services/responderDispatchService';
 import {
   enqueueOfflineSubmission,
@@ -243,6 +244,7 @@ export default function ResponderMap() {
   const [activeAssignment, setActiveAssignment] = useState(route.params?.assignment || null);
   const [backupSent, setBackupSent] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(null);
+  const [liveHeading, setLiveHeading] = useState(null);
   const currentLocationRef = useRef(null);
   const [locationPermissionGranted, setLocationPermissionGranted] = useState(false);
   const [locationSharingOff, setLocationSharingOff] = useState(Boolean(route.params?.locationSharingOff));
@@ -256,6 +258,7 @@ export default function ResponderMap() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [showPatientModal, setShowPatientModal] = useState(false);
+  const [forceHospitalQr, setForceHospitalQr] = useState(false);
   const [patients, setPatients] = useState(() => buildInitialPatients(route.params?.assignment));
   const [furtherInfo, setFurtherInfo] = useState('');
   const [proofPhoto, setProofPhoto] = useState(null);
@@ -377,7 +380,11 @@ export default function ResponderMap() {
       const location = { lat: coords.latitude, lng: coords.longitude };
       currentLocationRef.current = location;
       setCurrentLocation(location);
-      if (Date.now() - lastPostAt < 8000) return;
+      const rawHeading = Number(coords.heading);
+      if (Number.isFinite(rawHeading) && rawHeading >= 0 && rawHeading < 360) {
+        setLiveHeading(rawHeading);
+      }
+      if (Date.now() - lastPostAt < 4000) return;
       lastPostAt = Date.now();
       try { await postResponderLocation(assignmentId, coords); }
       catch { /* Location sharing failures do not interrupt responder navigation. */ }
@@ -563,8 +570,9 @@ export default function ResponderMap() {
     [activeAssignment, currentLocation, patientPoint, hospitalPoint],
   );
 
-  const handleOpenCompleteForm = () => {
+  const handleOpenCompleteForm = (withQr = false) => {
     if (!activeAssignment) return;
+    setForceHospitalQr(Boolean(withQr));
     setPatients((prev) =>
       prev.length > 0 && prev[0].full_name ? prev : buildInitialPatients(activeAssignment),
     );
@@ -687,7 +695,7 @@ export default function ResponderMap() {
     }
   };
 
-  const isHospitalHandover = !isAgencyRole && Boolean(nearestHospital);
+  const isHospitalHandover = !isAgencyRole && (Boolean(nearestHospital) || forceHospitalQr);
 
   const personValidationErrors = useMemo(
     () => (isHospitalHandover ? patients.map((p) => validatePersonEntry(p)) : []),
@@ -921,6 +929,31 @@ export default function ResponderMap() {
     return [currentLocation, patientPoint, hospitalPoint].filter(hasValidPoint);
   }, [routePoints, currentLocation, patientPoint, hospitalPoint]);
 
+  const activeHeading = liveHeading ?? getRouteHeading(headingPoints);
+
+  const handleStartNavigation = () => {
+    if (!locationPermissionGranted || !currentLocation) {
+      void tryEnableLocationSharing();
+    }
+    if (activeAssignment?.id && ['DISPATCHED', 'ACCEPTED'].includes(String(activeAssignment.status || '').toUpperCase())) {
+      void updateResponderDispatchStatus(activeAssignment.id, 'EN_ROUTE')
+        .then(() => {
+          setActiveAssignment((prev) => (prev ? { ...prev, status: 'EN_ROUTE' } : prev));
+        })
+        .catch(() => {});
+    }
+    if (activeAssignment?.id && currentLocation) {
+      void postResponderLocation({
+        assignment_id: activeAssignment.id,
+        lat: currentLocation.lat,
+        lng: currentLocation.lng,
+        heading: getRouteHeading(headingPoints),
+      }).catch(() => {});
+    }
+    setIsNavigating(true);
+    setRecenterKey((k) => k + 1);
+  };
+
   return (
     <View style={tw`flex-1`}>
       {offlineQueueCount > 0 ? (
@@ -977,13 +1010,20 @@ export default function ResponderMap() {
               : []
           }
           trackers={
-            activeAssignment && currentLocation
-              ? [{ id: 'responder-current', roleCode: userRole, role: userRole, ...currentLocation }]
+            activeAssignment && currentLocation && !isNavigating
+              ? [{
+                id: 'responder-current',
+                roleCode: userRole,
+                role: userRole,
+                icon: 'arrow',
+                heading: activeHeading,
+                ...currentLocation,
+              }]
               : []
           }
           fitPoints={fitPoints}
           navigationMode={isNavigating}
-          navigationHeading={getRouteHeading(headingPoints)}
+          navigationHeading={activeHeading}
           recenterSignal={recenterKey}
           compassResetSignal={compassResetKey}
           navigationUserLocation={currentLocation}
@@ -1212,14 +1252,26 @@ export default function ResponderMap() {
                   </Pressable>
 
                   {activeAssignment.status === 'ON_SCENE' ? (
-                    <Pressable
-                      onPress={handleOpenCompleteForm}
-                      disabled={busy}
-                      style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-[#1F7A4D] py-2.5`}
-                    >
-                      <CheckCircle2 size={15} color="#FFFFFF" />
-                      <Text style={tw`text-xs font-extrabold text-white`}>Mark as Completed</Text>
-                    </Pressable>
+                    <>
+                      {!isAgencyRole ? (
+                        <Pressable
+                          onPress={() => handleOpenCompleteForm(true)}
+                          disabled={busy}
+                          style={tw`flex-row items-center justify-center gap-1 rounded-xl border border-[#1F7A4D] bg-green-50 px-3 py-2.5`}
+                        >
+                          <QrCode size={14} color="#1F7A4D" />
+                          <Text style={tw`text-xs font-extrabold text-[#1F7A4D]`}>Generate QR</Text>
+                        </Pressable>
+                      ) : null}
+                      <Pressable
+                        onPress={() => handleOpenCompleteForm(false)}
+                        disabled={busy}
+                        style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-[#1F7A4D] py-2.5`}
+                      >
+                        <CheckCircle2 size={15} color="#FFFFFF" />
+                        <Text style={tw`text-xs font-extrabold text-white`}>Mark as Completed</Text>
+                      </Pressable>
+                    </>
                   ) : (
                     <Pressable
                       onPress={handleArrivedOnScene}
@@ -1379,13 +1431,7 @@ export default function ResponderMap() {
 
             {/* Primary Turn-by-Turn Navigation CTA */}
             <Pressable
-              onPress={() => {
-                if (!locationPermissionGranted || !currentLocationRef.current) {
-                  void tryEnableLocationSharing();
-                }
-                setIsNavigating(true);
-                setRecenterKey((k) => k + 1);
-              }}
+              onPress={handleStartNavigation}
               style={({ pressed }) => [
                 tw`mt-2.5 flex-row items-center justify-center gap-2 rounded-xl bg-[#1F7A4D] py-3`,
                 { opacity: pressed ? 0.85 : 1 },
@@ -1438,19 +1484,34 @@ export default function ResponderMap() {
                   </Pressable>
 
                   {activeAssignment.status === 'ON_SCENE' || qrResult ? (
-                    <Pressable
-                      onPress={handleOpenCompleteForm}
-                      disabled={busy}
-                      style={({ pressed }) => [
-                        tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-[#1F7A4D] py-2.5`,
-                        { opacity: pressed ? 0.85 : 1 },
-                      ]}
-                    >
-                      <CheckCircle2 size={15} color="#FFFFFF" />
-                      <Text style={tw`text-xs font-extrabold text-white`}>
-                        {qrResult ? 'View QR / Info' : 'Mark as Completed'}
-                      </Text>
-                    </Pressable>
+                    <>
+                      {!isAgencyRole && !qrResult ? (
+                        <Pressable
+                          onPress={() => handleOpenCompleteForm(true)}
+                          disabled={busy}
+                          style={({ pressed }) => [
+                            tw`flex-row items-center justify-center gap-1 rounded-xl border border-[#1F7A4D] bg-green-50 px-3 py-2.5`,
+                            { opacity: pressed ? 0.85 : 1 },
+                          ]}
+                        >
+                          <QrCode size={14} color="#1F7A4D" />
+                          <Text style={tw`text-xs font-extrabold text-[#1F7A4D]`}>Generate QR</Text>
+                        </Pressable>
+                      ) : null}
+                      <Pressable
+                        onPress={() => handleOpenCompleteForm(false)}
+                        disabled={busy}
+                        style={({ pressed }) => [
+                          tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-[#1F7A4D] py-2.5`,
+                          { opacity: pressed ? 0.85 : 1 },
+                        ]}
+                      >
+                        <CheckCircle2 size={15} color="#FFFFFF" />
+                        <Text style={tw`text-xs font-extrabold text-white`}>
+                          {qrResult ? 'View QR / Info' : 'Mark as Completed'}
+                        </Text>
+                      </Pressable>
+                    </>
                   ) : (
                     <Pressable
                       onPress={handleArrivedOnScene}

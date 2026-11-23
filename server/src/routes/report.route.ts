@@ -231,7 +231,8 @@ reportRoutes.get("/:id/handover-summary", async (c) => {
   const photoContext = (fname: string, idx: number) => {
     if (/^fire-/i.test(fname)) return "BFP Completion Proof Photo";
     if (/^police-/i.test(fname)) return "Police Completion Proof Photo";
-    if (/^(tanod-|transport-proof)/i.test(fname)) return "Tanod Transport / Handover Proof Photo";
+    if (/^transport-proof/i.test(fname)) return "Tanod Transport Proof Photo";
+    if (/^tanod-/i.test(fname)) return "Tanod Completion Proof Photo";
     return `Incident Scene Photo #${idx + 1} (Submitted by Reporter)`;
   };
 

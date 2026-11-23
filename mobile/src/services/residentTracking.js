@@ -27,6 +27,7 @@ export function trackingState(report) {
             : units.length || [6, 13].includes(report.status_id) ? 'dispatched'
               : [4, 5, 14].includes(report.status_id) ? 'validated' : 'received';
   const activeUnits = ['resolved', 'inactive'].includes(status) ? [] : units;
+  const leadResponder = activeUnits.find((u) => Boolean(u.location)) || activeUnits[0] || null;
   return {
     report: {
       id: report.public_id, status, status_label: report.status_label,
@@ -35,7 +36,7 @@ export function trackingState(report) {
         ? { lat: report.latitude, lng: report.longitude } : null,
     },
     units: activeUnits,
-    responder: activeUnits[0] || null,
+    responder: leadResponder,
   };
 }
 

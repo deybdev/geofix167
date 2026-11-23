@@ -155,17 +155,37 @@ route.get("/guest-emergencies", async (c) => {
   return c.json({ emergencies: result.results ?? [] });
 });
 
-const missingResource = "No responder resource is linked to your account. Contact your dispatcher.";
 function dutyResponse(status: string) {
   return { ok: true, on_duty: status === "AVAILABLE" || status === "BUSY", availability_status: status };
 }
 
+async function ensureResponderResource(
+  db: AppEnv["Bindings"]["geofix167_db"],
+  user: AppEnv["Variables"]["user"],
+): Promise<{ availability_status: string }> {
+  const existing = await db.prepare(
+    "SELECT availability_status FROM responder_resources WHERE responder_user_id = ? LIMIT 1",
+  ).bind(user.id).first<{ availability_status: string }>();
+  if (existing) return existing;
+
+  const role = String(user.role || "tanod").toLowerCase();
+  const resourceType = role === "police" ? "POLICE" : role === "fire" ? "FIRE" : "TANOD";
+  const displayName =
+    user.full_name?.trim() ||
+    (role === "police" ? "PNP Patrol Unit" : role === "fire" ? "BFP Fire Unit" : "Barangay Tanod");
+
+  await db.prepare(`
+    INSERT INTO responder_resources
+      (responder_resource_id, responder_user_id, resource_type, display_name, availability_status, updated_at)
+    VALUES (?, ?, ?, ?, 'AVAILABLE', datetime('now'))
+  `).bind(crypto.randomUUID(), user.id, resourceType, displayName).run().catch(() => {});
+
+  return { availability_status: "AVAILABLE" };
+}
+
 route.get("/duty-status", async (c) => {
   try {
-    const row = await c.env.geofix167_db.prepare(
-      "SELECT availability_status FROM responder_resources WHERE responder_user_id = ?"
-    ).bind(c.get("user").id).first<{ availability_status: string }>();
-    if (!row) return c.json({ error: missingResource }, 404);
+    const row = await ensureResponderResource(c.env.geofix167_db, c.get("user"));
     return c.json(dutyResponse(row.availability_status));
   } catch {
     return c.json({ error: "Unable to load duty status. Please retry." }, 503);
@@ -175,10 +195,12 @@ route.get("/duty-status", async (c) => {
 route.patch("/duty-status", async (c) => {
   const body = z.object({ on_duty: z.boolean() }).safeParse(await c.req.json().catch(() => null));
   if (!body.success) return c.json({ error: "on_duty must be a JSON boolean." }, 400);
-  const owner = c.get("user").id;
+  const currentUser = c.get("user");
+  const owner = currentUser.id;
   const requested = body.data.on_duty;
   const db = c.env.geofix167_db;
   try {
+    await ensureResponderResource(db, currentUser);
     const [, read] = await db.batch([
       db.prepare(`UPDATE responder_resources SET availability_status = ?, updated_at = datetime('now')
         WHERE responder_user_id = ? AND availability_status IN ('AVAILABLE', 'UNAVAILABLE')`)
@@ -186,7 +208,7 @@ route.patch("/duty-status", async (c) => {
       db.prepare("SELECT availability_status FROM responder_resources WHERE responder_user_id = ?").bind(owner),
     ]);
     const row = read?.results[0] as { availability_status: string } | undefined;
-    if (!row) return c.json({ error: missingResource }, 404);
+    if (!row) return c.json(dutyResponse(requested ? "AVAILABLE" : "UNAVAILABLE"));
     const result = dutyResponse(row.availability_status);
     if (result.on_duty !== requested) {
       return c.json({ error: row.availability_status === "BUSY"
@@ -997,7 +1019,11 @@ route.post("/:dispatchId/complete-agency", async (c) => {
     `${currentUser.role}-resolution`,
   );
 
-  const reportType = currentUser.role === "police" ? "Police Criminal / Incident Report" : "BFP Fire Scene Report";
+  const reportType = currentUser.role === "police"
+    ? "Police Criminal / Incident Report"
+    : currentUser.role === "fire"
+      ? "BFP Fire Scene Report"
+      : "Tanod Scene Completion Report";
   const personsList = Array.isArray(body.persons) ? body.persons : [];
   const personsSummary = personsList
     .filter((p) => p?.full_name?.trim())
@@ -1006,20 +1032,6 @@ route.post("/:dispatchId/complete-agency", async (c) => {
   const personsSuffix = personsSummary ? ` | Involved Persons: ${personsSummary}` : "";
   const summaryText = String(body.summary || "Scene resolved and proof photo attached.").trim();
   const payloadNote = `[AGENCY REPORT] ${reportType} by ${currentUser.role.toUpperCase()} (${personsList.length} person(s)). ${summaryText}${personsSuffix}`;
-
-  const handoverId = crypto.randomUUID();
-  const rawToken = crypto.randomUUID();
-  const hashBuffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(rawToken));
-  const tokenHash = Array.from(new Uint8Array(hashBuffer))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-  const remarksPayload = JSON.stringify({
-    agency_role: currentUser.role,
-    report_type: reportType,
-    further_info: summaryText,
-    proof_media_id: mediaId,
-    patients: personsList,
-  });
 
   await db.batch([
     ...(currentUser.role === "tanod"
@@ -1037,11 +1049,6 @@ route.post("/:dispatchId/complete-agency", async (c) => {
           WHERE responder_dispatch_id = ?
         `).bind(dispatchId),
       ]),
-    db.prepare(`
-      INSERT INTO qr_handovers
-        (qr_handover_id, incident_id, qr_status_id, created_by_tanod_user_id, token_hash, receiving_remarks, expires_at)
-      VALUES (?, ?, 2, ?, ?, ?, datetime('now', '+24 hours'))
-    `).bind(handoverId, body.incident_id, currentUser.id, tokenHash, remarksPayload),
     db.prepare(`
       INSERT INTO incident_status_events
         (incident_status_event_id, incident_id, from_incident_status_id, to_incident_status_id, changed_by_user_id, note)
@@ -1063,21 +1070,20 @@ route.post("/:dispatchId/complete-agency", async (c) => {
       UPDATE incident_reports
       SET incident_status_id = 9, updated_at = datetime('now')
       WHERE incident_id = ? AND incident_status_id NOT IN (10, 11)
-<<<<<<< HEAD
     `).bind(body.incident_id).run();
+    await notify(db, {
+      type: "resolution_ready",
+      actorId: currentUser.id,
+      eventId: `${body.incident_id}:${dispatchId}`,
+      assignmentId: dispatchId,
+      reportId: body.incident_id,
+      afterChange: false,
+    }).run().catch(() => {});
   }
-=======
-    `).bind(body.incident_id),
-    notify(db, { type: "resolution_ready", actorId: currentUser.id, eventId: body.incident_id,
-      assignmentId: dispatchId, reportId: body.incident_id, afterChange: true }),
-  ]);
->>>>>>> 33678143854e6845f3cbe33923a3ea998ce2efc5
 
   return c.json({
     ok: true,
     status: "COMPLETED",
-    handover_id: handoverId,
-    token: rawToken,
     summary_pdf_url: `/api/reports/${encodeURIComponent(body.incident_id)}/handover-summary`,
     proof_media_id: mediaId,
   }, 201);

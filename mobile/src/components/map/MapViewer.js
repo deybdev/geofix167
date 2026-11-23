@@ -15,6 +15,7 @@ import {
   ShieldAlert,
   Wrench,
   Ambulance,
+  Car,
   MapPin,
   Navigation,
 } from 'lucide-react-native';
@@ -326,10 +327,14 @@ function ResponderMarker({ tracker }) {
   };
   const meta = responderMeta[role] || {
     Icon: tracker.category ? resolveCategory(tracker.category).Icon : Navigation,
-    color: tracker.color || '#EC4899',
+    color: tracker.color || '#1F7A4D',
     label: 'UNIT',
   };
-  const { Icon, color, label } = meta;
+  const Icon = tracker.icon === 'car' ? Car : tracker.icon === 'arrow' ? Navigation : meta.Icon;
+  const { color, label } = meta;
+  const arrowRotation = tracker.icon === 'arrow' && Number.isFinite(Number(tracker.heading))
+    ? `${Number(tracker.heading)}deg`
+    : '0deg';
 
   return (
     <Marker
@@ -353,7 +358,9 @@ function ResponderMarker({ tracker }) {
           ]}
         >
           <View style={tw`h-7 w-7 items-center justify-center rounded-full bg-white`}>
-            <Icon size={17} color={color} />
+            <View style={{ transform: [{ rotate: arrowRotation }] }}>
+              <Icon size={17} color={color} />
+            </View>
           </View>
         </View>
         <View
@@ -625,24 +632,61 @@ export default function MapViewer({
     : '';
 
   useEffect(() => {
-    if (!mapReady || !fitKey) return;
-
-    setIsFollowingNavigation(true);
+    if (!mapReady || !recenterSignal) return;
+    Promise.resolve().then(() => setIsFollowingNavigation(true));
     if (navigationMode && hasValidCoords(navigationUserLocation)) {
       mapRef.current?.animateCamera(
         {
           center: toLatLng(navigationUserLocation),
-          pitch: 55,
+          pitch: 60,
           heading: navigationHeading,
-          zoom: 17.5,
+          zoom: 18.5,
+          altitude: 180,
         },
-        { duration: 650 },
+        { duration: 450 },
       );
+    } else if (fitPoints?.length) {
+      fitToCoordinates(fitPoints.filter(hasValidCoords).map(toLatLng));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recenterSignal]);
+
+  useEffect(() => {
+    if (!mapReady || !dropOffs?.length) return;
+    const valid = dropOffs.filter(hasValidCoords);
+    if (!valid.length) return;
+    if (fitPoints?.length) {
+      fitToCoordinates(fitPoints.filter(hasValidCoords).map(toLatLng));
+    } else {
+      mapRef.current?.animateCamera(
+        { center: toLatLng(valid[0]), zoom: 16.5, pitch: 0 },
+        { duration: 500 },
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dropOffs]);
+
+  useEffect(() => {
+    if (!mapReady) return;
+    if (navigationMode) {
+      if (isFollowingNavigation && hasValidCoords(navigationUserLocation)) {
+        mapRef.current?.animateCamera(
+          {
+            center: toLatLng(navigationUserLocation),
+            pitch: 60,
+            heading: navigationHeading,
+            zoom: 18.5,
+            altitude: 180,
+          },
+          { duration: 450 },
+        );
+      }
       return;
     }
+    if (!fitKey) return;
     fitToCoordinates(fitPoints.filter(hasValidCoords).map(toLatLng));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, fitKey, fitToCoordinates, navigationMode, navigationHeading, recenterSignal, navigationUserLocation?.lat, navigationUserLocation?.lng]);
+  }, [mapReady, fitKey, fitToCoordinates, navigationMode, isFollowingNavigation, navigationHeading, navigationUserLocation?.lat, navigationUserLocation?.lng]);
 
   useEffect(() => {
     if (!mapReady || !navigationMode || !compassResetSignal) return;
@@ -834,8 +878,8 @@ export default function MapViewer({
           >
             <View collapsable={false} style={{ width: 48, height: 48, alignItems: 'center', justifyContent: 'center' }}>
               <View style={isFollowingNavigation ? tw`h-12 w-12 items-center justify-center rounded-full bg-blue-500/25` : tw`h-12 w-12 items-center justify-center rounded-full bg-slate-400/25`}>
-                <View style={tw`h-7 w-7 items-center justify-center rounded-full border-2 border-blue-700 bg-blue-500`}>
-                  <View style={tw`h-2.5 w-2.5 rounded-full bg-white`} />
+                <View style={tw`h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-blue-600`}>
+                  <Navigation size={16} color="#FFFFFF" fill="#FFFFFF" />
                 </View>
               </View>
             </View>

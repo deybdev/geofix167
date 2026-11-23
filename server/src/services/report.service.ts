@@ -194,11 +194,7 @@ export async function submitIncidentReport(
       guestPhotos: preparedPhotos.rows,
       report: {
         incident_id: id, reported_by_user_id: userId, guest_session_id: guestId,
-<<<<<<< HEAD
-        incident_status_id: input.is_emergency === 1 ? 5 : 1, category, priority_code: priority,
-=======
-        incident_status_id: initialStatusId, category, categories: JSON.stringify(input.categories), priority_code: priority,
->>>>>>> 33678143854e6845f3cbe33923a3ea998ce2efc5
+        incident_status_id: input.is_emergency === 1 ? 5 : 1, category, categories: JSON.stringify(input.categories), priority_code: priority,
         is_emergency: input.is_emergency === 1 ? 1 : 0,
         title: guestSubmission ? input.categories.join(" + ").slice(0, 120) : cleanSingleLine(input.title) || category, description_original: description,
         description_sanitized: language.sanitizedText, callback_mobile_number: input.callback_contact?.trim() || null,
@@ -213,17 +209,12 @@ export async function submitIncidentReport(
       },
       statusEvent: {
         incident_status_event_id: crypto.randomUUID(), incident_id: id,
-<<<<<<< HEAD
         from_incident_status_id: null, to_incident_status_id: input.is_emergency === 1 ? 5 : 1,
         changed_by_user_id: userId,
         note: input.is_emergency === 1
           ? "Emergency report routed directly to BDRRMO"
           : "Initial report submitted",
         created_at: now,
-=======
-        from_incident_status_id: null, to_incident_status_id: initialStatusId,
-        changed_by_user_id: userId, note: input.is_emergency ? "Emergency forwarded to BDRRMO on submission." : "Initial report submitted", created_at: now,
->>>>>>> 33678143854e6845f3cbe33923a3ea998ce2efc5
       },
       languageFlags,
     });

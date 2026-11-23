@@ -132,6 +132,7 @@ async function getDispatchedUnitsForIncidents(
         id,
         role: dept,
         name: String(row.vehicle_name || ({ fire: "BFP Fire Unit", police: "PNP Police Unit" }[dept]) || dept.toUpperCase()),
+        phone: row.contact ? String(row.contact) : (phoneByRole.get(dept) ?? null),
         status: String(row.status || "DISPATCHED"),
         dispatched_at: row.dispatched_at ? String(row.dispatched_at) : null,
         ...(includeDispatcher ? {
@@ -266,7 +267,7 @@ export async function listReportsController(c: Context<AppEnv>) {
         photosByReport.set(photo.incident_id, list);
       }
     }
-    const [unitsByIncident, eventRows] = await Promise.all([
+    const [unitsByIncident, eventRows, maintRows] = await Promise.all([
       getDispatchedUnitsForIncidents(
         c.env.geofix167_db,
         reports.map((r) => r.incident_id),
@@ -287,7 +288,21 @@ export async function listReportsController(c: Context<AppEnv>) {
         JOIN assignment_statuses s ON s.assignment_status_id = e.assignment_status_id WHERE (SELECT role FROM viewer) = 'admin'
         ORDER BY created_at DESC
       `).bind(c.get("user")?.role ?? "").all<{ incident_id: string; id: string; note: string; created_at: string; status: string; actor: string | null }>(),
+      c.env.geofix167_db.prepare(`
+        SELECT incident_id, notes
+        FROM tanod_assignments
+        WHERE notes LIKE '%"MAINTENANCE"%'
+        ORDER BY assigned_at DESC
+      `).all<{ incident_id: string; notes: string | null }>().catch(() => ({ results: [] })),
     ]);
+
+    const forFundingIncidents = new Set<string>();
+    for (const mr of maintRows.results ?? []) {
+      const meta = parseMaintenanceMeta(mr.notes);
+      if (meta?.for_funding && !meta.repair_done) {
+        forFundingIncidents.add(mr.incident_id);
+      }
+    }
 
     const historyByIncident = new Map<string, typeof eventRows.results>();
     const agencyByIncident = new Map<string, Array<{ id: string; note: string; created_at: string }>>();
@@ -312,8 +327,10 @@ export async function listReportsController(c: Context<AppEnv>) {
         const list = photosByReport.get(report.incident_id) ?? [];
         const firstPhoto = list[0];
         const verifiedNote = verifiedByIncident.get(report.incident_id) ?? null;
+        const isForFunding = forFundingIncidents.has(report.incident_id) && Number(report.incident_status_id) !== 10;
         return {
           ...report,
+          ...(isForFunding ? { for_funding: true, status_label: "For Funding" } : {}),
           ...(c.get("user")?.role === "admin" ? { history: historyByIncident.get(report.incident_id) ?? [] } : {}),
           photos: list,
           photo_count: list.length,
@@ -351,11 +368,11 @@ export async function getReportByIdController(c: Context<AppEnv>) {
 
     const [photoRows, maintRow, unitsByIncident] = await Promise.all([
       db.prepare(`
-        SELECT incident_media_id AS id
+        SELECT incident_media_id AS id, COALESCE(original_filename, '') AS filename
         FROM incident_media
         WHERE incident_id = ? AND media_type = 'PHOTO'
         ORDER BY created_at, incident_media_id
-      `).bind(report.incident_id).all<{ id: string }>().catch(() => ({ results: [] })),
+      `).bind(report.incident_id).all<{ id: string; filename: string }>().catch(() => ({ results: [] })),
       db.prepare(`
         SELECT ta.tanod_assignment_id, ta.assignment_status_id, ta.assigned_at, ta.completed_at, ta.notes,
           COALESCE(rr.display_name, NULLIF(trim(u.first_name || ' ' || u.last_name), ''), 'Assigned Tanod') AS tanod_name
@@ -369,11 +386,35 @@ export async function getReportByIdController(c: Context<AppEnv>) {
       getDispatchedUnitsForIncidents(db, [report.incident_id]),
     ]);
 
-    const allPhotoIds = (photoRows.results ?? []).map((p) => p.id);
+    const rawPhotos = photoRows.results ?? [];
+    const allPhotoIds = rawPhotos.map((p) => p.id);
     const meta = maintRow ? parseMaintenanceMeta(String(maintRow.notes || "")) : null;
+    const isResponderFilename = (fname: string) =>
+      /^(fire|police|tanod|transport-proof)/i.test(fname) || fname.includes("-resolution");
+    const responderPhotoLabel = (fname: string) =>
+      /^fire-/i.test(fname)
+        ? "BFP Completion Proof"
+        : /^police-/i.test(fname)
+          ? "Police Completion Proof"
+          : /^transport-proof/i.test(fname)
+            ? "Tanod Transport Proof"
+            : /^tanod-/i.test(fname)
+              ? "Tanod Completion Proof"
+              : "Responder Completion Proof";
+
     const reporterPhotoIds = meta
       ? allPhotoIds.filter((pid) => !meta.inspection_photo_ids.includes(pid) && !meta.repair_photo_ids.includes(pid))
-      : allPhotoIds;
+      : rawPhotos.filter((p) => !isResponderFilename(p.filename)).map((p) => p.id);
+    const responderPhotos = rawPhotos
+      .filter((p) => isResponderFilename(p.filename))
+      .map((p) => ({
+        id: p.id,
+        label: responderPhotoLabel(p.filename),
+        url: `/api/reports/${encodeURIComponent(report.incident_id)}/photos/${encodeURIComponent(p.id)}`,
+      }));
+    const reporterPhotoUrls = reporterPhotoIds.map(
+      (pid) => `/api/reports/${encodeURIComponent(report.incident_id)}/photos/${encodeURIComponent(pid)}`,
+    );
     const firstPhotoId = reporterPhotoIds[0] || allPhotoIds[0] || null;
     const photoUrl = firstPhotoId
       ? `/api/reports/${encodeURIComponent(report.incident_id)}/photos/${encodeURIComponent(firstPhotoId)}`
@@ -422,6 +463,8 @@ export async function getReportByIdController(c: Context<AppEnv>) {
         description_sanitized: stripSelectedDetails(report.description_sanitized),
         description_original: stripSelectedDetails(report.description_original),
         photo_url: photoUrl,
+        reporter_photo_urls: reporterPhotoUrls,
+        responder_photos: responderPhotos,
         maintenance_progress: maintenanceProgress,
         dispatched_units: unitsByIncident.get(report.incident_id) ?? [],
       },
