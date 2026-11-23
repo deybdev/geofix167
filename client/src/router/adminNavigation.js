@@ -34,6 +34,18 @@ export const ADMIN_NAVIGATION = [
     label: "Accomplishment Log",
     icon: BookOpen,
     path: PATHS.adminAccomplishmentLog,
+    children: [
+      {
+        key: "barangay-accomplishments",
+        label: "Barangay Accomplishments",
+        path: PATHS.adminAccomplishmentLog,
+      },
+      {
+        key: "bdrrmo-completed-tasks",
+        label: "BDRRMO Completed Tasks",
+        path: PATHS.adminBdrrmoAccomplishments,
+      },
+    ],
   },
   {
     key: "residents",

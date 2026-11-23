@@ -14,6 +14,7 @@ const pageTitles = {
   [PATHS.adminMaintenanceTasks]: "Maintenance Tasks",
   [PATHS.adminResolutionVerification]: "Resolution Verification",
   [PATHS.adminAccomplishmentLog]: "Accomplishment Log",
+  [PATHS.adminBdrrmoAccomplishments]: "BDRRMO Completed Tasks",
   [PATHS.adminResidents]: "Residents",
   "/admin/registrations": "Registration Verification",
   [PATHS.adminReportsAnalytics]: "Reports & Analytics",
