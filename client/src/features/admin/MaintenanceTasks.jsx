@@ -15,12 +15,6 @@ import reportCatalog from "../../../../server/src/shared/reportCatalog.json";
 /* Constants                                                               */
 /* ----------------------------------------------------------------------- */
 
-const FALLBACK_TANODS = [
-  { id: "tanod-1", display_name: "Tanod R. Villa", responder_name: "R. Villa", availability_status: "AVAILABLE", beat: "Zone 1 — Rizal St / Quezon Ave" },
-  { id: "tanod-2", display_name: "Tanod J. Pascual", responder_name: "J. Pascual", availability_status: "AVAILABLE", beat: "Zone 2 — Magsaysay Blvd" },
-  { id: "tanod-3", display_name: "Tanod A. Bueno", responder_name: "A. Bueno", availability_status: "BUSY", beat: "Zone 3 — Roxas Blvd" },
-];
-
 const TEAMS = [
   "Tanod R. Villa",
   "Tanod J. Pascual",
@@ -60,7 +54,6 @@ const STATUS_BADGE = {
 /* Helpers                                                                 */
 /* ----------------------------------------------------------------------- */
 
-const daysAgo = (d) => Date.now() - d * 86400000;
 const NOW = () => Date.now();
 const fmtWhen = (t) => (t ? new Date(t).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—");
 const fmtDue = (t) => (t ? new Date(t).toLocaleDateString([], { month: "long", day: "numeric", year: "numeric" }) : "—");
@@ -109,117 +102,6 @@ function languageScan(text) {
   }
   return { flaggedTerms, sanitized: sanitized.replace(/\s{3,}/g, "  ").trim() };
 }
-
-/* ----------------------------------------------------------------------- */
-/* Seed data                                                               */
-/* ----------------------------------------------------------------------- */
-
-const initialTasks = () => [
-  {
-    id: "TASK-167-01", issue: "Pothole Repair — Rizal Street", source: "report", originReportId: "GF-005",
-    reporter: { name: "Rain Santiago", type: "guest", token: "GV-7D92K1" },
-    category: "Road Damage", location: "Rizal Street", zone: ZONES[0],
-    lat: 14.7347, lng: 121.0118,
-    geotag: { source: "Device GPS", accuracy: "±4 m", landmark: "Rizal St frontage, Barangay 167" },
-    evidence: ["photo"],
-    inspectionPhotos: ["site-check-rizal.jpg"],
-    repairPhotos: ["patch-photos.zip"],
-    narration: "Potholes widened by this week's rains; two-wheelers swerve into the next lane to avoid them.",
-    team: "Tanod R. Villa", priority: "Standard", dateSubmitted: daysAgo(7), deadline: daysAgo(1),
-    status: "Verified Fixed",
-    metrics: { submittedAt: daysAgo(7), assignedAt: daysAgo(6), startedAt: daysAgo(5), verifiedAt: daysAgo(2) },
-    reassignments: [],
-    workNotes: [
-      { at: fmtWhen(daysAgo(2)), by: "Tanod R. Villa", note: "Cold asphalt patch compacted; cone cleared area after 48h cure." },
-      { at: fmtWhen(daysAgo(4)), by: "Tanod R. Villa", note: "On-site check complete; materials requested from barangay engineering." },
-    ],
-    closure: { proof: "patch-photos.zip", closedBy: "Admin — N. Villanueva", closedAt: fmtWhen(daysAgo(2)), outcome: "Potholes filled with cold asphalt and layered; surface regraded to drain.", remarks: "Whole section patched and reopened to traffic after inspection." },
-    notified: true,
-    published: { at: fmtWhen(daysAgo(2)), summary: "Road Damage task at Rizal Street completed — potholes patched and road reopened." },
-  },
-  {
-    id: "TASK-167-02", issue: "Streetlight Pole Repair — Pole 14", source: "report", originReportId: "GF-002",
-    reporter: { name: "Rain Opinion", type: "resident" },
-    category: "Electrical", location: "Quezon Avenue", zone: ZONES[0],
-    lat: 14.7321, lng: 121.0192,
-    geotag: { source: "Device GPS", accuracy: "±6 m", landmark: "Quezon Ave, Barangay 167" },
-    evidence: ["photo"],
-    inspectionPhotos: [],
-    repairPhotos: [],
-    narration: "Pole 14 leans after the storm; one lamp dark, wiring sagged toward the sidewalk.",
-    team: "Tanod J. Pascual", priority: "Urgent", dateSubmitted: daysAgo(3), deadline: daysAgo(-2),
-    status: "In Progress",
-    metrics: { submittedAt: daysAgo(3), assignedAt: daysAgo(2), startedAt: daysAgo(1) },
-    reassignments: [],
-    workNotes: [
-      { at: fmtWhen(daysAgo(1)), by: "Tanod J. Pascual", note: "Dispatched to inspect site and document needed materials for budget approval." },
-    ],
-  },
-  {
-    id: "TASK-167-03", issue: "Canal Desilting — Market Stretch", source: "report", originReportId: "GF-003",
-    reporter: { name: "Ellyz Gomez", type: "resident" },
-    category: "Waterways", location: "Magsaysay Boulevard", zone: ZONES[1],
-    lat: 14.7269, lng: 121.0174,
-    geotag: { source: "Device GPS", accuracy: "±3 m", landmark: "Magsaysay Blvd canal mouth" },
-    evidence: ["photo"],
-    inspectionPhotos: ["canal-arrival-check.jpg"],
-    repairPhotos: [],
-    narration: "Canal grate across from the market is blocked; needs inspection and desilting crew.",
-    team: "Tanod R. Villa", priority: "Standard", dateSubmitted: daysAgo(2), deadline: daysAgo(-2),
-    status: "Awaiting Verification",
-    metrics: { submittedAt: daysAgo(2), assignedAt: daysAgo(2), startedAt: daysAgo(1) },
-    reassignments: [],
-    workNotes: [
-      { at: fmtWhen(daysAgo(1)), by: "Tanod R. Villa", note: "Site checked and initial arrival photos uploaded. Desilting completed; awaiting final admin verification." },
-    ],
-  },
-  {
-    id: "TASK-167-05", issue: "Tilting Basketball Ring — Covered Court", source: "report", originReportId: "GF-006",
-    reporter: { name: "Guest M. Dizon", type: "guest", token: "GV-2PXK44" },
-    category: "Structural", location: "Bonifacio Street", zone: ZONES[3],
-    lat: 14.7300, lng: 121.0150,
-    geotag: { source: "Device GPS", accuracy: "±7 m", landmark: "Covered court, Bonifacio St" },
-    evidence: ["photo"],
-    inspectionPhotos: ["court-ring-inspection.jpg"],
-    repairPhotos: [],
-    narration: "Ring mount rusted through and tilts over the free-throw lane; kids still play under it.",
-    team: "Tanod J. Pascual", priority: "Urgent", dateSubmitted: daysAgo(5), deadline: daysAgo(0),
-    status: "Awaiting Verification",
-    metrics: { submittedAt: daysAgo(5), assignedAt: daysAgo(4), startedAt: daysAgo(2) },
-    reassignments: [],
-    workNotes: [
-      { at: fmtWhen(daysAgo(2)), by: "Tanod J. Pascual", note: "Mount plate replaced and ring re-leveled to 3.05 m; awaiting final repair proof sign-off." },
-    ],
-  },
-];
-
-/* Non-emergency reports sitting in the ingestion queue from Guests & Residents */
-const initialQueue = () => [
-  {
-    queueId: "Q-01", reportId: "GF-008", issue: "Garbage pile beside the covered court",
-    reporter: { name: "Guest V. Reyes", type: "guest", token: "GV-3FM7BX" },
-    location: "Del Pilar Road", zone: ZONES[3], lat: 14.7315, lng: 121.0145, category: "Sanitation",
-    geotag: { source: "Device GPS", accuracy: "±4 m", landmark: "Covered court side lane, Del Pilar Rd" },
-    evidence: ["photo", "video"],
-    narration: "Un-collected pile has been there for three days; animals are scattering it across the lane.",
-    submitted: fmtWhen(daysAgo(1)),
-  },
-  {
-    queueId: "Q-02", reportId: "GF-009", issue: "Tilting fence at the daycare frontage",
-    reporter: { name: "Liza Maranan", type: "resident" },
-    location: "Bonifacio Street", zone: ZONES[3], lat: 14.7292, lng: 121.0161, category: "Structural",
-    geotag: { source: "Pin drag adjusted", accuracy: "±9 m", landmark: "Daycare frontage, Bonifacio St" },
-    evidence: ["photo"],
-    narration: "Chain-link section leans toward the walkway where the kids queue in the morning.",
-    submitted: fmtWhen(daysAgo(2)),
-  },
-];
-
-const seededAudit = () => [
-  { key: "s1", taskId: "TASK-167-01", actor: "Admin — N. Villanueva", system: false, at: fmtWhen(daysAgo(2)), action: "Resolution verified with proof", detail: "Proof patch-photos.zip recorded; reporter notified with a read-only status update." },
-  { key: "s2", taskId: "TASK-167-01", actor: "Admin — N. Villanueva", system: false, at: fmtWhen(daysAgo(2)), action: "Accomplishment summary published", detail: "Privacy-safe summary posted to the public accomplishment log." },
-  { key: "s3", taskId: "TASK-167-03", actor: "Admin — N. Villanueva", system: false, at: fmtWhen(daysAgo(1)), action: "Inspection check completed", detail: "In Progress → Awaiting Verification after Tanod inspection evidence was logged." },
-];
 
 /* ----------------------------------------------------------------------- */
 /* Small presentational bits                                               */
@@ -1552,9 +1434,9 @@ const TABS = [
 ];
 
 export default function MaintenanceTasks() {
-  const [tasks, setTasks] = useState(initialTasks);
-  const [queue, setQueue] = useState(initialQueue);
-  const [tanods, setTanods] = useState(FALLBACK_TANODS);
+  const [tasks, setTasks] = useState([]);
+  const [queue, setQueue] = useState([]);
+  const [tanods, setTanods] = useState([]);
   const [reviewingIntakeItem, setReviewingIntakeItem] = useState(null);
   const [dismissedIntakeIds, setDismissedIntakeIds] = useState(() => new Set());
   const [tab, setTab] = useState("intake");
@@ -1565,7 +1447,7 @@ export default function MaintenanceTasks() {
   const [selectedId, setSelectedId] = useState(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [audit, setAudit] = useState({ open: false, taskId: "All tasks" });
-  const [auditLog, setAuditLog] = useState(seededAudit);
+  const [auditLog, setAuditLog] = useState([]);
   const [nowTs] = useState(() => NOW());
 
   useEffect(() => {
@@ -1577,11 +1459,9 @@ export default function MaintenanceTasks() {
         const data = await response.json();
         if (!active || !Array.isArray(data.units)) return;
         const tanodUnits = data.units.filter((u) => u.resource_type === "TANOD");
-        if (tanodUnits.length > 0) {
-          setTanods(tanodUnits);
-        }
+        setTanods(tanodUnits);
       } catch {
-        // Keep fallback tanod list
+        // Ignore network errors while loading tanod units
       }
     };
     void loadTanodUnits();
