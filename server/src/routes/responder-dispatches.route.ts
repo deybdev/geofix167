@@ -148,40 +148,48 @@ route.get("/guest-emergencies", async (c) => {
   return c.json({ emergencies: result.results ?? [] });
 });
 
-route.get("/duty-status", async (c) => {
-  const currentUser = c.get("user");
-  const row = await c.env.geofix167_db.prepare(`
-    SELECT availability_status
-    FROM responder_resources
-    WHERE responder_user_id = ?
-    LIMIT 1
-  `).bind(currentUser.id).first<{ availability_status: string }>().catch(() => null);
+const missingResource = "No responder resource is linked to your account. Contact your dispatcher.";
+function dutyResponse(status: string) {
+  return { ok: true, on_duty: status === "AVAILABLE" || status === "BUSY", availability_status: status };
+}
 
-  const status = row?.availability_status || "AVAILABLE";
-  return c.json({
-    ok: true,
-    on_duty: status === "AVAILABLE" || status === "BUSY",
-    availability_status: status,
-  });
+route.get("/duty-status", async (c) => {
+  try {
+    const row = await c.env.geofix167_db.prepare(
+      "SELECT availability_status FROM responder_resources WHERE responder_user_id = ?"
+    ).bind(c.get("user").id).first<{ availability_status: string }>();
+    if (!row) return c.json({ error: missingResource }, 404);
+    return c.json(dutyResponse(row.availability_status));
+  } catch {
+    return c.json({ error: "Unable to load duty status. Please retry." }, 503);
+  }
 });
 
 route.patch("/duty-status", async (c) => {
-  const currentUser = c.get("user");
-  const raw = await c.req.json().catch(() => null);
-  const onDuty = Boolean((raw as Record<string, unknown> | null)?.on_duty);
-  const nextStatus = onDuty ? "AVAILABLE" : "UNAVAILABLE";
-
-  await c.env.geofix167_db.prepare(`
-    UPDATE responder_resources
-    SET availability_status = ?, updated_at = datetime('now')
-    WHERE responder_user_id = ?
-  `).bind(nextStatus, currentUser.id).run().catch(() => { });
-
-  return c.json({
-    ok: true,
-    on_duty: onDuty,
-    availability_status: nextStatus,
-  });
+  const body = z.object({ on_duty: z.boolean() }).safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: "on_duty must be a JSON boolean." }, 400);
+  const owner = c.get("user").id;
+  const requested = body.data.on_duty;
+  const db = c.env.geofix167_db;
+  try {
+    const [, read] = await db.batch([
+      db.prepare(`UPDATE responder_resources SET availability_status = ?, updated_at = datetime('now')
+        WHERE responder_user_id = ? AND availability_status IN ('AVAILABLE', 'UNAVAILABLE')`)
+        .bind(requested ? "AVAILABLE" : "UNAVAILABLE", owner),
+      db.prepare("SELECT availability_status FROM responder_resources WHERE responder_user_id = ?").bind(owner),
+    ]);
+    const row = read?.results[0] as { availability_status: string } | undefined;
+    if (!row) return c.json({ error: missingResource }, 404);
+    const result = dutyResponse(row.availability_status);
+    if (result.on_duty !== requested) {
+      return c.json({ error: row.availability_status === "BUSY"
+        ? "Finish your active dispatch before going off duty."
+        : "Your resource availability prevents this duty change." }, 409);
+    }
+    return c.json(result);
+  } catch {
+    return c.json({ error: "Unable to save duty status. Please retry." }, 503);
+  }
 });
 
 route.get("/", async (c) => {

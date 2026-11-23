@@ -59,7 +59,7 @@ function getInitials(name) {
 }
 
 export default function ResponderProfile() {
-  const { user, signOut } = useAuth();
+  const { user, signOut, onDuty, toggleDuty, dutyBusy } = useAuth();
   const navigation = useNavigation();
   const role = String(user?.role || 'responder').toLowerCase();
 
@@ -306,8 +306,13 @@ export default function ResponderProfile() {
       {/* 4. Dispatch & Device Settings */}
       <View style={tw`mt-3.5 gap-2.5 rounded-2xl border border-slate-200 bg-white p-4`}>
         <Text style={tw`text-xs font-bold uppercase text-slate-400`}>
-          Dispatch Alerts & GPS
+          Duty, Dispatch Alerts & GPS
         </Text>
+        <View style={tw`flex-row items-center justify-between py-1`}>
+          <Text>{onDuty === null ? 'Duty status unconfirmed' : onDuty ? 'On Duty' : 'Off Duty'}</Text>
+          {onDuty !== null && <Switch accessibilityLabel="On duty" value={onDuty}
+            disabled={dutyBusy} onValueChange={toggleDuty} />}
+        </View>
 
         <View style={tw`flex-row items-center justify-between py-1`}>
           <View style={tw`mr-3 flex-1 flex-row items-center gap-3`}>
