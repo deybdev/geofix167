@@ -195,7 +195,14 @@ export default function PublicTrackingPage() {
                 {index < data.timeline.length - 1 && <span aria-hidden="true" className="absolute left-[7px] top-4 h-full w-px bg-slate-200" />}
                 <span className={`relative mt-1 h-4 w-4 shrink-0 rounded-full border-[3px] ${event.at ? "border-emerald-600 bg-white" : "border-slate-200 bg-white"}`} />
                 <div className="flex min-w-0 flex-1 items-start justify-between gap-3">
-                  <span className={`text-sm ${event.at ? "font-semibold text-slate-800" : "text-slate-400"}`}>{event.label}</span>
+                  <div className="min-w-0">
+                    <span className={`block text-sm ${event.at ? "font-semibold text-slate-800" : "text-slate-400"}`}>{event.label}</span>
+                    {event.label === "Forwarded to BDRRMO" && (
+                      <span className="mt-0.5 block text-xs text-slate-500">
+                        BDRRMO will verify and assign a responder.
+                      </span>
+                    )}
+                  </div>
                   <time className="shrink-0 text-right text-[11px] text-slate-500">{formatTimestamp(event.at)}</time>
                 </div>
               </li>

@@ -170,7 +170,7 @@ route.get("/:token/status", async (c) => {
   const assignmentAt = (codes: string[]) => assignmentRows.find((event) => codes.includes(event.code))?.created_at ?? null;
   const eventTimeline = [
     { label: "Report received", at: link.submitted_at },
-    { label: "Verified / Forwarded to BDRRMO", at: firstAt(["VERIFIED", "FORWARDED_TO_BDRRMO"]) },
+    { label: "Forwarded to BDRRMO", at: firstAt(["VERIFIED", "FORWARDED_TO_BDRRMO"]) },
     { label: "Responder assigned", at: assignedAt ?? firstAt(["DISPATCHED", "ASSIGNED"]) },
     { label: "Accepted", at: acceptedAt ?? assignmentAt(["ACCEPTED"]) ?? firstAt(["ASSIGNED"]) },
     { label: "En route", at: assignmentAt(["EN_ROUTE"]) ?? firstAt(["EN_ROUTE"]) },
