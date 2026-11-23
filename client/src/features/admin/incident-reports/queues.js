@@ -1,13 +1,12 @@
 import { DISPLAY_URGENCY_RANK } from "./constants";
 import { displayUrgency, isEmergency } from "./utils";
 
+/* Queue tabs: job-oriented views. Every report has exactly one primary queue;
+   reports with requested external units additionally appear under External
+   Agency Requests, and dispatched emergencies with an active field assignment
+   also surface on the Monitor Dispatch & Tracking board. */
 export const QUEUES = [
-  { key: "pending-triage", label: "Pending Triage Queue" },
-  { key: "active-emergencies", label: "Active Emergencies (BDRRMO)" },
-  { key: "external-agencies", label: "External Agency Requests" },
-  { key: "infrastructure", label: "Infrastructure Reports" },
-  { key: "dispatch-tracking", label: "Monitor Dispatch & Tracking" },
-  { key: "resolved", label: "Resolved & Handed Over" },
+  { key: "active-emergencies", label: "Active Emergency" },
 ];
 
 const CLOSED_STATUSES = ["Verified Fixed", "Duplicate", "Handed Over", "Awaiting closure review"];

@@ -9,7 +9,7 @@ import { useAuth } from "../shared/hooks/useAuth";
 const pageTitles = {
   [PATHS.admin]: "Barangay 167 Operations Dashboard",
   [PATHS.adminAnnouncements]: "Announcements",
-  [PATHS.adminIncidentReports]: "Incident Reports",
+  [PATHS.adminIncidentReports]: "Active Emergency",
   [PATHS.adminDispatch]: "Dispatch Responders",
   [PATHS.adminMaintenanceTasks]: "Maintenance Tasks",
   [PATHS.adminResolutionVerification]: "Resolution Verification",

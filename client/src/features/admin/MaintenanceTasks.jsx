@@ -7,6 +7,7 @@ import {
 import { toast } from "../../shared/components/ui/toast";
 import MapViewer from "../../shared/components/MapViewer";
 import { ModalShell, SelectFilter, stamp } from "../../shared/components/GovernanceUi";
+import ResolutionVerification from "./ResolutionVerification";
 import reportCatalog from "../../../../server/src/shared/reportCatalog.json";
 
 /* ----------------------------------------------------------------------- */
@@ -1531,6 +1532,7 @@ const TABS = [
   { key: "active", label: "Active Work Orders", icon: Wrench },
   { key: "verify", label: "Awaiting Verification", icon: TriangleAlert },
   { key: "resolved", label: "Resolved & Logged", icon: CheckCircle2 },
+  { key: "integrity", label: "False-Report Controls", icon: ShieldCheck },
 ];
 
 export default function MaintenanceTasks() {
@@ -1955,6 +1957,7 @@ export default function MaintenanceTasks() {
     active: stats.active,
     verify: stats.verifying,
     resolved: tasks.filter((t) => t.status === "Verified Fixed").length,
+    integrity: "Open",
   };
 
   const actionLabel = tab === "verify" ? "Review" : "Manage";
@@ -1962,11 +1965,12 @@ export default function MaintenanceTasks() {
   return (
     <div className="space-y-4">
       {/* 1 — KPI summary banner */}
-      <section aria-label="Maintenance KPI summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section aria-label="Maintenance KPI summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard label="Pending Intake" value={stats.intake} icon={FileText} hint="auto-routed reports awaiting work orders" onClick={() => setTab("intake")} />
         <StatCard label="Active Tasks" value={stats.active} icon={Wrench} hint="ongoing repairs in the field" onClick={() => setTab("active")} />
         <StatCard label="Awaiting Verification" value={stats.verifying} icon={ShieldCheck} hint="crew done — needs admin proof-review" onClick={() => setTab("verify")} />
         <StatCard label="Overdue Tasks" value={stats.overdue} icon={Clock} hint="past deadline — escalate now" alert onClick={() => setTab("active")} />
+        <StatCard label="False-Report Controls" value={3} icon={ShieldCheck} hint="review flagged resident reports" onClick={() => setTab("integrity")} />
       </section>
 
       {/* 2 — Tabbed workspaces */}
@@ -1998,7 +2002,9 @@ export default function MaintenanceTasks() {
         </div>
 
         <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="p-5">
-          {tab === "intake" ? (
+          {tab === "integrity" ? (
+            <ResolutionVerification embedded />
+          ) : tab === "intake" ? (
             queue.length ? (
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {queue.map((item) => (
