@@ -42,7 +42,7 @@ reportRoutes.get("/map-feed", async (c) => {
   const db = c.env.geofix167_db;
   const rows = await db.prepare(`
     SELECT r.incident_id, COALESCE(printf('GF-%03d', rr.reference_sequence), r.incident_id) AS reference_number,
-      r.title, r.category, r.description_sanitized, r.is_emergency,
+      r.title, r.category, r.categories, r.description_sanitized, r.is_emergency,
       r.latitude, r.longitude, r.location_description, r.incident_status_id, r.assigned_team,
       r.submitted_at, ta.notes AS maint_notes, ta.assignment_status_id
     FROM incident_reports r
@@ -80,6 +80,7 @@ reportRoutes.get("/map-feed", async (c) => {
       id: String(row.incident_id),
       reference_number: String(row.reference_number || row.incident_id),
       title: String(row.title || row.category || "Incident"),
+      categories: row.categories,
       category: String(row.category || (isEmergency ? "emergency" : "infrastructure")),
       report_type: isEmergency ? "emergency" : "maintenance",
       description: String(row.description_sanitized || ""),

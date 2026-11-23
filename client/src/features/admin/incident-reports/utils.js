@@ -1,3 +1,4 @@
+import { reportCategories } from "../../../shared/utils/reportCategories";
 import reportCatalog from "../../../../../server/src/shared/reportCatalog.json";
 import { HOSPITALS, RESPONSE_FACILITIES, TANOD_BASE } from "./constants";
 
@@ -84,6 +85,7 @@ function mapApiReport(item, fetchedAt) {
     incidentId: String(item.incident_id ?? ""),
     title: String(item.title ?? "").trim() || "Incident report",
     category,
+    categories: item.categories,
     urgency,
     displayUrgency: displayPriority,
     accident: classification.value === "sudden",
@@ -148,7 +150,7 @@ function mapApiReport(item, fetchedAt) {
 function downloadReportsCsv(reports) {
   const columns = ["ID", "Incident Details", "Category", "Urgency", "Location", "Reporter", "Date Reported", "Assigned Team", "Status", "Photo Count"];
   const rows = reports.map((report) => [
-    report.id, report.title, report.category, displayUrgency(report), report.location, report.reporter,
+    report.id, report.title, reportCategories(report).join("; "), displayUrgency(report), report.location, report.reporter,
     report.date, report.team, report.status, report.photos?.length ?? 0,
   ]);
   const csv = [columns, ...rows].map((row) => row.map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`).join(",")).join("\r\n");

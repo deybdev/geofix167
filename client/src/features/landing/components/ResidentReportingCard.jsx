@@ -1,3 +1,4 @@
+import ReportCategories from "../../../shared/components/ReportCategories";
 import { CheckCircle } from "lucide-react";
 import GuestReportForm from "./GuestReportForm";
 
@@ -66,7 +67,7 @@ export default function ResidentReportingCard({
                 <div className="flex items-start gap-2.5">
                   <CheckCircle size={17} className={`mt-0.5 shrink-0 ${report.status === "resolved" ? "text-emerald-600" : "text-[#2E8B57]"}`} />
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs font-bold leading-snug text-slate-900 group-hover:text-[#2E8B57]">{report.title}</p>
+                    <p className="text-xs font-bold leading-snug text-slate-900 group-hover:text-[#2E8B57]">{report.title}</p><p className="text-xs text-slate-600"><ReportCategories report={report} /></p>
                     <p className="mt-0.5 text-[11px] font-medium text-slate-600">{location}</p>
                     <p className="mt-0.5 text-[11px] font-medium text-slate-500">({report.statusLabel})</p>
                     {hasCoordinates && (

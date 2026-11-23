@@ -21,7 +21,7 @@ route.use("*", ...adminOnly);
 
 route.get("/reports", async (c) => {
   const result = await c.env.geofix167_db.prepare(`
-    SELECT r.incident_id AS id, r.title, r.category, r.description_sanitized AS description,
+    SELECT r.incident_id AS id, r.title, r.category, r.categories, r.description_sanitized AS description,
       r.description_original, r.latitude, r.longitude, r.location_description AS location,
       r.submitted_at, r.is_emergency, r.priority_code, r.within_barangay_boundary,
       (SELECT min(e.created_at) FROM incident_status_events e WHERE e.incident_id = r.incident_id AND e.to_incident_status_id = 5) AS forwarded_at,

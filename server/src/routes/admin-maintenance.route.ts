@@ -81,7 +81,7 @@ route.get("/intake", async (c) => {
     await resolveLegacyReportAddresses(db);
     const result = await db.prepare(`
       SELECT r.incident_id, COALESCE(printf('GF-%03d', rr.reference_sequence), r.incident_id) AS report_id,
-        r.title, r.category, r.description_original AS description,
+        r.title, r.category, r.categories, r.description_original AS description,
         r.latitude, r.longitude, r.accuracy_meters,
         r.within_barangay_boundary, r.pin_manually_adjusted, r.submitted_at,
         CASE
@@ -266,7 +266,7 @@ route.get("/tasks", async (c) => {
   const rows = await db.prepare(`
     SELECT ta.tanod_assignment_id, ta.incident_id, ta.assignment_status_id,
       ta.assigned_at, ta.accepted_at, ta.completed_at, ta.notes,
-      r.title, r.category, r.description_sanitized, r.description_original,
+      r.title, r.category, r.categories, r.description_sanitized, r.description_original,
       r.latitude, r.longitude, r.location_description, r.accuracy_meters,
       r.submitted_at, r.incident_status_id, r.assigned_team,
       COALESCE(printf('GF-%03d', rr_ref.reference_sequence), r.incident_id) AS report_id,
@@ -338,6 +338,7 @@ route.get("/tasks", async (c) => {
       originReportId: String(row.report_id),
       issue: String(row.title || "Maintenance Task"),
       category: String(row.category || "Maintenance"),
+      categories: row.categories,
       location: String(row.location_description || "Barangay 167"),
       lat: row.latitude == null ? null : Number(row.latitude),
       lng: row.longitude == null ? null : Number(row.longitude),
