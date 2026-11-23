@@ -69,7 +69,7 @@ function mapApiReport(item, fetchedAt) {
   const location = address || (hasCoordinates ? `${latitude.toFixed(5)}, ${longitude.toFixed(5)}` : "Location unavailable");
   const rawStatus = String(item.status_label ?? item.status_code ?? "Reported");
   const hasActiveUnits = Array.isArray(item.dispatched_units) && item.dispatched_units.length > 0;
-  const status = /resolved|closed|complete/i.test(rawStatus) ? "Verified Fixed"
+  const status = item.status_code === "FOR_CLOSURE_REVIEW" ? "Awaiting closure review" : /resolved|closed|complete/i.test(rawStatus) ? "Verified Fixed"
     : /closure|handed/i.test(rawStatus) ? "Handed Over"
       : hasActiveUnits || /assigned|dispatched|accepted|en.route|on.scene|progress/i.test(rawStatus) ? "In Progress"
         : /submitted|pending/i.test(rawStatus) ? "Reported"
@@ -140,6 +140,7 @@ function mapApiReport(item, fetchedAt) {
       ...(accuracy != null && accuracy > 100 ? { note: "GPS accuracy is over 100 m; the reporter was prompted to adjust the pin." } : {}),
     },
     ...(outsideBoundary ? { outsideBarangayBoundary: true } : {}),
+    originalText: item.description_original ?? "",
     text: String(item.sanitized_description ?? item.description_sanitized ?? item.description_original ?? "").trim(),
   };
 }

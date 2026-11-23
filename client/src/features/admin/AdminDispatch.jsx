@@ -1,5 +1,5 @@
 import { formatForwardedTime } from "./incident-reports/utils";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle, Check, ChevronLeft, ChevronRight, Eye, Image as ImageIcon,
   MapPin, Radio, RefreshCw, ShieldCheck, Truck, X,
@@ -62,6 +62,7 @@ export default function AdminDispatch() {
   const [units, setUnits] = useState([]);
   const [barangayBoundary, setBarangayBoundary] = useState(null);
   const [selectedId, setSelectedId] = useState(() => new URLSearchParams(window.location.search).get("report") || "");
+  const selectedIdRef = useRef(selectedId);
   const [selectedUnit, setSelectedUnit] = useState("");
   const [mapFocusedIncident, setMapFocusedIncident] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
@@ -77,25 +78,36 @@ export default function AdminDispatch() {
   const [photoIndex, setPhotoIndex] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const [reportData, unitData] = await Promise.all([request("/reports"), request("/units")]);
+  const selectReport = useCallback((id) => {
+    if (selectedIdRef.current === id) return;
+    selectedIdRef.current = id;
+    setSelectedId(id);
+    setPhotoIndex(0);
+    setLightboxOpen(false);
+    setRejectOpen(false);
+    setRejectReason("");
+    setMapFocusedIncident(null);
+  }, []);
+
+  const refresh = useCallback(() => Promise.all([request("/reports"), request("/units")])
+    .then(([reportData, unitData]) => {
       const nextReports = reportData.reports || [];
       const nextUnits = unitData.units || [];
+      setError("");
       setReports(nextReports);
       setUnits(nextUnits);
-      setSelectedId((current) => nextReports.some((report) => report.id === current) ? current : nextReports[0]?.id || "");
+      if (!nextReports.some((report) => report.id === selectedIdRef.current)) selectReport(nextReports[0]?.id || "");
       setSelectedUnit((current) => nextUnits.some((unit) => unit.id === current && canReceiveDispatch(unit))
         ? current
         : nextUnits.find(canReceiveDispatch)?.id || "");
-    } catch (requestError) {
-      setError(requestError.message);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    })
+    .catch((requestError) => setError(requestError.message))
+    .finally(() => setLoading(false)), [selectReport]);
+
+  function reload() {
+    setLoading(true);
+    return refresh();
+  }
 
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => {
@@ -106,7 +118,6 @@ export default function AdminDispatch() {
       .catch(() => { });
     return () => { active = false; };
   }, []);
-  useEffect(() => { setPhotoIndex(0); setLightboxOpen(false); setRejectOpen(false); setRejectReason(""); setMapFocusedIncident(null); }, [selectedId]);
 
   const sortedReports = useMemo(() => [...reports].sort((a, b) =>
     urgencyRank[urgencyLabel(a)] - urgencyRank[urgencyLabel(b)]
@@ -188,7 +199,7 @@ export default function AdminDispatch() {
       setRejectReason("");
       setRejectOpen(false);
       setHelpNote("");
-      await refresh();
+      await reload();
     } catch (actionError) {
       toast.add({ title: "Action failed", description: actionError.message, type: "error" });
     } finally {
@@ -249,17 +260,17 @@ export default function AdminDispatch() {
           <h2 className="text-lg font-bold text-slate-900">Incoming reports &amp; dispatch</h2>
           <p className="mt-1 text-xs text-slate-500">{awaitingActionCount} awaiting · {reports.filter((report) => urgencyLabel(report) === "High").length} High · {availableUnits.length} {availableUnits.length === 1 ? "unit" : "units"} available</p>
         </div>
-        <button type="button" onClick={refresh} disabled={loading} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 disabled:opacity-60"><RefreshCw size={14} className={loading ? "animate-spin" : ""} />Refresh</button>
+        <button type="button" onClick={reload} disabled={loading} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 disabled:opacity-60"><RefreshCw size={14} className={loading ? "animate-spin" : ""} />Refresh</button>
       </div>
 
       {allDeployed && <div role="alert" className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"><AlertTriangle size={15} />All units are deployed. Request City Hall DRRMO support for maintenance reports.</div>}
-      {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800"><span>{error}</span><button type="button" onClick={refresh} className="font-bold underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600">Try again</button></div>}
+      {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800"><span>{error}</span><button type="button" onClick={reload} className="font-bold underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600">Try again</button></div>}
 
       {loading ? <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[380px_minmax(0,1fr)]" aria-label="Loading dispatch reports" aria-busy="true"><div className={`${card} space-y-3 p-4`}>{[1, 2, 3].map((item) => <div key={item} className="animate-pulse space-y-2 border-b border-slate-100 pb-3"><div className="h-3 w-1/3 rounded bg-slate-100" /><div className="h-3 w-2/3 rounded bg-slate-100" /><div className="h-2 w-1/2 rounded bg-slate-100" /></div>)}</div><div className={`${card} min-h-72 animate-pulse bg-slate-50`} /></div> : (
         <div className="grid min-h-0 flex-1 items-stretch gap-3 xl:grid-cols-[380px_minmax(0,1fr)] max-xl:grid-cols-1">
           <section className={`${card} flex min-h-0 flex-col overflow-hidden`}>
             <div className="sticky top-0 z-10 space-y-3 border-b border-slate-200 bg-white p-4">
-              <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-bold">Reports awaiting action</h3><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-800">{awaitingActionCount} awaiting</span></div>
+              <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-bold">Incoming reports</h3><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-800">{awaitingActionCount} awaiting</span></div>
               <div className="grid grid-cols-[1fr_1fr] gap-2">
                 <AccessibleDropdown label="Filter by urgency" value={urgencyFilter} onChange={setUrgencyFilter} options={[
                   { value: "All", label: "All urgency", tone: "neutral" },
@@ -285,7 +296,7 @@ export default function AdminDispatch() {
                     const count = report.photos?.length ?? report.photo_count ?? 0;
                     const reportStatus = String(report.status_code).toUpperCase();
                     const statusLabel = reportStatus === "FORWARDED_TO_BDRRMO" ? "Forwarded to BDRRMO" : reportStatus === "VERIFIED" ? "Verified" : "Submitted";
-                    return <button key={report.id} type="button" aria-pressed={selectedId === report.id} onClick={() => setSelectedId(report.id)} className={`w-full border-l-2 px-3 py-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-600 ${selectedId === report.id ? "border-l-emerald-700 bg-emerald-50/70" : "border-l-transparent hover:bg-slate-50"}`}>
+                    return <button key={report.id} type="button" aria-pressed={selectedId === report.id} onClick={() => selectReport(report.id)} className={`w-full border-l-2 px-3 py-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-600 ${selectedId === report.id ? "border-l-emerald-700 bg-emerald-50/70" : "border-l-transparent hover:bg-slate-50"}`}>
                       <div className="flex items-start justify-between gap-2"><p className="min-w-0 truncate text-sm font-bold">{report.title || "Incident report"}</p><span className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-bold ${urgencyClasses[urgency]}`}>{urgency}</span></div>
                       <p className="mt-1 truncate text-[11px] text-slate-600">{report.category || "Uncategorized"} · {report.location || "Location unavailable"}</p>
                       <div className="mt-1 flex items-center gap-2 truncate text-[10px] text-slate-500"><span className="truncate">{report.reporter || "Guest"}</span><span title={fullTime} className="shrink-0">{relativeTime(report.submitted_at)}</span><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${reportStatus === "VERIFIED" || reportStatus === "FORWARDED_TO_BDRRMO" ? "bg-emerald-600" : "bg-amber-500"}`} title={statusLabel} /><span className="inline-flex shrink-0 items-center gap-1" title={`${count} photos`}><ImageIcon size={11} />{count}</span></div>

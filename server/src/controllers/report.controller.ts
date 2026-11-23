@@ -258,10 +258,18 @@ export async function listReportsController(c: Context<AppEnv>) {
         c.get("user")?.role === "admin",
       ),
       c.env.geofix167_db.prepare(`
+        WITH viewer(role) AS (VALUES (?))
         SELECT incident_id, incident_status_event_id AS id, coalesce(note, '') AS note, created_at,
           s.display_name AS status, e.changed_by_user_id AS actor
         FROM incident_status_events e JOIN incident_statuses s ON s.incident_status_id = e.to_incident_status_id
-        WHERE ? = 'admin' OR note LIKE '[AGENCY REPORT]%' OR note LIKE '[BDRRMO VERIFIED]%' OR note LIKE '[BDRRMO NOTE]%'
+        WHERE (SELECT role FROM viewer) = 'admin' OR note LIKE '[AGENCY REPORT]%' OR note LIKE '[BDRRMO VERIFIED]%' OR note LIKE '[BDRRMO NOTE]%'
+        UNION ALL
+        SELECT q.incident_id, q.qr_handover_id, '', q.created_at, 'Handover submitted', q.created_by_tanod_user_id
+        FROM qr_handovers q WHERE (SELECT role FROM viewer) = 'admin'
+        UNION ALL
+        SELECT a.incident_id, e.tanod_assignment_event_id, coalesce(e.note, ''), e.created_at, s.display_name, e.changed_by_user_id
+        FROM tanod_assignment_events e JOIN tanod_assignments a ON a.tanod_assignment_id = e.tanod_assignment_id
+        JOIN assignment_statuses s ON s.assignment_status_id = e.assignment_status_id WHERE (SELECT role FROM viewer) = 'admin'
         ORDER BY created_at DESC
       `).bind(c.get("user")?.role ?? "").all<{ incident_id: string; id: string; note: string; created_at: string; status: string; actor: string | null }>(),
     ]);

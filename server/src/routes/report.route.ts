@@ -139,7 +139,7 @@ reportRoutes.post("/:id/resolve", requireAuth, requireRole("admin"), async (c) =
     .bind(incidentId, incidentId, incidentId)
     .first<{ incident_id: string; incident_status_id: number; is_emergency: number; closed_at: string | null }>();
   if (!report) return c.json({ error: "Incident report not found." }, 404);
-  if (report.is_emergency) return c.json({ error: "Emergency reports are managed by BDRRMO." }, 403);
+  if (report.is_emergency && ![9, 10].includes(report.incident_status_id)) return c.json({ error: "Emergency reports are managed by BDRRMO." }, 403);
   if (report.closed_at) {
     const snapshot = await ensureIncidentReportSnapshot(db, report.incident_id, currentUser.id, body.data.resolution_notes);
     return c.json({ ok: true, status: "CLOSED", snapshot });

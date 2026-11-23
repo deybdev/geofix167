@@ -293,7 +293,7 @@ export default function IncidentReports() {
           <Search size={14} />
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search reports..." className="w-full text-[11px] outline-none placeholder:text-[#7c8ba3]" />
         </label>
-        {tab !== "dispatch-tracking" && tab !== "resolved" && <SelectFilter value={status} options={statuses} onChange={setStatus} ariaLabel="Filter status" />}
+        {tab !== "dispatch-tracking" && tab !== "resolved" && <SelectFilter value={status} options={[...new Set([...statuses, ...reports.map((report) => report.status)])]} onChange={setStatus} ariaLabel="Filter status" />}
         <SelectFilter value={urgencyFilter} options={["All Urgency", "High", "Medium", "Low"]} onChange={setUrgencyFilter} ariaLabel="Filter urgency" />
         <SelectFilter value={category} options={categories} onChange={setCategory} ariaLabel="Filter category" />
         <SelectFilter value={location} options={locationOptions} onChange={setLocation} ariaLabel="Filter location" />

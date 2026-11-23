@@ -11,7 +11,7 @@ const teamsFor = (report) => report.dispatchedUnits.filter((unit) => unit.dispat
 
 function assignmentState(report, teams) {
   if (report.statusCode === "CLOSED") return "Resolved";
-  if (report.history.some((event) => /handover generated|handover submitted/i.test(event.note))) return "Handover submitted";
+  if (report.history.some((event) => event.status === "Handover submitted")) return "Handover submitted";
   for (const code of ["ON_SCENE", "EN_ROUTE", "ACCEPTED", "DISPATCHED", "OFFERED", "COMPLETED"]) {
     if (teams.some((team) => team.status === code)) return labels[code];
   }
@@ -34,7 +34,7 @@ function TrackingDetail({ report, onClose }) {
     if (team.location) points.push({ id: team.id, name: team.name, color: "#17633f", position: [team.location.lat, team.location.lng] });
   }
   const timeline = [
-    ...report.history.map((event) => ({ id: event.id, at: event.created_at, text: event.note || event.status })),
+    ...report.history.map((event) => ({ id: event.id, at: event.created_at, text: [event.status, event.note].filter(Boolean).join(" - ") })),
     ...teams.map((team) => ({ id: team.id, at: team.dispatched_at, text: team.dispatched_by + " dispatched " + team.name })),
   ].sort((a, b) => parseTimestamp(a.at) - parseTimestamp(b.at));
   return (

@@ -88,6 +88,7 @@ function IncidentDrawer({ report, onClose, onResolve, onPublish, onOpenAudit, lo
     }
   }
 
+  const closureReview = !emergency || report.statusCode === "FOR_CLOSURE_REVIEW";
   const resolved = report.status === "Verified Fixed";
   const handedOver = report.status === "Handed Over";
   const isTriagePending = report.status === "Reported" || report.status === "BDRRMO Takeover";
@@ -248,7 +249,7 @@ function IncidentDrawer({ report, onClose, onResolve, onPublish, onOpenAudit, lo
               </div>
               <p>
                 {showRaw
-                  ? report.text || "No description. See photo evidence."
+                  ? report.originalText || report.text || "No description. See photo evidence."
                   : report.text
                     ? language.sanitized
                     : "No description. See photo evidence."}
@@ -460,7 +461,7 @@ function IncidentDrawer({ report, onClose, onResolve, onPublish, onOpenAudit, lo
             <Link className="gf-btn gf-btn--primary" to={"/admin/dispatch?report=" + encodeURIComponent(report.incidentId)}>Review maintenance report</Link>
           )}
 
-          {!emergency && !isTriagePending && (
+          {closureReview && !isTriagePending && (
             <ModalSection title="Final Admin Closure">
               {resolved ? (
                 <RowList
@@ -589,7 +590,7 @@ function IncidentDrawer({ report, onClose, onResolve, onPublish, onOpenAudit, lo
             <History size={10} style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }} />
             Audit
           </button>
-          {!emergency && !resolved && (
+          {closureReview && !resolved && (
             <button
               type="button"
               disabled={!canResolve || savingResolution}

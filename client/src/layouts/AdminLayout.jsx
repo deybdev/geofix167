@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Bell, Menu, Search, Volume2, VolumeX } from "lucide-react";
+import { Menu, Search } from "lucide-react";
 import { Outlet, useLocation } from "react-router-dom";
 import { PATHS } from "../router/paths";
 import AdminSidebar from "../shared/components/AdminSidebar";
-import { DispatchAlertProvider, useDispatchAlertContext } from "../shared/context/DispatchAlertContext";
+import AdminNotifications from "../features/admin/AdminNotifications";
+import { useAuth } from "../shared/hooks/useAuth";
 
 const pageTitles = {
   [PATHS.admin]: "Barangay 167 Operations Dashboard",
@@ -19,29 +20,14 @@ const pageTitles = {
   [PATHS.adminSettings]: "Settings",
 };
 
-function AdminHeaderControls() {
-  const { enabled, blocked, toggle } = useDispatchAlertContext();
-  return (
-    <button
-      type="button"
-      onClick={toggle}
-      aria-pressed={enabled}
-      className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--gf-green) ${enabled ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100" : "border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100"}`}
-    >
-      {enabled ? <Volume2 size={14} /> : <VolumeX size={14} />}
-      {blocked ? "Enable Sound" : `Sound: ${enabled ? "ON" : "MUTE"}`}
-    </button>
-  );
-}
-
 const AdminLayout = () => {
+  const { user } = useAuth();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(() =>
     typeof window !== "undefined" ? window.matchMedia("(min-width: 768px)").matches : false,
   );
 
   return (
-    <DispatchAlertProvider>
     <div className="admin-portal min-h-screen bg-[#f7f9fa] text-[#263246]">
       <AdminSidebar
         open={sidebarOpen}
@@ -49,7 +35,7 @@ const AdminLayout = () => {
         onClose={() => setSidebarOpen(false)}
       />
       <div className={`transition-[margin] duration-300 ${sidebarOpen ? "md:ml-[250px]" : "md:ml-[72px]"}`}>
-        <header className="sticky top-0 z-10 flex h-[60px] items-center justify-between gap-3 border-b border-[#e4e9ec] bg-white/95 px-5 backdrop-blur md:px-6">
+        <header className="sticky top-0 z-40 flex h-[60px] items-center justify-between gap-3 border-b border-[#e4e9ec] bg-white/95 px-5 backdrop-blur md:px-6">
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <button type="button" onClick={() => setSidebarOpen(true)} aria-label="Open admin navigation" aria-expanded={sidebarOpen} className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 md:hidden"><Menu size={17} /></button>
             <div className="min-w-0">
@@ -65,21 +51,16 @@ const AdminLayout = () => {
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-            <AdminHeaderControls />
             <label className="hidden h-8 w-[210px] items-center gap-2 rounded-lg border border-[#dfe5e8] px-2.5 text-[10px] text-slate-400 transition focus-within:border-(--gf-green-border) sm:flex">
               <Search size={14} />
               <input aria-label="Search report or location" placeholder="Search report or location..." className="w-full outline-none placeholder:text-slate-400" />
             </label>
-            <button type="button" className="relative rounded-full border border-[#dfe5e8] p-1.5 text-(--gf-green) transition hover:bg-(--gf-green-soft) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--gf-green)" aria-label="Notifications">
-              <Bell size={14} />
-              <span className="absolute right-0 top-0 h-1.5 w-1.5 rounded-full bg-[#f59e0b]" />
-            </button>
+            <AdminNotifications key={user.id} />
           </div>
         </header>
         <main className="p-5 md:p-6"><Outlet /></main>
       </div>
     </div>
-    </DispatchAlertProvider>
   );
 };
 

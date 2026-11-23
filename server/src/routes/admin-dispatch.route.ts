@@ -1,3 +1,4 @@
+import { notify } from "../services/notifications";
 import { Hono } from "hono";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middleware/auth";
@@ -179,6 +180,8 @@ route.post("/reports/:reportId/request-drrmo", async (c) => {
       WHERE incident_id = ? AND incident_status_id IN (1, 2, 4)
         AND EXISTS (SELECT 1 FROM external_support_requests WHERE external_support_request_id = ?)`)
       .bind(id.data, supportId),
+    notify(db, { type: "support_requested", actorId: c.get("user").id, eventId: supportId,
+      reportId: id.data, afterChange: true }),
   ]);
   if (!result[0]?.meta.changes) {
     const exists = await db.prepare("SELECT incident_id, is_emergency FROM incident_reports WHERE incident_id = ?")

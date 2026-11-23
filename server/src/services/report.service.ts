@@ -184,6 +184,7 @@ export async function submitIncidentReport(
   } : undefined;
   try {
     await createIncidentReportBundle(db, {
+      actorId: user?.id ?? null,
       creationAudit,
       trackingLink,
       guestSession: guestId && token ? {
