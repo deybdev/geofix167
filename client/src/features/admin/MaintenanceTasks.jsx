@@ -1960,7 +1960,7 @@ export default function MaintenanceTasks() {
     active: stats.active,
     verify: stats.verifying,
     resolved: tasks.filter((t) => t.status === "Verified Fixed").length,
-    integrity: "Open",
+    integrity: 3,
   };
 
   const actionLabel = tab === "verify" ? "Review" : "Manage";
