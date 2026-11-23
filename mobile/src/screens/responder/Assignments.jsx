@@ -292,7 +292,7 @@ export default function Assignments() {
                   </Pressable>
                 ) : (
                   <Pressable
-                    onPress={() => navigation.navigate('Map', { assignment })}
+                    onPress={() => navigation.navigate('Navigation', { assignment })}
                     style={({ pressed }) => [
                       tw`mt-4 flex-row items-center justify-center gap-2 rounded-xl bg-[#1F7A4D] py-3`,
                       { opacity: pressed ? 0.85 : 1 },
@@ -440,7 +440,7 @@ export default function Assignments() {
                 onPress={() => {
                   const target = reviewItem;
                   setReviewItem(null);
-                  navigation.navigate('Map', { assignment: target });
+                  navigation.navigate('Navigation', { assignment: target });
                 }}
                 style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-[#1F7A4D] py-3`}
               >

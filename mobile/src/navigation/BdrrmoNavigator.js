@@ -3,9 +3,13 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import ResponderLayout from '../layouts/ResponderLayout';
 import DispatchScreen from '../screens/bdrrmo/Dispatch';
 import HomeScreen from '../screens/bdrrmo/Home';
+import CallScreen from '../screens/bdrrmo/Call';
 import MessagesScreen from '../screens/bdrrmo/Messages';
 import HistoryScreen from '../screens/responder/History';
-import MapScreen from '../screens/responder/Map';
+import HistoryDetailsScreen from '../screens/responder/HistoryDetails';
+import IncidentDetailsScreen from '../screens/responder/IncidentDetails';
+import IncidentsMapScreen from '../screens/responder/IncidentsMap';
+import NavigationScreen from '../screens/responder/Map';
 import ProfileScreen from '../screens/responder/Profile';
 
 const Stack = createNativeStackNavigator();
@@ -22,9 +26,13 @@ function withLayout(Screen) {
 
 const HomeWithLayout = withLayout(HomeScreen);
 const DispatchWithLayout = withLayout(DispatchScreen);
-const MapWithLayout = withLayout(MapScreen);
+const IncidentDetailsWithLayout = withLayout(IncidentDetailsScreen);
+const MapWithLayout = withLayout(IncidentsMapScreen);
+const NavigationWithLayout = withLayout(NavigationScreen);
 const MessagesWithLayout = withLayout(MessagesScreen);
+const CallWithLayout = withLayout(CallScreen);
 const HistoryWithLayout = withLayout(HistoryScreen);
+const HistoryDetailsWithLayout = withLayout(HistoryDetailsScreen);
 const ProfileWithLayout = withLayout(ProfileScreen);
 
 export default function BdrrmoNavigator() {
@@ -32,9 +40,13 @@ export default function BdrrmoNavigator() {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Home" component={HomeWithLayout} />
       <Stack.Screen name="Dispatch" component={DispatchWithLayout} />
+      <Stack.Screen name="IncidentDetails" component={IncidentDetailsWithLayout} />
       <Stack.Screen name="Map" component={MapWithLayout} />
+      <Stack.Screen name="Navigation" component={NavigationWithLayout} />
       <Stack.Screen name="Messages" component={MessagesWithLayout} />
+      <Stack.Screen name="Call" component={CallWithLayout} />
       <Stack.Screen name="History" component={HistoryWithLayout} />
+      <Stack.Screen name="HistoryDetails" component={HistoryDetailsWithLayout} />
       <Stack.Screen name="Profile" component={ProfileWithLayout} />
     </Stack.Navigator>
   );

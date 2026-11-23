@@ -12,6 +12,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import {
+  AlertTriangle,
   Camera,
   CheckCircle2,
   Compass,
@@ -23,6 +24,7 @@ import {
   Plus,
   QrCode,
   Route,
+  ShieldAlert,
   Trash2,
   Volume2,
   VolumeX,
@@ -33,6 +35,7 @@ import tw from 'twrnc';
 
 import MapViewer from '../../components/map/MapViewer';
 import { useAuth } from '../../context/AuthContext';
+import { formatTitleCase, getStatusStyle } from '../../utils/dispatchStatus';
 import {
   completeAgencyDispatch,
   generateHospitalQrHandover,
@@ -71,9 +74,9 @@ function getRouteHeading(points) {
   const heading = Math.atan2(
     Math.sin(longitude) * Math.cos(to.lat * (Math.PI / 180)),
     Math.cos(from.lat * (Math.PI / 180)) * Math.sin(to.lat * (Math.PI / 180))
-      - Math.sin(from.lat * (Math.PI / 180))
-      * Math.cos(to.lat * (Math.PI / 180))
-      * Math.cos(longitude),
+    - Math.sin(from.lat * (Math.PI / 180))
+    * Math.cos(to.lat * (Math.PI / 180))
+    * Math.cos(longitude),
   ) * (180 / Math.PI);
 
   return (heading + 360) % 360;
@@ -392,7 +395,7 @@ export default function ResponderMap() {
           setPatients(buildInitialPatients(found));
         }
       })
-      .catch(() => {});
+      .catch(() => { });
     return () => {
       mounted = false;
     };
@@ -424,7 +427,7 @@ export default function ResponderMap() {
           setNearestHospital(list[0]);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
     return () => {
       active = false;
     };
@@ -557,15 +560,15 @@ export default function ResponderMap() {
       }
       const result = useCamera
         ? await ImagePicker.launchCameraAsync({
-            mediaTypes: ['images'],
-            quality: 0.4,
-            base64: true,
-          })
+          mediaTypes: ['images'],
+          quality: 0.4,
+          base64: true,
+        })
         : await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ['images'],
-            quality: 0.4,
-            base64: true,
-          });
+          mediaTypes: ['images'],
+          quality: 0.4,
+          base64: true,
+        });
       if (!result.canceled && result.assets?.[0]) {
         const asset = result.assets[0];
         setProofPhoto({
@@ -666,14 +669,14 @@ export default function ResponderMap() {
           persons: userRole === 'fire' ? [] : patients,
           ...(userRole === 'police' && ltoEnabled
             ? {
-                lto_handover: {
-                  enabled: true,
-                  vehicles_involved: ltoVehicles.trim(),
-                  driver_license_info: ltoDrivers.trim(),
-                  violation_type: ltoViolation.trim(),
-                  receiving_lto_unit: ltoReceivingUnit.trim() || 'LTO Traffic Enforcement',
-                },
-              }
+              lto_handover: {
+                enabled: true,
+                vehicles_involved: ltoVehicles.trim(),
+                driver_license_info: ltoDrivers.trim(),
+                violation_type: ltoViolation.trim(),
+                receiving_lto_unit: ltoReceivingUnit.trim() || 'LTO Traffic Enforcement',
+              },
+            }
             : {}),
         });
         setIsNavigating(false);
@@ -719,20 +722,20 @@ export default function ResponderMap() {
           dispatchId: activeAssignment.id,
           payload: isAgencyRole
             ? {
-                incident_id: activeAssignment.incident_id,
-                summary: furtherInfo.trim(),
-                proof_photo_base64: proofPhoto.base64,
-                proof_photo_mime: proofPhoto.mimeType,
-                persons: patients,
-              }
+              incident_id: activeAssignment.incident_id,
+              summary: furtherInfo.trim(),
+              proof_photo_base64: proofPhoto.base64,
+              proof_photo_mime: proofPhoto.mimeType,
+              persons: patients,
+            }
             : {
-                incident_id: activeAssignment.incident_id,
-                hospital_name: nearestHospital?.name || 'Receiving Hospital',
-                further_info: furtherInfo.trim(),
-                proof_photo_base64: proofPhoto.base64,
-                proof_photo_mime: proofPhoto.mimeType,
-                patients,
-              },
+              incident_id: activeAssignment.incident_id,
+              hospital_name: nearestHospital?.name || 'Receiving Hospital',
+              further_info: furtherInfo.trim(),
+              proof_photo_base64: proofPhoto.base64,
+              proof_photo_mime: proofPhoto.mimeType,
+              patients,
+            },
         });
         setOfflineQueueCount(queuedCount);
         setShowPatientModal(false);
@@ -885,13 +888,13 @@ export default function ResponderMap() {
           routes={
             activeAssignment && routePoints.filter(hasValidPoint).length > 1
               ? [
-                  {
-                    id: `route-${activeAssignment?.id || 'active'}`,
-                    points: routePoints.filter(hasValidPoint),
-                    color: '#1F7A4D',
-                    dashed: false,
-                  },
-                ]
+                {
+                  id: `route-${activeAssignment?.id || 'active'}`,
+                  points: routePoints.filter(hasValidPoint),
+                  color: '#1F7A4D',
+                  dashed: false,
+                },
+              ]
               : []
           }
           trackers={
@@ -905,57 +908,64 @@ export default function ResponderMap() {
           recenterSignal={recenterKey}
           compassResetSignal={compassResetKey}
           navigationUserLocation={currentLocation}
-          showBackButton={false}
+          showBackButton
+          onBack={() => {
+            if (navigation.canGoBack()) navigation.goBack();
+            else navigation.navigate('Home');
+          }}
+          topInset={0}
+          bottomInset={activeAssignment ? 260 : 0}
           showBasemapControl={false}
           hideMapLabel
           showMapInfoButton={false}
           showZoomControls={false}
-          showBoundary={!isNavigating && userRole !== 'police'}
-          highlightBoundary={!isNavigating && userRole !== 'police'}
+          showBoundary={false}
+          highlightBoundary={false}
           compact={false}
         />
       </View>
 
       {selectedPin && activeAssignment ? (
         <View
-          style={tw`absolute left-4 right-4 ${isNavigating ? 'top-24' : 'top-16'} z-50 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-xl`}
+          style={tw`absolute left-3 right-3 ${isNavigating ? 'top-24' : 'top-16'} z-50 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-xl`}
         >
-          <View style={tw`flex-row items-center justify-between`}>
+          <View style={tw`flex-row items-center justify-between gap-2`}>
             <View
-              style={tw`rounded-md px-2 py-0.5 ${
+              style={tw`flex-shrink rounded-lg px-2.5 py-1 ${
                 selectedPin.pinType === 'hospital'
-                  ? 'bg-blue-100'
+                  ? 'bg-blue-50'
                   : selectedPin.pinType === 'maintenance'
-                    ? 'bg-green-100'
-                    : 'bg-red-100'
+                    ? 'bg-green-50'
+                    : 'bg-red-50'
               }`}
             >
               <Text
+                numberOfLines={1}
                 style={tw`text-[10px] font-extrabold uppercase ${
                   selectedPin.pinType === 'hospital'
-                    ? 'text-blue-800'
+                    ? 'text-blue-700'
                     : selectedPin.pinType === 'maintenance'
-                      ? 'text-green-800'
-                      : 'text-red-800'
+                      ? 'text-[#1F7A4D]'
+                      : 'text-red-700'
                 }`}
               >
                 {selectedPin.pinType === 'hospital'
                   ? 'Nearest Hospital'
                   : selectedPin.pinType === 'maintenance'
                     ? `Maintenance Site • ${activeAssignment?.incident_category || 'Maintenance'}`
-                    : `Patient Pickup • ${selectedPin.category || 'Emergency'}`}
+                    : `${isAgencyRole ? 'Incident Scene' : 'Patient Pickup'} • ${selectedPin.category || 'Emergency'}`}
               </Text>
             </View>
             <Pressable
               onPress={() => setSelectedPin(null)}
               hitSlop={10}
-              style={tw`h-6 w-6 items-center justify-center rounded-full bg-slate-100`}
+              style={tw`h-7 w-7 items-center justify-center rounded-full bg-slate-100`}
             >
               <X size={14} color="#334155" />
             </Pressable>
           </View>
 
-          <Text style={tw`mt-1.5 text-sm font-extrabold text-slate-900`}>
+          <Text style={tw`mt-2 text-sm font-extrabold text-slate-900`}>
             {selectedPin.title}
           </Text>
 
@@ -983,17 +993,17 @@ export default function ResponderMap() {
 
       {activeAssignment && isNavigating ? (
         <View pointerEvents="box-none" style={tw`absolute inset-0`}>
-          {/* Google Maps style turn-by-turn top direction banner */}
-          <View style={tw`absolute left-3 right-3 top-3 rounded-2xl bg-[#0F5338] px-4 py-3.5 shadow-xl`}>
+          {/* Turn-by-turn top direction banner */}
+          <View style={tw`absolute left-3 right-3 top-3 rounded-2xl border border-slate-200 bg-white px-3.5 py-3 shadow-xl`}>
             <View style={tw`flex-row items-center`}>
-              <View style={tw`h-11 w-11 items-center justify-center rounded-xl bg-[#137333]`}>
-                <Navigation size={24} color="#FFFFFF" />
+              <View style={tw`h-11 w-11 items-center justify-center rounded-xl bg-[#1F7A4D]`}>
+                <Navigation size={22} color="#FFFFFF" />
               </View>
               <View style={tw`ml-3 flex-1`}>
-                <Text numberOfLines={2} style={tw`text-base font-extrabold text-white`}>
+                <Text numberOfLines={2} style={tw`text-sm font-extrabold text-slate-900`}>
                   {routeInfo?.instruction || 'Follow the highlighted route'}
                 </Text>
-                <Text numberOfLines={1} style={tw`mt-0.5 text-xs font-semibold text-emerald-200`}>
+                <Text numberOfLines={1} style={tw`mt-0.5 text-xs font-medium text-slate-500`}>
                   {activeAssignment.is_maintenance
                     ? `To ${activeAssignment.incident_location || 'Maintenance Site'}`
                     : isAgencyRole
@@ -1004,28 +1014,28 @@ export default function ResponderMap() {
             </View>
           </View>
 
-          <View style={tw`absolute right-3 top-28 gap-2.5`}>
+          <View style={tw`absolute right-3 top-24 gap-2`}>
             <Pressable
               onPress={() => setCompassResetKey((k) => k + 1)}
-              style={tw`h-11 w-11 items-center justify-center rounded-full bg-white shadow-md`}
+              style={tw`h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white shadow-md`}
             >
               <Compass
-                size={20}
+                size={19}
                 color="#DC2626"
                 style={{ transform: [{ rotate: `${getRouteHeading(headingPoints)}deg` }] }}
               />
             </Pressable>
             <Pressable
               onPress={() => setNavigationMuted((m) => !m)}
-              style={tw`h-11 w-11 items-center justify-center rounded-full bg-white shadow-md`}
+              style={tw`h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white shadow-md`}
             >
-              {navigationMuted ? <VolumeX size={20} color="#334155" /> : <Volume2 size={20} color="#0F172A" />}
+              {navigationMuted ? <VolumeX size={19} color="#64748B" /> : <Volume2 size={19} color="#0F172A" />}
             </Pressable>
             <Pressable
               onPress={() => setRecenterKey((k) => k + 1)}
-              style={tw`h-11 w-11 items-center justify-center rounded-full bg-white shadow-md`}
+              style={tw`h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white shadow-md`}
             >
-              <Route size={20} color="#1A73E8" />
+              <Route size={19} color="#1F7A4D" />
             </Pressable>
           </View>
 
@@ -1037,35 +1047,42 @@ export default function ResponderMap() {
                 }
                 setRecenterKey((k) => k + 1);
               }}
-              style={tw`flex-row items-center rounded-full bg-white px-4 py-2.5 shadow-md`}
+              style={tw`flex-row items-center rounded-full border border-slate-200 bg-white px-3.5 py-2 shadow-md`}
             >
-              <Navigation size={15} color="#1A73E8" />
-              <Text style={tw`ml-1.5 text-xs font-extrabold text-[#1A73E8]`}>Re-center</Text>
+              <Navigation size={14} color="#1F7A4D" />
+              <Text style={tw`ml-1.5 text-xs font-extrabold text-[#1F7A4D]`}>Re-center</Text>
             </Pressable>
             {isAgencyRole && !activeAssignment.is_maintenance ? (
               <Pressable
                 onPress={handleLocateNearbyHospital}
                 disabled={busy}
-                style={tw`flex-row items-center rounded-full ${nearestHospital ? 'bg-amber-600' : 'bg-[#1A73E8]'} px-3.5 py-2.5 shadow-md`}
+                style={tw`flex-row items-center rounded-full ${nearestHospital ? 'bg-amber-600' : 'bg-[#1F7A4D]'} px-3.5 py-2 shadow-md`}
               >
-                {nearestHospital ? <X size={15} color="#fff" /> : <Hospital size={15} color="#fff" />}
+                {nearestHospital ? <X size={14} color="#fff" /> : <Hospital size={14} color="#fff" />}
                 <Text style={tw`ml-1.5 text-xs font-bold text-white`}>
-                  {nearestHospital ? 'Cancel Hospital Route' : 'Nearest Hospital'}
+                  {nearestHospital ? 'Cancel Hospital' : 'Nearest Hospital'}
                 </Text>
               </Pressable>
             ) : null}
           </View>
 
-          {/* Google Maps style bottom ETA & action bar */}
-          <View style={tw`absolute bottom-0 left-0 right-0 rounded-t-3xl border-t border-slate-200 bg-white px-5 pb-5 pt-3.5 shadow-2xl`}>
+          {/* Bottom ETA & action bar */}
+          <View style={tw`absolute bottom-0 left-0 right-0 rounded-t-3xl border-t border-slate-200 bg-white px-4 pb-4 pt-3.5 shadow-2xl`}>
             <View style={tw`flex-row items-center justify-between`}>
               <View style={tw`flex-1 pr-3`}>
-                <Text style={tw`text-2xl font-extrabold text-[#137333]`}>
-                  {routeInfo ? formatDuration(routeInfo.durationMin) : 'Calculating...'}
-                </Text>
-                <Text style={tw`text-xs font-medium text-slate-600`}>
+                <View style={tw`flex-row items-baseline gap-2`}>
+                  <Text style={tw`text-2xl font-extrabold text-[#1F7A4D]`}>
+                    {routeInfo ? formatDuration(routeInfo.durationMin) : 'Calculating...'}
+                  </Text>
+                  {routeInfo ? (
+                    <Text style={tw`text-xs font-bold text-slate-500`}>
+                      ({routeInfo.distanceKm} km)
+                    </Text>
+                  ) : null}
+                </View>
+                <Text style={tw`mt-0.5 text-xs font-medium text-slate-500`}>
                   {routeInfo
-                    ? `${routeInfo.distanceKm} km • ${routeInfo.trafficLabel || 'Traffic'} • Arrive ${getArrivalTime(routeInfo.durationMin)}`
+                    ? `${routeInfo.trafficLabel || 'Live traffic'} • Arrive ${getArrivalTime(routeInfo.durationMin)}`
                     : currentLocation
                       ? 'Calculating fastest road route...'
                       : 'Acquiring GPS location for route...'}
@@ -1073,22 +1090,22 @@ export default function ResponderMap() {
               </View>
               <Pressable
                 onPress={() => setIsNavigating(false)}
-                style={tw`flex-row items-center rounded-full bg-red-600 px-4 py-2.5`}
+                style={tw`flex-row items-center rounded-full bg-slate-100 px-3.5 py-2`}
               >
-                <X size={15} color="#fff" />
-                <Text style={tw`ml-1 text-xs font-extrabold text-white`}>Exit</Text>
+                <X size={14} color="#0F172A" />
+                <Text style={tw`ml-1 text-xs font-extrabold text-slate-800`}>Exit</Text>
               </Pressable>
             </View>
 
-            <View style={tw`mt-3 flex-row gap-2.5`}>
+            <View style={tw`mt-3 flex-row gap-2`}>
               {activeAssignment.is_maintenance ? (
                 <>
                   <Pressable
                     onPress={handleCancelMaintenanceTrack}
-                    style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white py-2.5`}
+                    style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 py-2.5`}
                   >
                     <X size={15} color="#0F172A" />
-                    <Text style={tw`text-xs font-bold text-slate-900`}>Cancel</Text>
+                    <Text style={tw`text-xs font-bold text-slate-800`}>Cancel</Text>
                   </Pressable>
                   <Pressable
                     onPress={() =>
@@ -1101,7 +1118,7 @@ export default function ResponderMap() {
                   >
                     <CheckCircle2 size={15} color="#FFFFFF" />
                     <Text style={tw`text-xs font-bold text-white`}>
-                      {activeAssignment.inspection_done ? 'Submit Proof of Repair' : 'Document Inspection'}
+                      {activeAssignment.inspection_done ? 'Submit Repair' : 'Inspect'}
                     </Text>
                   </Pressable>
                 </>
@@ -1109,10 +1126,10 @@ export default function ResponderMap() {
                 <>
                   <Pressable
                     onPress={() => navigation.navigate('Messages', { assignment: activeAssignment })}
-                    style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white py-2.5`}
+                    style={tw`flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5`}
                   >
                     <MessageCircle size={15} color="#0F172A" />
-                    <Text style={tw`text-xs font-bold text-slate-900`}>Message</Text>
+                    <Text style={tw`text-xs font-bold text-slate-800`}>Message</Text>
                   </Pressable>
 
                   {activeAssignment.status === 'ON_SCENE' ? (
@@ -1122,7 +1139,7 @@ export default function ResponderMap() {
                       style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-[#1F7A4D] py-2.5`}
                     >
                       <CheckCircle2 size={15} color="#FFFFFF" />
-                      <Text style={tw`text-xs font-bold text-white`}>Mark as Completed</Text>
+                      <Text style={tw`text-xs font-extrabold text-white`}>Mark as Completed</Text>
                     </Pressable>
                   ) : (
                     <Pressable
@@ -1131,7 +1148,7 @@ export default function ResponderMap() {
                       style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-amber-600 py-2.5`}
                     >
                       <MapPin size={15} color="#FFFFFF" />
-                      <Text style={tw`text-xs font-bold text-white`}>Arrived on Scene</Text>
+                      <Text style={tw`text-xs font-extrabold text-white`}>Arrived on Scene</Text>
                     </Pressable>
                   )}
                 </>
@@ -1141,183 +1158,248 @@ export default function ResponderMap() {
         </View>
       ) : null}
 
-      {activeAssignment && !isNavigating ? (
-        <View style={tw`absolute bottom-4 left-4 right-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-lg`}>
-          <View style={tw`flex-row items-center justify-between`}>
-            <Text style={tw`text-xs font-bold uppercase text-[#1F7A4D]`}>
-              {activeAssignment.incident_category} • {activeAssignment.urgency || 'High'}
-            </Text>
-            <Text style={tw`rounded-full bg-slate-100 px-2.5 py-0.5 text-[10px] font-bold text-slate-700`}>
-              {activeAssignment.status}
-            </Text>
-          </View>
+      {activeAssignment && !isNavigating ? (() => {
+        const statusStyle = getStatusStyle(activeAssignment);
+        const isMaint = Boolean(activeAssignment.is_maintenance);
 
-          <Text style={tw`mt-1 text-base font-extrabold text-slate-900`} numberOfLines={1}>
-            {activeAssignment.incident_title}
-          </Text>
-
-          {activeAssignment.incident_location ? (
-            <View style={tw`mt-1 flex-row items-center gap-1`}>
-              <MapPin size={13} color="#64748B" />
-              <Text style={tw`flex-1 text-xs text-slate-500`} numberOfLines={1}>
-                {activeAssignment.is_maintenance
-                  ? `Site: ${activeAssignment.incident_location}`
-                  : `1. Pickup: ${activeAssignment.incident_location}`}
-              </Text>
-            </View>
-          ) : null}
-
-          {!activeAssignment.is_maintenance && nearestHospital ? (
-            <View style={tw`mt-1 flex-row items-center gap-1`}>
-              <Hospital size={13} color="#1E40AF" />
-              <Text style={tw`flex-1 text-xs font-semibold text-blue-800`} numberOfLines={1}>
-                2. Nearest Hospital: {nearestHospital.name}
-                {nearestHospital.distance_km != null ? ` (${nearestHospital.distance_km} km)` : ''}
-              </Text>
-            </View>
-          ) : null}
-
-          {routeInfo ? (
-            <View style={tw`mt-1.5 flex-row items-center gap-1.5`}>
-              <Navigation size={13} color="#1F7A4D" />
-              <Text style={tw`text-xs font-semibold text-[#1F7A4D]`}>
-                Fastest route: {routeInfo.durationMin} min ({routeInfo.distanceKm} km • {routeInfo.trafficLabel || 'Traffic'})
-              </Text>
-            </View>
-          ) : null}
-
-          {activeAssignment.tactical_note ? (
-            <View style={tw`mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2`}>
-              <Text style={tw`text-[10px] font-extrabold uppercase text-amber-800`}>
-                BDRRMO Tactical Note
-              </Text>
-              <Text style={tw`mt-0.5 text-xs text-amber-950`}>
-                {String(activeAssignment.tactical_note).replace('[BDRRMO NOTE] ', '')}
-              </Text>
-            </View>
-          ) : null}
-
-          {!activeAssignment.is_maintenance && !isAgencyRole ? (
-            <View style={tw`mt-2 flex-row gap-2`}>
-              <Pressable
-                onPress={handleLocateNearbyHospital}
-                disabled={busy}
-                style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 py-2`}
+        return (
+          <View style={tw`absolute bottom-3 left-3 right-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-xl`}>
+            {/* Top badges row: non-overlapping Category + Color-coded Status */}
+            <View style={tw`flex-row flex-wrap items-center justify-between gap-1.5`}>
+              <View
+                style={tw`flex-shrink flex-row items-center gap-1.5 rounded-lg px-2.5 py-1 ${
+                  isMaint ? 'bg-green-50' : 'bg-red-50'
+                }`}
               >
-                <Hospital size={14} color="#1E40AF" />
-                <Text style={tw`text-[11px] font-bold text-blue-900`}>Change Hospital</Text>
-              </Pressable>
-            </View>
-          ) : null}
-
-          {isAgencyRole && !activeAssignment.is_maintenance ? (
-            <View style={tw`mt-2 flex-row gap-2`}>
-              <Pressable
-                onPress={handleLocateNearbyHospital}
-                disabled={busy}
-                style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border ${
-                  nearestHospital ? 'border-amber-300 bg-amber-50' : 'border-blue-200 bg-blue-50'
-                } py-2`}
-              >
-                {nearestHospital ? <X size={14} color="#B45309" /> : <Hospital size={14} color="#1E40AF" />}
-                <Text style={tw`text-[11px] font-bold ${nearestHospital ? 'text-amber-900' : 'text-blue-900'}`}>
-                  {nearestHospital ? 'Cancel Hospital Route' : 'Locate Nearby Hospital'}
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={handleRequestBackup}
-                disabled={busy || backupSent}
-                style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 py-2`}
-              >
-                <Text style={tw`text-[11px] font-bold text-amber-900`}>
-                  {backupSent ? 'Backup Requested ✓' : 'Request Tanod / Backup'}
-                </Text>
-              </Pressable>
-            </View>
-          ) : null}
-
-          {error ? (
-            <Text style={tw`mt-2 text-xs font-semibold text-red-600`}>{error}</Text>
-          ) : null}
-
-          <Pressable
-            onPress={() => {
-              if (!locationPermissionGranted || !currentLocationRef.current) {
-                void tryEnableLocationSharing();
-              }
-              setIsNavigating(true);
-              setRecenterKey((k) => k + 1);
-            }}
-            style={tw`mt-3 flex-row items-center justify-center gap-2 rounded-xl bg-[#1A73E8] py-2.5`}
-          >
-            <Navigation size={15} color="#FFFFFF" />
-            <Text style={tw`text-xs font-extrabold text-white`}>
-              Start Turn-by-Turn Navigation
-            </Text>
-          </Pressable>
-
-          <View style={tw`mt-2.5 flex-row gap-2.5`}>
-            {activeAssignment.is_maintenance ? (
-              <>
-                <Pressable
-                  onPress={handleCancelMaintenanceTrack}
-                  style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white py-2.5`}
+                {isMaint ? (
+                  <Wrench size={13} color="#1F7A4D" />
+                ) : (
+                  <AlertTriangle size={13} color="#DC2626" />
+                )}
+                <Text
+                  numberOfLines={1}
+                  style={tw`flex-shrink pr-0.5 text-[11px] font-bold ${
+                    isMaint ? 'text-[#1F7A4D]' : 'text-red-700'
+                  }`}
                 >
-                  <X size={15} color="#0F172A" />
-                  <Text style={tw`text-xs font-bold text-slate-900`}>Cancel</Text>
-                </Pressable>
+                  {(isMaint
+                    ? `Maintenance • ${activeAssignment.urgency || 'Standard'}`
+                    : `${activeAssignment.incident_category || 'Emergency'} • ${activeAssignment.urgency || 'Urgent'}`
+                  ).toUpperCase()}
+                </Text>
+              </View>
 
+              <View
+                style={tw`flex-row items-center gap-1.5 rounded-full px-2.5 py-1 ${statusStyle.bg}`}
+              >
+                <View style={[tw`h-1.5 w-1.5 rounded-full`, { backgroundColor: statusStyle.dot }]} />
+                <Text style={tw`pr-0.5 text-[10px] font-bold ${statusStyle.text}`}>
+                  {statusStyle.label}
+                </Text>
+              </View>
+            </View>
+
+            {/* Title & Location */}
+            <Text style={tw`mt-2 text-base font-extrabold text-slate-900`} numberOfLines={1}>
+              {formatTitleCase(activeAssignment.incident_title)}
+            </Text>
+
+            {activeAssignment.incident_location ? (
+              <View style={tw`mt-1 flex-row items-center gap-1.5`}>
+                <MapPin size={13} color="#64748B" />
+                <Text style={tw`flex-1 text-xs font-medium text-slate-600`} numberOfLines={1}>
+                  {isMaint || isAgencyRole
+                    ? activeAssignment.incident_location
+                    : `Pickup: ${activeAssignment.incident_location}`}
+                </Text>
+              </View>
+            ) : null}
+
+            {!isMaint && nearestHospital ? (
+              <View style={tw`mt-1 flex-row items-center gap-1.5`}>
+                <Hospital size={13} color="#2563EB" />
+                <Text style={tw`flex-1 text-xs font-semibold text-blue-700`} numberOfLines={1}>
+                  Hospital: {nearestHospital.name}
+                  {nearestHospital.distance_km != null ? ` (${nearestHospital.distance_km} km)` : ''}
+                </Text>
+              </View>
+            ) : null}
+
+            {/* Route summary pill */}
+            {routeInfo ? (
+              <View style={tw`mt-2.5 flex-row items-center justify-between rounded-xl border border-green-200 bg-green-50/70 px-3 py-2`}>
+                <View style={tw`flex-row items-center gap-1.5`}>
+                  <Navigation size={13} color="#1F7A4D" />
+                  <Text style={tw`text-xs font-extrabold text-[#1F7A4D]`}>
+                    {formatDuration(routeInfo.durationMin)}
+                  </Text>
+                  <Text style={tw`text-xs font-semibold text-slate-600`}>
+                    • {routeInfo.distanceKm} km
+                  </Text>
+                </View>
+                <Text style={tw`text-[11px] font-semibold text-slate-500`}>
+                  {routeInfo.trafficLabel || 'Live traffic'} • ETA {getArrivalTime(routeInfo.durationMin)}
+                </Text>
+              </View>
+            ) : null}
+
+            {activeAssignment.tactical_note ? (
+              <View style={tw`mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2`}>
+                <Text style={tw`text-[10px] font-extrabold uppercase text-amber-800`}>
+                  BDRRMO Tactical Note
+                </Text>
+                <Text style={tw`mt-0.5 text-xs text-amber-950`}>
+                  {String(activeAssignment.tactical_note).replace('[BDRRMO NOTE] ', '')}
+                </Text>
+              </View>
+            ) : null}
+
+            {/* Secondary quick chips (Hospital / Backup) */}
+            {!isMaint && !isAgencyRole ? (
+              <View style={tw`mt-2.5 flex-row gap-2`}>
                 <Pressable
-                  onPress={() =>
-                    handleOpenMaintenanceModal(
-                      activeAssignment.inspection_done ? 'repair' : 'inspection',
-                    )
-                  }
+                  onPress={handleLocateNearbyHospital}
                   disabled={busy}
-                  style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-[#1F7A4D] py-2.5`}
+                  style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 py-2`}
                 >
-                  <Wrench size={14} color="#FFFFFF" />
-                  <Text style={tw`text-xs font-bold text-white`}>
-                    {activeAssignment.inspection_done ? 'Submit Proof of Repair' : 'Document Inspection'}
+                  <Hospital size={13} color="#1F7A4D" />
+                  <Text style={tw`text-[11px] font-bold text-slate-700`}>Change Hospital</Text>
+                </Pressable>
+              </View>
+            ) : null}
+
+            {isAgencyRole && !isMaint ? (
+              <View style={tw`mt-2.5 flex-row gap-2`}>
+                <Pressable
+                  onPress={handleLocateNearbyHospital}
+                  disabled={busy}
+                  style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border ${
+                    nearestHospital ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-slate-50'
+                  } py-2`}
+                >
+                  {nearestHospital ? <X size={13} color="#B45309" /> : <Hospital size={13} color="#1F7A4D" />}
+                  <Text
+                    numberOfLines={1}
+                    style={tw`text-[11px] font-bold ${nearestHospital ? 'text-amber-900' : 'text-slate-700'}`}
+                  >
+                    {nearestHospital ? 'Clear Hospital' : 'Nearby Hospital'}
                   </Text>
                 </Pressable>
-              </>
-            ) : (
-              <>
                 <Pressable
-                  onPress={() => navigation.navigate('Messages', { assignment: activeAssignment })}
-                  style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white py-2.5`}
+                  onPress={handleRequestBackup}
+                  disabled={busy || backupSent}
+                  style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border ${
+                    backupSent ? 'border-green-200 bg-green-50' : 'border-slate-200 bg-slate-50'
+                  } py-2`}
                 >
-                  <MessageCircle size={15} color="#0F172A" />
-                  <Text style={tw`text-xs font-bold text-slate-900`}>Message</Text>
+                  <ShieldAlert size={13} color={backupSent ? '#1F7A4D' : '#475569'} />
+                  <Text
+                    numberOfLines={1}
+                    style={tw`text-[11px] font-bold ${backupSent ? 'text-[#1F7A4D]' : 'text-slate-700'}`}
+                  >
+                    {backupSent ? 'Backup Sent ✓' : 'Request Backup'}
+                  </Text>
                 </Pressable>
+              </View>
+            ) : null}
 
-                {activeAssignment.status === 'ON_SCENE' || qrResult ? (
+            {error ? (
+              <Text style={tw`mt-2 text-xs font-semibold text-red-600`}>{error}</Text>
+            ) : null}
+
+            {/* Primary Turn-by-Turn Navigation CTA */}
+            <Pressable
+              onPress={() => {
+                if (!locationPermissionGranted || !currentLocationRef.current) {
+                  void tryEnableLocationSharing();
+                }
+                setIsNavigating(true);
+                setRecenterKey((k) => k + 1);
+              }}
+              style={({ pressed }) => [
+                tw`mt-2.5 flex-row items-center justify-center gap-2 rounded-xl bg-[#1F7A4D] py-3`,
+                { opacity: pressed ? 0.85 : 1 },
+              ]}
+            >
+              <Navigation size={15} color="#FFFFFF" />
+              <Text style={tw`text-xs font-extrabold text-white`}>
+                Start Turn-by-Turn Navigation
+              </Text>
+            </Pressable>
+
+            {/* Bottom actions: Message + Status progression */}
+            <View style={tw`mt-2 flex-row gap-2`}>
+              {isMaint ? (
+                <>
                   <Pressable
-                    onPress={handleOpenCompleteForm}
+                    onPress={handleCancelMaintenanceTrack}
+                    style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 py-2.5`}
+                  >
+                    <X size={15} color="#0F172A" />
+                    <Text style={tw`text-xs font-bold text-slate-800`}>Cancel</Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={() =>
+                      handleOpenMaintenanceModal(
+                        activeAssignment.inspection_done ? 'repair' : 'inspection',
+                      )
+                    }
                     disabled={busy}
                     style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-[#1F7A4D] py-2.5`}
                   >
-                    <CheckCircle2 size={15} color="#FFFFFF" />
+                    <Wrench size={14} color="#FFFFFF" />
                     <Text style={tw`text-xs font-bold text-white`}>
-                      {qrResult ? 'View QR / Info' : 'Mark as Completed'}
+                      {activeAssignment.inspection_done ? 'Submit Repair' : 'Document Inspection'}
                     </Text>
                   </Pressable>
-                ) : (
+                </>
+              ) : (
+                <>
                   <Pressable
-                    onPress={handleArrivedOnScene}
-                    disabled={busy}
-                    style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-amber-600 py-2.5`}
+                    onPress={() => navigation.navigate('Messages', { assignment: activeAssignment })}
+                    style={({ pressed }) => [
+                      tw`flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5`,
+                      { opacity: pressed ? 0.75 : 1 },
+                    ]}
                   >
-                    <MapPin size={15} color="#FFFFFF" />
-                    <Text style={tw`text-xs font-bold text-white`}>Arrived on Scene</Text>
+                    <MessageCircle size={15} color="#0F172A" />
+                    <Text style={tw`text-xs font-bold text-slate-800`}>Message</Text>
                   </Pressable>
-                )}
-              </>
-            )}
+
+                  {activeAssignment.status === 'ON_SCENE' || qrResult ? (
+                    <Pressable
+                      onPress={handleOpenCompleteForm}
+                      disabled={busy}
+                      style={({ pressed }) => [
+                        tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-[#1F7A4D] py-2.5`,
+                        { opacity: pressed ? 0.85 : 1 },
+                      ]}
+                    >
+                      <CheckCircle2 size={15} color="#FFFFFF" />
+                      <Text style={tw`text-xs font-extrabold text-white`}>
+                        {qrResult ? 'View QR / Info' : 'Mark as Completed'}
+                      </Text>
+                    </Pressable>
+                  ) : (
+                    <Pressable
+                      onPress={handleArrivedOnScene}
+                      disabled={busy}
+                      style={({ pressed }) => [
+                        tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-amber-600 py-2.5`,
+                        { opacity: pressed ? 0.85 : 1 },
+                      ]}
+                    >
+                      <MapPin size={15} color="#FFFFFF" />
+                      <Text style={tw`text-xs font-extrabold text-white`}>Arrived on Scene</Text>
+                    </Pressable>
+                  )}
+                </>
+              )}
+            </View>
           </View>
-        </View>
-      ) : null}
+        );
+      })() : null}
 
       <Modal
         visible={Boolean(maintenanceModalMode)}
@@ -1581,14 +1663,12 @@ export default function ResponderMap() {
                       </Text>
                     </View>
                     <View
-                      style={tw`rounded-full px-2.5 py-1 ${
-                        ltoEnabled ? 'bg-blue-700' : 'bg-slate-200'
-                      }`}
+                      style={tw`rounded-full px-2.5 py-1 ${ltoEnabled ? 'bg-blue-700' : 'bg-slate-200'
+                        }`}
                     >
                       <Text
-                        style={tw`text-[10px] font-extrabold ${
-                          ltoEnabled ? 'text-white' : 'text-slate-700'
-                        }`}
+                        style={tw`text-[10px] font-extrabold ${ltoEnabled ? 'text-white' : 'text-slate-700'
+                          }`}
                       >
                         {ltoEnabled ? 'ENABLED' : 'OFF'}
                       </Text>
@@ -1730,25 +1810,25 @@ export default function ResponderMap() {
                     JSON.stringify(
                       qrResult.is_lto
                         ? {
-                            type: 'LTO_ROAD_HANDOVER',
-                            handover_id: qrResult.handover_id,
-                            token: qrResult.token,
-                            receiving_lto_unit: qrResult.receiving_lto_unit,
-                            vehicles_involved: qrResult.vehicles_involved,
-                            driver_license_info: qrResult.driver_license_info,
-                            violation_type: qrResult.violation_type,
-                          }
+                          type: 'LTO_ROAD_HANDOVER',
+                          handover_id: qrResult.handover_id,
+                          token: qrResult.token,
+                          receiving_lto_unit: qrResult.receiving_lto_unit,
+                          vehicles_involved: qrResult.vehicles_involved,
+                          driver_license_info: qrResult.driver_license_info,
+                          violation_type: qrResult.violation_type,
+                        }
                         : {
-                            handover_id: qrResult.handover_id,
-                            token: qrResult.token,
-                            incident_id: activeAssignment?.incident_id,
-                            hospital: nearestHospital?.name,
-                            patients,
-                          },
+                          handover_id: qrResult.handover_id,
+                          token: qrResult.token,
+                          incident_id: activeAssignment?.incident_id,
+                          hospital: nearestHospital?.name,
+                          patients,
+                        },
                     ),
                   )}`,
                 }}
-                style={tw`mt-4 h-52 w-52 rounded-2xl bg-slate-100`}
+                style={tw`mt-4 h-52 w-52 bg-slate-100`}
               />
             ) : null}
 
@@ -1820,9 +1900,8 @@ export default function ResponderMap() {
                       setNearestHospital(hosp);
                       setShowHospitalPicker(false);
                     }}
-                    style={tw`flex-row items-center justify-between rounded-2xl border p-3.5 ${
-                      isCurrent ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-white'
-                    }`}
+                    style={tw`flex-row items-center justify-between rounded-2xl border p-3.5 ${isCurrent ? 'border-blue-500 bg-blue-50' : 'border-slate-200 bg-white'
+                      }`}
                   >
                     <View style={tw`mr-3 flex-1`}>
                       <Text style={tw`text-xs font-extrabold text-slate-900`}>{hosp.name}</Text>
