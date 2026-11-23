@@ -127,73 +127,121 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
                     {section}
                   </div>
                 )}
-                <button
-                  type="button"
-                  title={label}
-                  aria-expanded={hasChildren ? expanded : undefined}
-                  aria-controls={hasChildren ? `sidebar-submenu-${key}` : undefined}
-                  onClick={() => {
-                    if (hasChildren) {
-                      if (!open) {
-                        onToggle?.();
-                        setExpandedMenus((prev) => ({ ...prev, [key]: true }));
-                      } else {
-                        setExpandedMenus((prev) => ({ ...prev, [key]: !prev[key] }));
-                      }
-                      return;
-                    }
-                    if (path) {
-                      navigateTo(path);
-                    }
-                  }}
-                  className={`group relative flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12px] font-medium transition-colors ${
-                    open ? "" : "md:justify-center md:px-0"
-                  } ${
-                    active
-                      ? "bg-(--gf-green) text-white"
-                      : "text-[#263246] hover:bg-(--gf-green-soft)"
-                  }`}
+                <div
+                  className={
+                    hasChildren && expanded && open
+                      ? `rounded-xl p-1 transition-colors ${
+                          active
+                            ? "bg-(--gf-green-soft) ring-1 ring-inset ring-(--gf-green-border)"
+                            : "bg-slate-50 ring-1 ring-inset ring-(--gf-line)"
+                        }`
+                      : ""
+                  }
                 >
-                  <Icon size={14} strokeWidth={1.8} />
-                  <span className={`min-w-0 flex-1 truncate ${open ? "" : "md:hidden"}`}>{label}</span>
-                  {hasChildren && open && (
-                    <ChevronDown
-                      size={14}
-                      className={`shrink-0 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
-                      aria-hidden="true"
-                    />
-                  )}
-                  {!open && (
-                    <span className="pointer-events-none absolute left-[calc(100%+10px)] z-50 hidden whitespace-nowrap rounded-md bg-slate-900 px-2.5 py-1.5 text-[12px] text-white shadow-lg group-hover:md:block">
-                      {label}
-                    </span>
-                  )}
-                </button>
-                {hasChildren && expanded && open && (
-                  <div
-                    id={`sidebar-submenu-${key}`}
-                    className="ml-5 mt-1 space-y-0.5 border-l border-(--gf-green-border) py-1 pl-2"
+                  <button
+                    type="button"
+                    title={label}
+                    aria-expanded={hasChildren ? expanded : undefined}
+                    aria-controls={hasChildren ? `sidebar-submenu-${key}` : undefined}
+                    onClick={() => {
+                      if (hasChildren) {
+                        if (!open) {
+                          onToggle?.();
+                          setExpandedMenus((prev) => ({ ...prev, [key]: true }));
+                        } else {
+                          setExpandedMenus((prev) => ({ ...prev, [key]: !prev[key] }));
+                        }
+                        return;
+                      }
+                      if (path) {
+                        navigateTo(path);
+                      }
+                    }}
+                    className={`group relative flex w-full items-center gap-2.5 rounded-lg text-left text-[12px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--gf-green) ${
+                      open
+                        ? hasChildren && expanded
+                          ? "px-2.5 py-2"
+                          : "px-3 py-2.5"
+                        : "py-2.5 md:justify-center md:px-0"
+                    } ${
+                      active
+                        ? "bg-(--gf-green) text-white shadow-xs"
+                        : hasChildren && expanded && open
+                          ? "text-(--gf-ink) hover:bg-white"
+                          : "text-(--gf-ink) hover:bg-(--gf-green-soft)"
+                    }`}
                   >
-                    {children.map((child) => {
-                      const childActive = location.pathname === child.path;
-                      return (
-                        <button
-                          key={child.key}
-                          type="button"
-                          onClick={() => navigateTo(child.path)}
-                          aria-current={childActive ? "page" : undefined}
-                          className={`block w-full rounded-md px-2.5 py-2 text-left text-[11px] leading-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--gf-green) ${
-                            childActive
-                              ? "bg-(--gf-green-soft) font-semibold text-(--gf-green)"
-                              : "font-medium text-slate-600 hover:bg-(--gf-green-soft) hover:text-(--gf-green)"
-                          }`}
-                        >
-                          {child.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+                    <Icon size={15} strokeWidth={1.8} className="shrink-0" />
+                    <span className={`min-w-0 flex-1 truncate ${open ? "" : "md:hidden"}`}>{label}</span>
+                    {hasChildren && open && (
+                      <span
+                        aria-hidden="true"
+                        className={`grid h-5 w-5 shrink-0 place-items-center rounded-md transition-colors ${
+                          active
+                            ? "bg-white/15 text-white"
+                            : "bg-slate-100 text-(--gf-slate) group-hover:bg-(--gf-green-tint) group-hover:text-(--gf-green-dark)"
+                        }`}
+                      >
+                        <ChevronDown
+                          size={13}
+                          className={`transition-transform duration-150 motion-reduce:transition-none ${expanded ? "rotate-180" : ""}`}
+                        />
+                      </span>
+                    )}
+                    {!open && (
+                      <span className="pointer-events-none absolute left-[calc(100%+10px)] z-50 hidden whitespace-nowrap rounded-md bg-slate-900 px-2.5 py-1.5 text-[12px] text-white shadow-lg group-hover:md:block">
+                        {label}
+                      </span>
+                    )}
+                  </button>
+                  {hasChildren && expanded && open && (
+                    <div
+                      id={`sidebar-submenu-${key}`}
+                      className="mt-1 space-y-1 pt-0.5"
+                    >
+                      {children.map((child) => {
+                        const childActive = location.pathname === child.path;
+                        const ChildIcon = child.icon;
+                        return (
+                          <button
+                            key={child.key}
+                            type="button"
+                            onClick={() => navigateTo(child.path)}
+                            aria-current={childActive ? "page" : undefined}
+                            className={`group/sub flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[10px] leading-snug transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--gf-green) ${
+                              childActive
+                                ? "bg-white font-semibold text-(--gf-green-dark) shadow-2xs ring-1 ring-inset ring-(--gf-green-border)"
+                                : "font-medium text-(--gf-slate) hover:bg-white hover:text-(--gf-ink) hover:shadow-2xs"
+                            }`}
+                          >
+                            {ChildIcon ? (
+                              <ChildIcon
+                                size={13}
+                                strokeWidth={1.9}
+                                aria-hidden="true"
+                                className={`shrink-0 transition-colors ${
+                                  childActive
+                                    ? "text-(--gf-green)"
+                                    : "text-slate-400 group-hover/sub:text-(--gf-green)"
+                                }`}
+                              />
+                            ) : (
+                              <span
+                                aria-hidden="true"
+                                className={`h-1.5 w-1.5 shrink-0 rounded-full transition-colors ${
+                                  childActive
+                                    ? "bg-(--gf-green)"
+                                    : "bg-slate-300 group-hover/sub:bg-(--gf-green)"
+                                }`}
+                              />
+                            )}
+                            <span className="min-w-0 flex-1 truncate">{child.label}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}

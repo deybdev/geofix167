@@ -9,16 +9,39 @@ import reportCatalog from "../../../../../server/src/shared/reportCatalog.json";
 import { isInside } from "../../../shared/utils/mapUtils";
 import { PATHS } from "../../../router/paths";
 import { toast } from "../../../shared/components/ui/toast";
-import AccessibleDropdown from "../../../shared/components/AccessibleDropdown";
 
 const DEFAULT_MAP_CENTER = [14.75, 121.02];
 const ADDRESS_CACHE = new Map();
 let boundaryPromise;
 
-const CLASSIFICATION_COLORS = {
-  sudden: { select: "border-red-300 bg-red-50 text-red-800 focus:border-red-500", option: "bg-red-50 text-red-800" },
-  maintenance: { select: "border-[#9fb6a4] bg-[#e5efe6] text-[#174b37] focus:border-[#47745a]", option: "bg-[#e5efe6] text-[#174b37]" },
+const GUEST_REPORT_TYPE = "sudden";
+const MAX_SUDDEN_CATEGORIES = 4;
+
+const CATEGORY_URGENCY_STYLES = {
+  high: {
+    rowSelected: "border-red-300 bg-red-50/75",
+    rowIdle: "border-slate-200 bg-white hover:border-red-200 hover:bg-red-50/35",
+    boxSelected: "border-(--gf-red) bg-(--gf-red)",
+    boxIdle: "border-slate-500 bg-white group-hover:border-(--gf-red)",
+    ring: "peer-focus-visible:ring-2 peer-focus-visible:ring-(--gf-red) peer-focus-visible:ring-offset-2",
+    badge: "bg-red-50 text-red-700 ring-1 ring-inset ring-red-200",
+    label: "High",
+  },
+  medium: {
+    rowSelected: "border-amber-300 bg-amber-50/75",
+    rowIdle: "border-slate-200 bg-white hover:border-amber-200 hover:bg-amber-50/35",
+    boxSelected: "border-amber-700 bg-amber-700",
+    boxIdle: "border-slate-500 bg-white group-hover:border-amber-700",
+    ring: "peer-focus-visible:ring-2 peer-focus-visible:ring-amber-700 peer-focus-visible:ring-offset-2",
+    badge: "bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-200",
+    label: "Medium",
+  },
 };
+
+function getCategoryUrgency(category, type = GUEST_REPORT_TYPE) {
+  if (type === "sudden") return "high";
+  return reportCatalog.guestUrgency.maintenanceHighCategories.includes(category) ? "high" : "medium";
+}
 async function compressEvidenceImage(file) {
   if (!file.type.startsWith("image/")) throw new Error("Choose an image file for photo evidence.");
   const bitmap = await createImageBitmap(file);
@@ -153,7 +176,6 @@ export default function GuestReportForm({
 }) {
   const [initialPin] = useState(() => getCoordinates(defaultCoordinates));
   const idPrefix = useId();
-  const [reportType, setReportType] = useState("sudden");
   const [selectedCategories, setSelectedCategories] = useState([]);
   const [formStep, setFormStep] = useState(1);
   const [validationErrors, setValidationErrors] = useState({});
@@ -192,14 +214,9 @@ export default function GuestReportForm({
     catch { return ""; }
   });
   const [trackingLinkCopied, setTrackingLinkCopied] = useState(false);
-  const classification = reportCatalog.classifications.find((item) => item.value === reportType);
-  const categories = reportCatalog.categories[reportType] ?? [];
-  const isSuddenIncident = reportType === "sudden";
-  const urgencyCode = reportType === "sudden"
-    ? reportCatalog.guestUrgency.sudden
-    : selectedCategories.some((category) => reportCatalog.guestUrgency.maintenanceHighCategories.includes(category))
-      ? reportCatalog.guestUrgency.sudden
-      : reportCatalog.guestUrgency.maintenanceDefault;
+  const classification = reportCatalog.classifications.find((item) => item.value === GUEST_REPORT_TYPE);
+  const categories = reportCatalog.categories[GUEST_REPORT_TYPE] ?? [];
+  const urgencyCode = reportCatalog.guestUrgency.sudden;
   const urgency = urgencyCode === "HIGH" ? "High" : urgencyCode === "LOW" ? "Low" : "Medium";
   const isOutsideBarangay = useMemo(
     () => Boolean(pin && boundary && !isInside(pin.lat, pin.lng, boundary)),
@@ -240,7 +257,7 @@ export default function GuestReportForm({
     if (!focusField) return;
     const form = formContentRef.current?.querySelector("form");
     const element = focusField === "category"
-      ? form?.querySelector('input[name="incident-category"], [role="combobox"][aria-label="Incident category"]')
+      ? form?.querySelector('input[name="incident-category"]')
       : document.getElementById(`${idPrefix}-${focusField}`);
     if (!element) return;
     element.scrollIntoView({ block: "center", behavior: "smooth" });
@@ -490,42 +507,36 @@ export default function GuestReportForm({
     return () => { clearTimeout(timer); controller.abort(); };
   }, [pinLatitude, pinLongitude]);
 
-  const handleTypeChange = (type) => {
-    setReportType(type);
-    setSelectedCategories([]);
-    clearValidationError("classification");
-    clearValidationError("category");
-    clearValidationError("description");
-  };
-
   const handleNext = () => {
     const errors = {};
-    if (!reportType) errors.classification = "Choose an incident classification.";
-    if (!selectedCategories.length || selectedCategories.length > (isSuddenIncident ? 4 : 1) || selectedCategories.some(value => !categories.includes(value))) errors.category = isSuddenIncident ? "Choose one to four incidents." : "Choose one maintenance category.";
-    if (!isSuddenIncident && !description.trim()) errors.description = "Add a description for a maintenance issue.";
+    if (!selectedCategories.length || selectedCategories.length > 4 || selectedCategories.some(value => !categories.includes(value))) {
+      errors.category = "Choose one to four sudden incidents.";
+    }
     if (!pin && !locationNote.trim()) errors.location = "Pin the incident location or add a location note.";
     if (needsAccuracyConfirmation && !confirmPoorAccuracy) errors.accuracy = "Confirm the current pin or adjust it before continuing.";
     setValidationErrors(errors);
-    const firstInvalid = ["classification", "category", "location", "accuracy", "description"].find((field) => errors[field]);
+    const firstInvalid = ["category", "location", "accuracy"].find((field) => errors[field]);
     if (firstInvalid) {
       setFocusField(firstInvalid);
       return;
     }
+    locationRequestRef.current += 1;
     setFocusField("");
     setFormStep(2);
-    if (isSuddenIncident) void requestCameraAccess();
+    void requestCameraAccess();
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
     const errors = {};
-    if (!selectedCategories.length || selectedCategories.length > (isSuddenIncident ? 4 : 1) || selectedCategories.some(value => !categories.includes(value))) errors.category = isSuddenIncident ? "Choose one to four incidents." : "Choose one maintenance category.";
-    if (!isSuddenIncident && !description.trim()) errors.description = "Add a description for a maintenance issue.";
+    if (!selectedCategories.length || selectedCategories.length > 4 || selectedCategories.some(value => !categories.includes(value))) {
+      errors.category = "Choose one to four sudden incidents.";
+    }
     if (!pin && !locationNote.trim()) errors.location = "Pin the incident location or add a location note.";
     if (needsAccuracyConfirmation && !confirmPoorAccuracy) errors.accuracy = "Confirm the current pin or adjust it before continuing.";
-    if (isSuddenIncident && photosRef.current.length === 0) errors.photos = "Capture or choose at least one photo to submit this report.";
+    if (photosRef.current.length === 0) errors.photos = "Capture or choose at least one photo to submit this report.";
     setValidationErrors(errors);
-    const firstInvalid = ["category", "location", "accuracy", "description", "photos"].find((field) => errors[field]);
+    const firstInvalid = ["category", "location", "accuracy", "photos"].find((field) => errors[field]);
     if (firstInvalid && firstInvalid !== "photos") {
       setFormStep(1);
       setFocusField(firstInvalid);
@@ -543,7 +554,7 @@ export default function GuestReportForm({
     const withinBoundary = pin && reportBoundary ? (isInside(pin.lat, pin.lng, reportBoundary) ? 1 : 0) : null;
     const payload = {
       reporter_type: "GUEST",
-      classification: reportType,
+      classification: GUEST_REPORT_TYPE,
       is_emergency: classification?.isEmergency ? 1 : 0,
       categories: selectedCategories,
       description: description.trim(),
@@ -591,8 +602,8 @@ export default function GuestReportForm({
       onSubmitNewReport?.({
         id: savedReport.incident_id,
         reportNumber: savedReport.reference_number,
-        type: reportType,
-        classification: reportType,
+        type: GUEST_REPORT_TYPE,
+        classification: GUEST_REPORT_TYPE,
         categories: savedReport.categories,
         category: savedReport.category || selectedCategories[0],
         title: savedReport.title || selectedCategories.join(" + "),
@@ -652,8 +663,8 @@ export default function GuestReportForm({
         <div className="mb-1 flex items-center gap-2">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-red-50 text-[#b42318]"><AlertTriangle size={18} /></div>
           <div className="pr-8">
-            <h3 className="text-lg font-extrabold text-slate-900">Submit Geotagged Report</h3>
-            <p className="text-xs text-slate-500">Barangay 167, Caloocan City · Public Incident Intake</p>
+            <h3 className="text-lg font-extrabold text-slate-900">Report Sudden Incident</h3>
+            <p className="text-xs text-slate-500">Barangay 167, Caloocan City · Guest Sudden Incident Intake</p>
           </div>
         </div>
 
@@ -684,38 +695,76 @@ export default function GuestReportForm({
             <span className="text-[10px] font-semibold text-emerald-900">A tracking link is saved on this device.</span>
             <a href={savedTrackingUrl} className="text-[10px] font-bold text-emerald-800 underline underline-offset-2">Reopen tracking</a>
           </aside>}
-          <div>
-            <label htmlFor={`${idPrefix}-classification`} className="mb-1.5 block text-xs font-bold text-slate-700">Incident Classification</label>
-            <select id={`${idPrefix}-classification`} aria-invalid={Boolean(validationErrors.classification)} value={reportType} onChange={(event) => handleTypeChange(event.target.value)} className={`w-full rounded-lg border px-3 py-2 text-xs font-semibold outline-none ${validationErrors.classification ? "border-red-400" : ""} ${CLASSIFICATION_COLORS[reportType]?.select ?? "border-slate-200 bg-white text-slate-800 focus:border-[#2E8B57]"}`}>
-              {reportCatalog.classifications.map((option) => <option key={option.value} value={option.value} className={CLASSIFICATION_COLORS[option.value]?.option}>{option.label}</option>)}
-            </select>
-            {validationErrors.classification && <p role="alert" className="mt-1 text-[10px] font-medium text-red-700">{validationErrors.classification}</p>}
-          </div>
-
           <fieldset>
-            <legend className="mb-1.5 text-xs font-bold text-slate-700">
-              {isSuddenIncident ? "Sudden incidents" : "Maintenance category"}
-            </legend>
-            {isSuddenIncident ? <div className="space-y-2">
-              {categories.map(item => {
+            <legend className="mb-1 text-xs font-bold text-slate-700">Sudden incidents</legend>
+            <p className="mb-2 text-[10px] text-slate-500">Guests can report sudden incidents only. Sign in as a registered resident to report maintenance issues.</p>
+            <div className="space-y-2">
+              {categories.map((item) => {
                 const checked = selectedCategories.includes(item);
-                return <label key={item} className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-xs ${checked ? "border-red-300 bg-red-50" : "border-slate-200 bg-white"}`}>
-                  <input type="checkbox" name="incident-category" value={item} checked={checked}
-                    disabled={!checked && selectedCategories.length >= 4}
-                    onChange={() => {
-                      setSelectedCategories(current => checked ? current.filter(value => value !== item) : [...current, item]);
-                      clearValidationError("category");
-                    }}
-                    className="h-4 w-4 accent-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-40" />
-                  <span className="flex-1 text-slate-700">{item}</span>
-                </label>;
+                const disabled = !checked && selectedCategories.length >= MAX_SUDDEN_CATEGORIES;
+                const urgencyKey = getCategoryUrgency(item, GUEST_REPORT_TYPE);
+                const tone = CATEGORY_URGENCY_STYLES[urgencyKey];
+                return (
+                  <label
+                    key={item}
+                    className={`group relative flex min-h-11 items-center gap-3 rounded-lg border px-3 py-2 text-xs transition-colors duration-150 motion-reduce:transition-none ${
+                      checked
+                        ? tone.rowSelected
+                        : disabled
+                          ? "cursor-not-allowed border-slate-200 bg-slate-50/70 opacity-55"
+                          : `cursor-pointer ${tone.rowIdle}`
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      name="incident-category"
+                      value={item}
+                      checked={checked}
+                      disabled={disabled}
+                      onChange={() => {
+                        setSelectedCategories((current) =>
+                          checked ? current.filter((value) => value !== item) : [...current, item],
+                        );
+                        clearValidationError("category");
+                      }}
+                      className="peer sr-only"
+                    />
+                    <span
+                      aria-hidden="true"
+                      className={`grid h-[22px] w-[22px] shrink-0 place-items-center rounded-[6px] border-2 transition-colors duration-120 motion-reduce:transition-none ${
+                        checked ? tone.boxSelected : disabled ? "border-slate-400 bg-slate-100" : tone.boxIdle
+                      } ${tone.ring}`}
+                    >
+                      <svg
+                        viewBox="0 0 16 16"
+                        fill="none"
+                        className="h-3.5 w-3.5 text-white"
+                      >
+                        <path
+                          d="M3.25 8.5 6.5 11.75 12.75 4.75"
+                          stroke="currentColor"
+                          strokeWidth="2.25"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeDasharray="20"
+                          strokeDashoffset={checked ? 0 : 20}
+                          className="transition-[stroke-dashoffset,opacity] duration-120 ease-out motion-reduce:transition-none"
+                          style={{ opacity: checked ? 1 : 0 }}
+                        />
+                      </svg>
+                    </span>
+                    <span className={`flex-1 font-medium ${checked ? "text-slate-900" : "text-slate-700"}`}>
+                      {item}
+                    </span>
+                    {disabled && (
+                      <span className="shrink-0 text-[10px] font-medium text-slate-500">
+                        Maximum of {MAX_SUDDEN_CATEGORIES}
+                      </span>
+                    )}
+                  </label>
+                );
               })}
-            </div> : <AccessibleDropdown
-              value={selectedCategories[0] ?? ""}
-              onChange={value => { setSelectedCategories(value ? [value] : []); clearValidationError("category"); }}
-              label="Incident category"
-              options={[{ value: "", label: "Choose a maintenance category" }, ...categories.map(item => ({ value: item, label: item }))]}
-            />}
+            </div>
             {validationErrors.category && <p role="alert" className="mt-1 text-[10px] font-medium text-red-700">{validationErrors.category}</p>}
           </fieldset>
 
@@ -770,23 +819,23 @@ export default function GuestReportForm({
           </div>
 
           <div>
-            <label htmlFor={`${idPrefix}-description`} className="mb-1.5 block text-xs font-bold text-slate-700">Incident Description{isSuddenIncident ? " (optional)" : ""}</label>
-            <p className={`mb-1 text-[10px] ${validationErrors.description ? "font-medium text-red-700" : "text-slate-500"}`}>{isSuddenIncident ? "In an emergency you can skip this. Barangay staff will review your photo." : "Describe the issue to help barangay staff plan a repair."}</p>
-            <textarea id={`${idPrefix}-description`} rows={3} value={description} onChange={(event) => { setDescription(event.target.value); clearValidationError("description"); }} maxLength={10000} placeholder="Provide exact details of the situation, visible risks, or landmarks..." required={!isSuddenIncident} aria-invalid={Boolean(validationErrors.description)} aria-describedby={validationErrors.description ? `${idPrefix}-description-error` : undefined} className={`w-full resize-none rounded-lg border px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#2E8B57] focus:ring-2 focus:ring-emerald-100 ${validationErrors.description ? "border-red-400 bg-red-50/40" : "border-slate-200 bg-white"}`} />
+            <label htmlFor={`${idPrefix}-description`} className="mb-1.5 block text-xs font-bold text-slate-700">Incident Description (optional)</label>
+            <p className="mb-1 text-[10px] text-slate-500">In an emergency you can skip this. Barangay staff will review your photo.</p>
+            <textarea id={`${idPrefix}-description`} rows={3} value={description} onChange={(event) => { setDescription(event.target.value); clearValidationError("description"); }} maxLength={10000} placeholder="Provide exact details of the situation, visible risks, or landmarks..." aria-invalid={Boolean(validationErrors.description)} aria-describedby={validationErrors.description ? `${idPrefix}-description-error` : undefined} className={`w-full resize-none rounded-lg border px-3 py-2 text-xs text-slate-800 outline-none focus:border-[#2E8B57] focus:ring-2 focus:ring-emerald-100 ${validationErrors.description ? "border-red-400 bg-red-50/40" : "border-slate-200 bg-white"}`} />
             {validationErrors.description && <p id={`${idPrefix}-description-error`} role="alert" className="mt-1 text-[10px] font-medium text-red-700">{validationErrors.description}</p>}
           </div>
           <div className="flex flex-col gap-2 pt-1">
             {Object.keys(validationErrors).length > 0 && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[10px] font-semibold text-red-800">Please fix the highlighted fields before continuing.</p>}
             <button type="button" onClick={handleNext} disabled={cameraBusy || cameraOpen} className="flex min-h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#2E8B57] px-4 py-2.5 text-xs font-bold text-white shadow-md transition hover:bg-[#247447] active:scale-[0.99] disabled:opacity-50">Next: Camera evidence <Camera size={15} /></button>
-            <Link to={PATHS.resident} onClick={handleClose} className="text-center text-xs font-semibold text-slate-500 hover:text-[#2E8B57]">Registered resident? Sign in to attach camera photo &amp; video evidence</Link>
+            <Link to={PATHS.resident} onClick={handleClose} className="text-center text-xs font-semibold text-slate-500 hover:text-[#2E8B57]">Need to report a maintenance issue? Sign in as a registered resident</Link>
           </div>
           </> : <>
           <section className="rounded-lg border border-slate-200 bg-slate-50/70 p-3" aria-label="Photo evidence">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h4 className="flex items-center gap-1.5 text-xs font-bold text-slate-800"><Camera size={14} /> Photo evidence</h4>
-              <span className="rounded-full bg-red-50 px-2 py-1 text-[9px] font-bold text-red-700">{isSuddenIncident ? "Required" : "Optional"}</span>
+              <span className="rounded-full bg-red-50 px-2 py-1 text-[9px] font-bold text-red-700">Required</span>
             </div>
-            <p className="mt-1 text-[10px] text-slate-500">{isSuddenIncident ? "Add at least one photo as evidence for barangay staff." : "You may add photos to help barangay staff assess the issue."} You can capture a new photo or choose one from your device.</p>
+            <p className="mt-1 text-[10px] text-slate-500">Add at least one photo as evidence for barangay staff. You can capture a new photo or choose one from your device.</p>
             <input ref={photoInputRef} type="file" accept="image/*" capture="environment" multiple className="sr-only" onChange={handlePhotoFiles} aria-label="Choose photo evidence" />
             {cameraOpen ? (
               <div className="mt-3 space-y-2">
@@ -804,28 +853,28 @@ export default function GuestReportForm({
             )}
             {cameraError && <p role="status" className="mt-2 text-[10px] font-medium text-[#9f241b]">{cameraError}</p>}
             {cameraError && <p className="mt-1 text-[10px] text-slate-500">If camera permission is blocked, allow it in this site&apos;s browser settings or use Choose photo.</p>}
-            {photos.length > 0 && <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+            {photos.length > 0 && <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
               {photos.map((photo, index) => <div key={photo.id} className="overflow-hidden rounded-lg border border-slate-200 bg-white">
                 <img src={photo.previewUrl} alt={`Photo evidence ${index + 1}`} className="h-24 w-full object-cover" />
-                <div className="flex items-center justify-between gap-1 px-2 py-1.5">
-                  <span className="text-[9px] font-semibold text-slate-600">Photo {index + 1}</span>
-                  <div className="flex gap-1">
-                    <button type="button" disabled={cameraBusy} onClick={() => requestCameraAccess(index)} className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[9px] font-semibold text-[#216b43] hover:bg-emerald-50 disabled:opacity-50"><RotateCcw size={10} />Retake</button>
-                    <button type="button" disabled={cameraBusy} onClick={() => { replacePhotoIndexRef.current = index; photoInputRef.current?.click(); }} className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[9px] font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50"><FileText size={10} />Replace</button>
-                    <button type="button" onClick={() => removePhoto(photo.id)} className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[9px] font-semibold text-red-700 hover:bg-red-50"><Trash2 size={10} />Remove</button>
+                <div className="space-y-1 px-2 py-1.5">
+                  <span className="block text-[10px] font-semibold text-slate-600">Photo {index + 1}</span>
+                  <div className="flex flex-wrap gap-1">
+                    <button type="button" disabled={cameraBusy} onClick={() => requestCameraAccess(index)} className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[10px] font-semibold text-[#216b43] hover:bg-emerald-50 disabled:opacity-50"><RotateCcw size={10} />Retake</button>
+                    <button type="button" disabled={cameraBusy} onClick={() => { replacePhotoIndexRef.current = index; photoInputRef.current?.click(); }} className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[10px] font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-50"><FileText size={10} />Replace</button>
+                    <button type="button" onClick={() => removePhoto(photo.id)} className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-[10px] font-semibold text-red-700 hover:bg-red-50"><Trash2 size={10} />Remove</button>
                   </div>
                 </div>
               </div>)}
             </div>}
-            {photos.length === 0 && <p role={validationErrors.photos ? "alert" : undefined} className={`mt-2 text-[10px] font-semibold ${validationErrors.photos ? "text-red-700" : "text-slate-500"}`}>{validationErrors.photos || (isSuddenIncident ? "Add at least one photo before submitting this report." : "Photos are optional for maintenance reports.")}</p>}
+            {photos.length === 0 && <p role={validationErrors.photos ? "alert" : undefined} className={`mt-2 text-[10px] font-semibold ${validationErrors.photos ? "text-red-700" : "text-slate-500"}`}>{validationErrors.photos || "Add at least one photo before submitting this report."}</p>}
           </section>
           <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row">
             <button type="button" disabled={cameraBusy || isSubmitting} onClick={() => { setCameraConsentOpen(false); stopCamera(); setFormStep(1); }} className="min-h-10 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50">Back</button>
-            <button type="submit" disabled={isSubmitting || cameraOpen || cameraBusy || (isSuddenIncident && photos.length === 0) || (!pin && !locationNote.trim()) || (needsAccuracyConfirmation && !confirmPoorAccuracy)} className="flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-[#2E8B57] py-2.5 text-xs font-bold text-white shadow-md transition hover:bg-[#247447] active:scale-[0.99] disabled:opacity-50">
+            <button type="submit" disabled={isSubmitting || cameraOpen || cameraBusy || photos.length === 0} className="flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-[#2E8B57] py-2.5 text-xs font-bold text-white shadow-md transition hover:bg-[#247447] active:scale-[0.99] disabled:opacity-50">
               <Send size={15} />{isSubmitting ? "Submitting report..." : "Submit Incident Report"}
             </button>
           </div>
-          <Link to={PATHS.resident} onClick={handleClose} className="block text-center text-xs font-semibold text-slate-500 hover:text-[#2E8B57]">Registered resident? Sign in to attach camera photo &amp; video evidence</Link>
+          <Link to={PATHS.resident} onClick={handleClose} className="block text-center text-xs font-semibold text-slate-500 hover:text-[#2E8B57]">Need to report a maintenance issue? Sign in as a registered resident</Link>
           </>}
         </form>
       </div>

@@ -1,6 +1,6 @@
 import HotlineLink from "../../../shared/components/HotlineLink";
-import { useState, useEffect } from "react";
-import { Link, NavLink, useNavigate } from "react-router-dom";
+import { useState, useEffect, useRef } from "react";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   Menu,
   X,
@@ -9,9 +9,11 @@ import {
   House,
   Info,
   MapPin,
+  Megaphone,
   Wrench,
   CheckCircle2,
   LogIn,
+  ChevronDown,
   ChevronRight,
   Phone,
   Radio,
@@ -20,8 +22,13 @@ import { PATHS } from "../../../router/paths";
 
 export default function LandingHeader({ onReportClick }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const reportAction = onReportClick ?? (() => navigate(PATHS.publicMap));
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [servicesMenuOpen, setServicesMenuOpen] = useState(false);
+  const [mobileServicesOpen, setMobileServicesOpen] = useState(false);
+  const servicesDropdownRef = useRef(null);
+
   // Prevent body scroll when mobile menu drawer is open
   useEffect(() => {
     if (mobileMenuOpen) {
@@ -34,11 +41,48 @@ export default function LandingHeader({ onReportClick }) {
     };
   }, [mobileMenuOpen]);
 
+  useEffect(() => {
+    if (!servicesMenuOpen) return undefined;
+    const handleOutside = (event) => {
+      if (!servicesDropdownRef.current?.contains(event.target)) {
+        setServicesMenuOpen(false);
+      }
+    };
+    const handleEscape = (event) => {
+      if (event.key === "Escape") setServicesMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", handleOutside);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("pointerdown", handleOutside);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [servicesMenuOpen]);
+
+  const servicesSubLinks = [
+    {
+      label: "Barangay Services",
+      description: "Community assistance & public requests",
+      href: PATHS.services,
+      icon: Wrench,
+    },
+    {
+      label: "Barangay Announcements",
+      description: "Official advisories, schedules & notices",
+      href: PATHS.announcements,
+      icon: Megaphone,
+    },
+  ];
+
+  const isServicesGroupActive =
+    location.pathname === PATHS.services ||
+    location.pathname.startsWith(PATHS.announcements);
+
   const navLinks = [
     { label: "Home", href: PATHS.home, icon: House },
     { label: "About Us", href: PATHS.about, icon: Info },
     { label: "Live Map & Reports", href: PATHS.publicMap, icon: MapPin },
-    { label: "Barangay Services", href: PATHS.services, icon: Wrench },
+    { label: "Barangay Services", href: PATHS.services, icon: Wrench, children: servicesSubLinks },
     { label: "Accomplishments", href: PATHS.accomplishments, icon: CheckCircle2 },
   ];
 
@@ -65,17 +109,124 @@ export default function LandingHeader({ onReportClick }) {
 
           {/* Desktop Navigation Links */}
           <nav className="hidden items-center gap-8 md:flex">
-            {navLinks.map((link) => (
-              <NavLink
-                key={link.label}
-                to={link.href}
-                onClick={() => setMobileMenuOpen(false)}
-                end={link.href === PATHS.home}
-                className={({ isActive }) => `relative whitespace-nowrap py-2 ${link.href === PATHS.services ? "pr-[19px]" : ""} text-[13px] font-bold transition-colors ${isActive ? "text-[#17633f] after:absolute after:inset-x-0 after:-bottom-1 after:h-0.5 after:rounded-full after:bg-[#2e8b57]" : "text-slate-600 hover:text-[#2E8B57]"}`}
-              >
-                {link.label}
-              </NavLink>
-            ))}
+            {navLinks.map((link) => {
+              if (link.children) {
+                return (
+                  <div key={link.label} ref={servicesDropdownRef} className="relative">
+                    <button
+                      type="button"
+                      aria-expanded={servicesMenuOpen}
+                      aria-haspopup="menu"
+                      onClick={() => setServicesMenuOpen((current) => !current)}
+                      className={`relative inline-flex items-center gap-1.5 whitespace-nowrap py-2 text-[13px] font-bold transition-colors ${
+                        isServicesGroupActive || servicesMenuOpen
+                          ? "text-(--public-action) after:absolute after:inset-x-0 after:-bottom-1 after:h-0.5 after:rounded-full after:bg-(--gf-green)"
+                          : "text-slate-600 hover:text-(--public-action)"
+                      }`}
+                    >
+                      <span>{link.label}</span>
+                      <ChevronDown
+                        size={14}
+                        aria-hidden="true"
+                        className={`shrink-0 transition-transform duration-150 motion-reduce:transition-none ${
+                          servicesMenuOpen ? "rotate-180" : ""
+                        }`}
+                      />
+                    </button>
+                    <div
+                      role="menu"
+                      aria-label="Barangay Services and Announcements"
+                      aria-hidden={!servicesMenuOpen}
+                      inert={!servicesMenuOpen ? "" : undefined}
+                      className={`absolute left-1/2 top-full z-50 mt-3 w-76 -translate-x-1/2 overflow-hidden rounded-xl border border-(--gf-border) bg-white shadow-[0_16px_38px_-12px_rgb(15_23_42/0.2)] transition-[opacity,transform,visibility] duration-150 ease-out motion-reduce:transition-none ${
+                        servicesMenuOpen
+                          ? "visible translate-y-0 opacity-100"
+                          : "invisible -translate-y-1.5 opacity-0 pointer-events-none"
+                      }`}
+                    >
+                      <div className="border-b border-(--gf-line) bg-(--gf-surface) px-3.5 py-2">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-(--gf-slate)">
+                          Barangay 167 Directory
+                        </p>
+                      </div>
+                      <div className="space-y-1 p-2">
+                        {link.children.map((sub) => {
+                          const SubIcon = sub.icon;
+                          const subActive =
+                            sub.href === PATHS.announcements
+                              ? location.pathname.startsWith(PATHS.announcements)
+                              : location.pathname === sub.href;
+                          return (
+                            <Link
+                              key={sub.href}
+                              to={sub.href}
+                              role="menuitem"
+                              onClick={() => {
+                                setServicesMenuOpen(false);
+                                setMobileMenuOpen(false);
+                              }}
+                              className={`group/item flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors ${
+                                subActive
+                                  ? "bg-(--gf-green-soft) ring-1 ring-inset ring-(--gf-green-border)"
+                                  : "hover:bg-slate-50"
+                              }`}
+                            >
+                              <span
+                                aria-hidden="true"
+                                className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg transition-colors ${
+                                  subActive
+                                    ? "bg-(--public-action) text-white"
+                                    : "bg-(--gf-green-soft) text-(--public-action) group-hover/item:bg-(--public-action) group-hover/item:text-white"
+                                }`}
+                              >
+                                <SubIcon size={16} strokeWidth={2} />
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span
+                                  className={`block whitespace-nowrap text-[13px] font-bold leading-snug ${
+                                    subActive
+                                      ? "text-(--public-action)"
+                                      : "text-(--gf-ink) group-hover/item:text-(--public-action)"
+                                  }`}
+                                >
+                                  {sub.label}
+                                </span>
+                                <span className="mt-0.5 block truncate text-[11px] font-medium text-(--gf-slate)">
+                                  {sub.description}
+                                </span>
+                              </span>
+                              <ChevronRight
+                                size={14}
+                                aria-hidden="true"
+                                className={`shrink-0 transition-transform duration-150 motion-reduce:transition-none ${
+                                  subActive
+                                    ? "text-(--public-action)"
+                                    : "text-slate-300 group-hover/item:translate-x-0.5 group-hover/item:text-(--public-action)"
+                                }`}
+                              />
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <NavLink
+                  key={link.label}
+                  to={link.href}
+                  onClick={() => {
+                    setServicesMenuOpen(false);
+                    setMobileMenuOpen(false);
+                  }}
+                  end={link.href === PATHS.home}
+                  className={({ isActive }) => `relative whitespace-nowrap py-2 text-[13px] font-bold transition-colors ${isActive ? "text-(--public-action) after:absolute after:inset-x-0 after:-bottom-1 after:h-0.5 after:rounded-full after:bg-(--gf-green)" : "text-slate-600 hover:text-(--public-action)"}`}
+                >
+                  {link.label}
+                </NavLink>
+              );
+            })}
           </nav>
 
           {/* Desktop Action Buttons */}
@@ -179,20 +330,83 @@ export default function LandingHeader({ onReportClick }) {
               <nav className="mt-4 px-3 flex flex-col gap-1">
                 {navLinks.map((link) => {
                   const Icon = link.icon;
+                  if (link.children) {
+                    return (
+                      <div key={link.label}>
+                        <button
+                          type="button"
+                          aria-expanded={mobileServicesOpen}
+                          onClick={() => setMobileServicesOpen((current) => !current)}
+                          className={`group flex w-full items-center justify-between rounded-xl px-3.5 py-2.5 text-xs font-bold transition-all active:scale-[0.99] ${
+                            isServicesGroupActive
+                              ? "bg-(--gf-green-soft) text-(--public-action)"
+                              : "text-slate-700 hover:bg-emerald-50 hover:text-(--public-action)"
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <span
+                              className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
+                                isServicesGroupActive
+                                  ? "bg-(--gf-green) text-white"
+                                  : "bg-slate-100 text-slate-600 group-hover:bg-(--gf-green) group-hover:text-white"
+                              }`}
+                            >
+                              <Icon size={14} />
+                            </span>
+                            <span>{link.label}</span>
+                          </div>
+                          <ChevronDown
+                            size={14}
+                            aria-hidden="true"
+                            className={`text-slate-400 transition-transform duration-150 motion-reduce:transition-none ${
+                              mobileServicesOpen ? "rotate-180 text-(--public-action)" : ""
+                            }`}
+                          />
+                        </button>
+                        {mobileServicesOpen && (
+                          <div className="ml-6 mt-1 space-y-1 border-l-2 border-(--gf-green-border) py-1 pl-3">
+                            {link.children.map((sub) => {
+                              const SubIcon = sub.icon;
+                              return (
+                                <NavLink
+                                  key={sub.href}
+                                  to={sub.href}
+                                  onClick={() => {
+                                    setMobileMenuOpen(false);
+                                    setMobileServicesOpen(false);
+                                  }}
+                                  className={({ isActive }) =>
+                                    `flex items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
+                                      isActive
+                                        ? "bg-(--gf-green-tint) text-(--gf-green-dark)"
+                                        : "text-slate-600 hover:bg-(--gf-green-soft) hover:text-(--gf-green-dark)"
+                                    }`
+                                  }
+                                >
+                                  <SubIcon size={13} className="shrink-0" />
+                                  <span>{sub.label}</span>
+                                </NavLink>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
                   return (
                     <NavLink
                       key={link.label}
                       to={link.href}
                       onClick={() => setMobileMenuOpen(false)}
-                      className="group flex items-center justify-between rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-700 hover:bg-emerald-50 hover:text-[#2E8B57] transition-all active:scale-[0.99]"
+                      className="group flex items-center justify-between rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-700 hover:bg-emerald-50 hover:text-(--public-action) transition-all active:scale-[0.99]"
                     >
                       <div className="flex items-center gap-3">
-                        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-600 group-hover:bg-[#2E8B57] group-hover:text-white transition-colors">
+                        <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-600 group-hover:bg-(--gf-green) group-hover:text-white transition-colors">
                           <Icon size={14} />
                         </span>
                         <span>{link.label}</span>
                       </div>
-                      <ChevronRight size={14} className="text-slate-300 group-hover:text-[#2E8B57] transition-colors" />
+                      <ChevronRight size={14} className="text-slate-300 group-hover:text-(--public-action) transition-colors" />
                     </NavLink>
                   );
                 })}
