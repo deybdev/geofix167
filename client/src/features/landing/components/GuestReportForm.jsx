@@ -695,9 +695,7 @@ export default function GuestReportForm({
           <div>
             <label htmlFor={`${idPrefix}-classification`} className="mb-1.5 block text-xs font-bold text-slate-700">Incident Classification</label>
             <select id={`${idPrefix}-classification`} aria-invalid={Boolean(validationErrors.classification)} value={reportType} onChange={(event) => handleTypeChange(event.target.value)} className={`w-full rounded-lg border px-3 py-2 text-xs font-semibold outline-none ${validationErrors.classification ? "border-red-400" : ""} ${CLASSIFICATION_COLORS[reportType]?.select ?? "border-slate-200 bg-white text-slate-800 focus:border-[#2E8B57]"}`}>
-              {reportCatalog.classifications
-                .filter((option) => option.value === "sudden")
-                .map((option) => <option key={option.value} value={option.value} className={CLASSIFICATION_COLORS[option.value]?.option}>{option.label}</option>)}
+              {reportCatalog.classifications.map((option) => <option key={option.value} value={option.value} className={CLASSIFICATION_COLORS[option.value]?.option}>{option.label}</option>)}
             </select>
             {validationErrors.classification && <p role="alert" className="mt-1 text-[10px] font-medium text-red-700">{validationErrors.classification}</p>}
           </div>

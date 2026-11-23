@@ -104,9 +104,6 @@ export async function submitIncidentReport(
     throw new ReportError("Reporter identity does not match your session.", 403);
   }
   const guestSubmission = input.reporter_type === "GUEST" || !user;
-  if (guestSubmission && input.classification !== "sudden" && !input.is_emergency) {
-    throw new ReportError("Guest reporting is restricted to emergency incidents only.", 403);
-  }
   const userId = guestSubmission ? null : user?.id ?? null;
   if (userId && input.guest_session_id) {
     throw new ReportError("Provide a user identity or a guest identity, not both.", 400);
