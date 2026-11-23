@@ -122,19 +122,18 @@ export async function submitIncidentReport(
   if (existing) return existing;
   const category = input.incident_category.trim();
   const classification = reportCatalog.classifications.find((item) => item.value === input.classification);
+  if (guestSubmission && (input.classification !== "sudden" || input.is_emergency !== 1)) {
+    throw new ReportError("Guests can only report sudden incidents. Sign in as a resident to report maintenance issues.", 400);
+  }
   const guestUrgency = guestSubmission
-    ? (classification?.value === "sudden"
-      ? reportCatalog.guestUrgency.sudden
-      : reportCatalog.guestUrgency.maintenanceHighCategories.includes(category)
-        ? reportCatalog.guestUrgency.sudden
-        : reportCatalog.guestUrgency.maintenanceDefault)
+    ? reportCatalog.guestUrgency.sudden
     : null;
-  if (guestSubmission && input.is_emergency === 1 && photos.length === 0) {
+  if (guestSubmission && photos.length === 0) {
     throw new ReportError("Attach at least one photo to submit a guest report.", 400);
   }
   if (photos.length && (!guestSubmission || !uploads)) throw new ReportError("Guest evidence photos are not available for this report.", 400);
   const priority = guestSubmission
-    ? guestPriorityCode(guestUrgency ?? reportCatalog.guestUrgency.maintenanceDefault)
+    ? guestPriorityCode(guestUrgency ?? reportCatalog.guestUrgency.sudden)
     : resolveCategoryPriority(category, input.is_emergency === 1);
   const initialStatusId = input.is_emergency === 1 ? 5 : 1;
   const assignedTeam = classification?.assignedTeam ?? (input.is_emergency === 1 ? "BDRRMO Response" : "Maintenance Team A");

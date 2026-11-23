@@ -50,20 +50,22 @@ export const createReportSchema = z
     if (data.accuracy_meters != null && !(hasLatitude && hasLongitude)) {
       ctx.addIssue({ code: "custom", path: ["accuracy_meters"], message: "Location accuracy requires a coordinate pin." });
     }
+    if (isGuest) {
+      if (!data.classification) {
+        ctx.addIssue({ code: "custom", path: ["classification"], message: "Incident classification is required." });
+      } else if (data.classification !== "sudden") {
+        ctx.addIssue({ code: "custom", path: ["classification"], message: "Guests can only report sudden incidents. Sign in as a resident to report maintenance issues." });
+      }
+    }
+    const effectiveClassification = isGuest ? "sudden" : data.classification;
     const selected = [...new Set(data.categories ?? [data.incident_category ?? data.category].filter((value): value is string => Boolean(value)))];
-    const allowed = data.classification ? reportCatalog.categories[data.classification] : Object.values(reportCatalog.categories).flat();
-    const maximum = data.classification === "maintenance" || (!data.classification && data.is_emergency === 0) ? 1 : 4;
+    const allowed = effectiveClassification ? reportCatalog.categories[effectiveClassification] : Object.values(reportCatalog.categories).flat();
+    const maximum = effectiveClassification === "maintenance" || (!effectiveClassification && data.is_emergency === 0) ? 1 : 4;
     if (selected.length < 1 || selected.length > maximum || ((isGuest || data.categories) && selected.some(value => !allowed.includes(value)))) {
       ctx.addIssue({ code: "custom", path: ["categories"], message: maximum === 1 ? "Choose one valid maintenance category." : "Choose one to four valid sudden incident categories." });
     }
     if (!isGuest) return;
 
-    if (data.classification === "maintenance" && !data.description?.trim()) {
-      ctx.addIssue({ code: "custom", path: ["description"], message: "A description is required for a maintenance issue." });
-    }
-    if (!data.classification) {
-      ctx.addIssue({ code: "custom", path: ["classification"], message: "Incident classification is required." });
-    }
     if (!hasLatitude && !hasLongitude && !data.reverse_geocoded_address?.trim() && !data.landmark_description?.trim()) {
       ctx.addIssue({ code: "custom", path: ["latitude"], message: "Pin the incident location or provide a location note." });
     }

@@ -68,9 +68,10 @@ res=await request('/'+guest.incident_id,'GET',undefined,undefined,guest.guest_ac
 const suddenIntake={...guestPayload,title:'Guest sudden report',guest_alias:'Sudden Reporter',latitude:14.7307,longitude:121.0138,accuracy_meters:7,within_barangay_boundary:1,reverse_geocoded_address:'Roxas Boulevard'};
 const maintenanceIntake={...guestPayload,title:'Guest maintenance report',guest_alias:'Maintenance Reporter',classification:'maintenance',is_emergency:0,incident_category:'Drainage / Flooding',priority_level:'MEDIUM',latitude:14.7292,longitude:121.0161,accuracy_meters:28,within_barangay_boundary:0,reverse_geocoded_address:'Bonifacio Street'};
 const suddenResponse=await request('/','POST',guestForm({...suddenIntake,description:''}));assert.equal(suddenResponse.status,201);const suddenBody=await suddenResponse.json();const suddenReport=suddenBody.report;
-const maintenanceResponse=await request('/','POST',guestForm(maintenanceIntake));assert.equal(maintenanceResponse.status,201);const maintenanceReport=(await maintenanceResponse.json()).report;
+const guestMaintenanceResponse=await request('/','POST',guestForm(maintenanceIntake));assert.equal(guestMaintenanceResponse.status,400);
+const residentMaintenanceResponse=await request('/','POST',{reporter_type:'RESIDENT',title:'Resident maintenance report',classification:'maintenance',is_emergency:0,categories:['Drainage / Flooding'],description:'Clogged canal',latitude:14.7292,longitude:121.0161,accuracy_meters:28,within_barangay_boundary:0,reverse_geocoded_address:'Bonifacio Street'},'a');assert.equal(residentMaintenanceResponse.status,201);const maintenanceReport=(await residentMaintenanceResponse.json()).report;
 assert.match(suddenReport.reference_number,/^GF-\d{3}$/);assert.equal(suddenReport.title,suddenIntake.incident_category);assert.equal(suddenReport.classification,'sudden');assert.equal(suddenReport.priority_code,'P2');assert.equal(suddenReport.assigned_team,'BDRRMO Response');assert.equal(suddenReport.reporter_name,"Guest");assert.equal(suddenReport.latitude,suddenIntake.latitude);assert.equal(suddenReport.longitude,suddenIntake.longitude);assert.equal(suddenReport.accuracy_meters,7);assert.equal(suddenReport.location_description,'Roxas Boulevard');assert.equal(suddenReport.status_label,'Forwarded to BDRRMO');
-assert.equal(maintenanceReport.classification,'maintenance');assert.equal(maintenanceReport.priority_code,'P3');assert.equal(maintenanceReport.assigned_team,'Maintenance Team A');assert.equal(maintenanceReport.within_barangay_boundary,0);
+assert.equal(maintenanceReport.classification,'maintenance');assert.equal(maintenanceReport.priority_code,'P2');assert.equal(maintenanceReport.assigned_team,'Maintenance Team A');assert.equal(maintenanceReport.within_barangay_boundary,0);
 assert.match(suddenBody.tracking_url,/^http:\/\/localhost:5173\/track\/[A-Za-z0-9_-]{43}$/);
 const trackingToken=new URL(suddenBody.tracking_url).pathname.split('/').at(-1);
 assert.ok(trackingToken);
@@ -78,7 +79,7 @@ assert.equal(sql.prepare('SELECT count(*) AS n FROM tracking_links WHERE report_
 assert.equal(sql.prepare('SELECT count(*) AS n FROM tracking_links WHERE report_id=? AND length(token_hash)=64').get(suddenReport.incident_id).n,1);
 const trackingRequest=async (method='GET',body,account='')=>app.request(`/api/track/${trackingToken}/status`,{method,headers:{...(account?{Cookie:`geofix_session=${account}`}:{})}},env);
 let publicTracking=await trackingRequest();assert.equal(publicTracking.status,200);assert.equal(publicTracking.headers.get('Cache-Control'),'no-store, private');
-let publicTrackingBody=await publicTracking.json();assert.equal(publicTrackingBody.status_label,'Forwarded to BDRRMO');assert.equal(publicTrackingBody.timeline[0].label,'Report received');assert.deepEqual(Object.keys(publicTrackingBody).sort(),['categories','category','eta_minutes','incident_location','responder','responder_location','status_label','timeline']);
+let publicTrackingBody=await publicTracking.json();assert.equal(publicTrackingBody.status_label,'Forwarded to BDRRMO');assert.equal(publicTrackingBody.timeline[0].label,'Report received');assert.equal(publicTrackingBody.timeline[1].label,'Forwarded to BDRRMO');assert.deepEqual(Object.keys(publicTrackingBody).sort(),['categories','category','eta_minutes','incident_location','responder','responder_location','status_label','timeline']);
 assert.equal('reporter_name' in publicTrackingBody,false);assert.equal('photos' in publicTrackingBody,false);
 const adminIntakes=await request('/','GET',undefined,'admin');assert.equal(adminIntakes.status,200);const adminRows=(await adminIntakes.json()).reports;
 for(const expected of [suddenReport,maintenanceReport]) { const row=adminRows.find((item)=>item.incident_id===expected.incident_id);assert.ok(row);assert.equal(row.reference_number,expected.reference_number);assert.equal(row.title,expected.title);assert.equal(row.reporter_name,expected.reporter_name);assert.ok(row.location_description);assert.ok(row.submitted_at);assert.ok(row.assigned_team);assert.equal(row.accuracy_meters,expected.accuracy_meters); }
@@ -112,7 +113,7 @@ assert.equal(second.status,200);assert.equal(second.idempotent_replay,true);
 assert.equal(second.report.incident_id,first.report.incident_id);assert.equal(second.status_events,undefined);
 assert.equal(second.report.callback_mobile_number,'09123456789');assert.equal(second.report.status_events.length,1);
 assert.notEqual((await create(replayBody,'b')).report.incident_id,first.report.incident_id);
-const guestCreated=await create({...maintenanceIntake,idempotency_key:'guest-key'},null);
+const guestCreated=await create({...suddenIntake,idempotency_key:'guest-key'},null);
 const guestReplay=await create({...guestPayload,idempotency_key:'guest-key',guest_session_id:guestCreated.report.guest_session_id},null,guestCreated.report.guest_access_token);
 assert.equal(guestReplay.status,200);assert.equal(guestReplay.report.incident_id,guestCreated.report.incident_id);
 assert.equal(guestReplay.report.guest_access_token,undefined);
@@ -195,7 +196,7 @@ assert.equal((await request('/'+maintenanceReport.incident_id+'/report-snapshot'
 assert.throws(() => sql.prepare('UPDATE incident_report_snapshots SET snapshot_json=? WHERE incident_id=?').run('{}',suddenReport.incident_id),/immutable/);
 assert.equal(sql.prepare('SELECT count(*) n FROM responder_locations WHERE assignment_id=?').get('tracking-assignment').n,0);
 publicTracking=await trackingRequest();assert.equal(publicTracking.status,410);assert.equal((await publicTracking.json()).message,'This incident has been resolved. This tracking link has expired.');
-const responderClosedReport=(await create({...maintenanceIntake,title:'Responder closed report'},null)).report;
+const responderClosedReport=(await create({...suddenIntake,title:'Responder closed report'},null)).report;
 sql.prepare('UPDATE incident_reports SET incident_status_id=5 WHERE incident_id=?').run(responderClosedReport.incident_id);
 sql.prepare(`INSERT INTO responder_dispatches(responder_dispatch_id,incident_id,incident_title,incident_category,dispatched_by_user_id,target_role,urgency)
   VALUES(?,?,?,?,?,'bdrrmo','Medium')`)
@@ -206,10 +207,10 @@ const responderSnapshot=await request('/'+responderClosedReport.incident_id+'/re
 assert.equal(responderSnapshot.status,200);
 assert.equal((await responderSnapshot.json()).snapshot.incident.status,'Resolved');
 assert.ok(sql.prepare('SELECT closed_at FROM incident_reports WHERE incident_id=?').get(responderClosedReport.incident_id).closed_at);
-assert.equal((await patch(guestCreated.report.incident_id,{location_description:'Guest update'},undefined,guestCreated.report.guest_access_token)).status,200);
 assert.equal((await patch(guestCreated.report.incident_id,{priority_code:'P1'},undefined,guestCreated.report.guest_access_token)).status,403);
-assert.equal((await transition(guestCreated.report.incident_id,4)).status,200);
 assert.equal((await patch(guestCreated.report.incident_id,{description_sanitized:'Late'},undefined,guestCreated.report.guest_access_token)).status,409);
+sql.prepare('UPDATE incident_reports SET incident_status_id=1 WHERE incident_id=?').run(guestCreated.report.incident_id);
+assert.equal((await patch(guestCreated.report.incident_id,{location_description:'Guest update'},undefined,guestCreated.report.guest_access_token)).status,200);
 sql.prepare("UPDATE user_sessions_and_devices SET revoked_at=datetime('now') WHERE user_id='a'").run();
 assert.equal((await request('/','GET',undefined,'a')).status,401);
 assert.equal((await request('/','POST',payload,'a')).status,401);
@@ -354,9 +355,11 @@ assert.deepEqual(JSON.parse(multiReport.categories), ['Fire Incident','Medical E
 assert.equal(multiReport.incident_status_id, 5);
 const multiMaintenance = await request('/', 'POST', {...multi, classification:'maintenance', categories:['Structural','Streetlight'], description:'Two issues at the same location.'});
 assert.equal(multiMaintenance.status, 400);
-const singleMaintenance = await request('/', 'POST', {...multi, classification:'maintenance', categories:['Streetlight'], description:'Broken light.'});
-assert.equal(singleMaintenance.status, 201);
-const maintenanceMultiReport = (await singleMaintenance.json()).report;
+const guestSingleMaintenance = await request('/', 'POST', guestForm({...multi, classification:'maintenance', categories:['Streetlight'], description:'Broken light.'}));
+assert.equal(guestSingleMaintenance.status, 400);
+const residentSingleMaintenance = await request('/', 'POST', {reporter_type:'RESIDENT', classification:'maintenance', categories:['Streetlight'], description:'Broken light.', reverse_geocoded_address:'Test location'}, 'b');
+assert.equal(residentSingleMaintenance.status, 201);
+const maintenanceMultiReport = (await residentSingleMaintenance.json()).report;
 assert.equal(maintenanceMultiReport.category, 'Streetlight');
 assert.equal(maintenanceMultiReport.priority_level, 'HIGH');
 assert.equal(maintenanceMultiReport.incident_status_id, 1);
