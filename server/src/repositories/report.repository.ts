@@ -92,6 +92,7 @@ const PUBLIC_REPORT_COLUMNS = `
         ELSE 'Pinned on map' END
     ELSE r.location_description
   END AS location_description,
+  (SELECT min(e.created_at) FROM incident_status_events e WHERE e.incident_id = r.incident_id AND e.to_incident_status_id = 5) AS forwarded_at,
   r.submitted_at, r.updated_at, r.closed_at,
   r.closed_by_user_id, r.parent_incident_id,
   r.reported_by_user_id AS reporter_user_id,

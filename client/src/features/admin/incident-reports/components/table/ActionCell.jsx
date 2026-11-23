@@ -1,3 +1,4 @@
+import { isEmergency } from "../../utils";
 import { ChevronDown, Flag, GitMerge, History, Printer, Radio, Siren } from "lucide-react";
 import { useRef, useState } from "react";
 
@@ -13,7 +14,7 @@ function ActionCell({ report, escalated, primaryLabel, menuOpen, onToggleMenu, o
     ...(report.status === "Verified Fixed" && report.incidentId
       ? [{ key: "print", label: "View Printable Incident Report", icon: Printer, run: onPrintable }]
       : []),
-  ];
+  ].filter((item) => !isEmergency(report) || ["audit", "print"].includes(item.key));
   const openMenu = () => {
     if (!menuOpen && triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect();

@@ -235,16 +235,23 @@ export async function listReportsController(c: Context<AppEnv>) {
         reports.map((r) => r.incident_id),
       ),
       c.env.geofix167_db.prepare(`
-        SELECT incident_id, incident_status_event_id AS id, note, created_at
-        FROM incident_status_events
-        WHERE note LIKE '[AGENCY REPORT]%' OR note LIKE '[BDRRMO VERIFIED]%' OR note LIKE '[BDRRMO NOTE]%'
+        SELECT incident_id, incident_status_event_id AS id, coalesce(note, '') AS note, created_at,
+          s.display_name AS status, e.changed_by_user_id AS actor
+        FROM incident_status_events e JOIN incident_statuses s ON s.incident_status_id = e.to_incident_status_id
+        WHERE ? = 'admin' OR note LIKE '[AGENCY REPORT]%' OR note LIKE '[BDRRMO VERIFIED]%' OR note LIKE '[BDRRMO NOTE]%'
         ORDER BY created_at DESC
-      `).all<{ incident_id: string; id: string; note: string; created_at: string }>().catch(() => ({ results: [] })),
+      `).bind(c.get("user")?.role ?? "").all<{ incident_id: string; id: string; note: string; created_at: string; status: string; actor: string | null }>(),
     ]);
 
+    const historyByIncident = new Map<string, typeof eventRows.results>();
     const agencyByIncident = new Map<string, Array<{ id: string; note: string; created_at: string }>>();
     const verifiedByIncident = new Map<string, string>();
     for (const ev of eventRows.results ?? []) {
+      if (c.get("user")?.role === "admin") {
+        const history = historyByIncident.get(ev.incident_id) ?? [];
+        history.push(ev);
+        historyByIncident.set(ev.incident_id, history);
+      }
       if (ev.note.startsWith("[AGENCY REPORT]")) {
         const list = agencyByIncident.get(ev.incident_id) ?? [];
         list.push({ id: ev.id, note: ev.note, created_at: ev.created_at });
@@ -255,13 +262,13 @@ export async function listReportsController(c: Context<AppEnv>) {
     }
 
     const reportsWithPhotos = reports
-      .filter((r) => String(r.title || "").trim().toLowerCase() !== "wdad")
       .map((report) => {
         const list = photosByReport.get(report.incident_id) ?? [];
         const firstPhoto = list[0];
         const verifiedNote = verifiedByIncident.get(report.incident_id) ?? null;
         return {
           ...report,
+          ...(c.get("user")?.role === "admin" ? { history: historyByIncident.get(report.incident_id) ?? [] } : {}),
           photos: list,
           photo_count: list.length,
           photo_url: firstPhoto

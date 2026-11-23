@@ -89,10 +89,15 @@ for (let index = 0; index < 5; index += 1) {
   assert.equal(response.status, 201, response.status === 201 ? undefined : await response.text());
   reportIds.push((await response.json()).report.incident_id);
 }
-const emergencyReportId = 'sudden-emergency-review';
-sql.prepare(`INSERT INTO incident_reports
-  (incident_id, reported_by_user_id, incident_status_id, category, priority_code, is_emergency, title, description_original)
-  VALUES(?, 'resident', 1, 'Incident / Emergency', 'P2', 1, 'Sudden emergency report', '')`).run(emergencyReportId);
+const emergencyResponse = await request('/reports', 'POST', guestReportForm({
+  reporter_type: 'GUEST', guest_alias: 'Test Guest', title: 'Sudden emergency report', classification: 'sudden',
+  incident_category: 'Incident / Emergency', landmark_description: 'Barangay hall',
+}));
+assert.equal(emergencyResponse.status, 201);
+const { report: emergency } = await emergencyResponse.json();
+const emergencyReportId = emergency.incident_id;
+assert.equal(emergency.status_code, 'FORWARDED_TO_BDRRMO');
+assert.ok(emergency.status_events.some(event => event.to_incident_status_id === 5 && event.created_at));
 
 // Compare complete rows, including timestamps, so rejected dispatches cannot
 // silently change a report, consume a unit, or append either kind of event.
@@ -109,8 +114,7 @@ const assertRejectedDispatch = async (reportId, unitId, account, status, message
 };
 
 const emergencyReview = await request(`/admin/dispatch/reports/${emergencyReportId}/verify`, 'POST', { decision: 'VERIFIED' }, 'admin');
-assert.equal(emergencyReview.status, 200);
-assert.equal((await emergencyReview.json()).status, 'FORWARDED_TO_BDRRMO');
+assert.equal(emergencyReview.status, 409);
 assert.equal(sql.prepare(`SELECT s.code AS status FROM incident_reports r
   JOIN incident_statuses s ON s.incident_status_id = r.incident_status_id WHERE r.incident_id = ?`).get(emergencyReportId).status, 'FORWARDED_TO_BDRRMO');
 const listedEmergency = (await (await request('/admin/dispatch/reports', 'GET', undefined, 'admin')).json()).reports

@@ -229,7 +229,7 @@ route.get("/overview", async (c) => {
   });
 });
 
-route.post("/incidents/:incidentId/dispatch", async (c) => {
+route.post("/incidents/:incidentId/dispatch", requireRole("bdrrmo"), async (c) => {
   const db = c.env.geofix167_db;
   const incidentId = c.req.param("incidentId");
   const body = (await c.req.json().catch(() => null)) as {

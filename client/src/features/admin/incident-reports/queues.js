@@ -19,7 +19,7 @@ const CLOSED_STATUSES = ["Verified Fixed", "Duplicate", "Handed Over"];
 export function queuesFor(report) {
   if (CLOSED_STATUSES.includes(report.status)) return ["resolved"];
   const keys = [];
-  if (report.status === "Reported" || report.status === "BDRRMO Takeover") keys.push("pending-triage");
+  if (!isEmergency(report) && report.status === "Reported") keys.push("pending-triage");
   else if (isEmergency(report)) keys.push("active-emergencies");
   else keys.push("infrastructure");
   if (report.external?.length) keys.push("external-agencies");
@@ -67,7 +67,8 @@ export function sortReportsForQueue(reports, queue) {
 }
 
 export function primaryActionLabel(report, queue) {
-  if (queue === "pending-triage") return "Triage";
+  if (isEmergency(report)) return "View";
+  if (queue === "pending-triage") return "Review";
   if (queue === "active-emergencies" && report.responders) return "Track";
   if (queue === "resolved") return "View";
   return "Manage";

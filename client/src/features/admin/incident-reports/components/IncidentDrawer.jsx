@@ -1,6 +1,6 @@
+import { Link } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import {
-  Bell,
   Camera,
   CheckCircle2,
   Eye,
@@ -14,14 +14,12 @@ import {
   Send,
   Share2,
   ShieldCheck,
-  Siren,
-  Wrench,
   X,
 } from "lucide-react";
 import MapViewer from "../../../../shared/components/MapViewer";
 import { Badge, ModalSection, RowList, stamp } from "../../../../shared/components/GovernanceUi";
-import { CLOSURE_REASONS, TEAM_OPTIONS, URGENCY_OPTS } from "../constants";
-import { languageScan, shortUrgency } from "../utils";
+import { CLOSURE_REASONS } from "../constants";
+import { formatForwardedTime, isEmergency, languageScan, shortUrgency } from "../utils";
 
 function photoBadgeLabel(photo, index) {
   const fname = String(photo?.filename || "");
@@ -32,9 +30,8 @@ function photoBadgeLabel(photo, index) {
   return `Reporter Photo #${index + 1}`;
 }
 
-function IncidentDrawer({ report, onClose, onResolve, onPublish, onOpenAudit, onDispatch, logAudit }) {
-  const [classification, setClassification] = useState(report.urgency);
-  const [team, setTeam] = useState(TEAM_OPTIONS[2]);
+function IncidentDrawer({ report, onClose, onResolve, onPublish, onOpenAudit, logAudit }) {
+  const emergency = isEmergency(report);
   const [closingMode, setClosingMode] = useState("proof");
   const [proof, setProof] = useState(null);
   const [reason, setReason] = useState(CLOSURE_REASONS[0]);
@@ -162,25 +159,6 @@ function IncidentDrawer({ report, onClose, onResolve, onPublish, onOpenAudit, on
     onPublish(report.id);
   }
 
-  function applyDispatch() {
-    const maintenance = classification === "Non-Emergency Infrastructure";
-    const changes = {
-      urgency: classification,
-      routedTo: maintenance ? "Barangay Maintenance (Infrastructure)" : "BDRRMO (Emergency)",
-      team: maintenance ? team : "BDRRMO Response",
-      status: "In Progress",
-      emergencyVerified: maintenance ? undefined : (report.emergencyVerified ?? true),
-    };
-    logAudit({
-      reportId: report.id,
-      actor: "Admin",
-      action: "Triage & dispatch",
-      detail: `Classified “${classification}” → ${changes.routedTo}${maintenance ? ` • assigned ${team}` : ""}.`,
-    });
-    onDispatch(report.id, changes);
-    onClose();
-  }
-
   return (
     <>
       <div className="gf-drawer-backdrop" onClick={onClose} />
@@ -212,6 +190,7 @@ function IncidentDrawer({ report, onClose, onResolve, onPublish, onOpenAudit, on
                   ),
                 ],
                 ["Date Reported", report.date],
+                ...(report.forwardedAt ? [["Forwarded to BDRRMO", formatForwardedTime(report.forwardedAt)]] : []),
                 ["Urgency", shortUrgency(report.urgency)],
                 ["Location", `${report.location}, Barangay 167`],
               ]}
@@ -221,7 +200,7 @@ function IncidentDrawer({ report, onClose, onResolve, onPublish, onOpenAudit, on
               <div className="mt-2 overflow-hidden rounded-lg border border-[#dfe7ea]">
                 <div className="h-[220px]">
                   <MapViewer
-                    compact
+                    compact allowOutsideIncidents allowOutsideBounds
                     incidents={[
                       {
                         id: report.id,
@@ -269,10 +248,10 @@ function IncidentDrawer({ report, onClose, onResolve, onPublish, onOpenAudit, on
               </div>
               <p>
                 {showRaw
-                  ? report.text || "No description provided."
+                  ? report.text || "No description. See photo evidence."
                   : report.text
                     ? language.sanitized
-                    : "No description provided."}
+                    : "No description. See photo evidence."}
               </p>
             </div>
           </ModalSection>
@@ -437,7 +416,7 @@ function IncidentDrawer({ report, onClose, onResolve, onPublish, onOpenAudit, on
                   </div>
                 )}
 
-                {!resolved && (
+                {!emergency && !resolved && (
                   <div className="flex gap-1.5 pt-1">
                     <input
                       value={chatDraft}
@@ -477,61 +456,11 @@ function IncidentDrawer({ report, onClose, onResolve, onPublish, onOpenAudit, on
             </ModalSection>
           )}
 
-          {isTriagePending && !resolved && (
-            <ModalSection title="Triage & Forward to BDRRMO / Maintenance">
-              <div className="grid grid-cols-3 gap-2">
-                {URGENCY_OPTS.map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    aria-pressed={classification === option}
-                    onClick={() => setClassification(option)}
-                    className={`gf-option ${classification === option ? "gf-option--active" : ""}`}
-                  >
-                    {option === "Critical Emergency" ? (
-                      <Siren size={13} />
-                    ) : option === "Standard Emergency" ? (
-                      <Bell size={13} />
-                    ) : (
-                      <Wrench size={13} />
-                    )}
-                    <span>{shortUrgency(option)}</span>
-                  </button>
-                ))}
-              </div>
-              {classification === "Non-Emergency Infrastructure" ? (
-                <label className="mt-2 grid gap-1 text-[10px] font-medium text-[#4c4c4c]">
-                  Assign maintenance team
-                  <select
-                    className="gf-select"
-                    style={{ color: "#42506a", height: 32 }}
-                    value={team}
-                    onChange={(event) => setTeam(event.target.value)}
-                  >
-                    {TEAM_OPTIONS.slice(1).map((option) => (
-                      <option key={option}>{option}</option>
-                    ))}
-                  </select>
-                </label>
-              ) : (
-                <div className="gf-note gf-note--soft mt-2">
-                  <Siren size={13} style={{ flexShrink: 0, color: "var(--gf-green)" }} />
-                  <span>
-                    Confirming forwards this emergency directly to <strong>BDRRMO</strong> for responder dispatch.
-                  </span>
-                </div>
-              )}
-              <div className="mt-2 flex justify-end">
-                <button type="button" className="gf-btn gf-btn--primary" onClick={applyDispatch}>
-                  {classification === "Non-Emergency Infrastructure"
-                    ? "Classify & Assign Team"
-                    : "Verify & Forward to BDRRMO"}
-                </button>
-              </div>
-            </ModalSection>
+          {!emergency && isTriagePending && (
+            <Link className="gf-btn gf-btn--primary" to={"/admin/dispatch?report=" + encodeURIComponent(report.incidentId)}>Review maintenance report</Link>
           )}
 
-          {!isTriagePending && (
+          {!emergency && !isTriagePending && (
             <ModalSection title="Final Admin Closure">
               {resolved ? (
                 <RowList
@@ -641,13 +570,13 @@ function IncidentDrawer({ report, onClose, onResolve, onPublish, onOpenAudit, on
 
         <footer className="gf-modal-foot" style={{ justifyContent: "space-between", borderTop: "1px solid #e2e8eb" }}>
           <p className="min-w-0 flex-1 text-[9px] text-[#7184a0]">
-            {resolved
+            {emergency ? report.status : resolved
               ? "Case closed and recorded."
               : hasPhotoEvidence
                 ? "Completion proof is on file — ready for final closure."
                 : "Attach completion proof or document a reason to close."}
           </p>
-          {!report.published && resolved && (
+          {!emergency && !report.published && resolved && (
             <button type="button" className="gf-btn gf-btn--cancel" onClick={publish}>
               <Share2 size={10} style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }} />
               Publish Summary
@@ -660,7 +589,7 @@ function IncidentDrawer({ report, onClose, onResolve, onPublish, onOpenAudit, on
             <History size={10} style={{ display: "inline", verticalAlign: "-2px", marginRight: 4 }} />
             Audit
           </button>
-          {!resolved && (
+          {!emergency && !resolved && (
             <button
               type="button"
               disabled={!canResolve || savingResolution}

@@ -1,7 +1,7 @@
 import { Ambulance, Flame, Siren, Wrench } from "lucide-react";
 import reportCatalog from "../../../../../server/src/shared/reportCatalog.json";
 
-const statuses = ["All Statuses", "Reported", "In Progress", "BDRRMO Takeover", "Handed Over", "Verified Fixed", "Duplicate"];
+const statuses = ["All Statuses", "Reported", "In Progress", "Forwarded to BDRRMO", "Handed Over", "Verified Fixed", "Duplicate"];
 const reportCategories = [...new Set(Object.values(reportCatalog.categories).flat())];
 const categories = ["All Categories", ...reportCategories];
 const locations = ["All Locations", "Rizal Street", "Quezon Avenue", "Magsaysay Boulevard", "Roxas Boulevard", "Bonifacio Street", "Del Pilar Road"];
@@ -23,7 +23,7 @@ const DISPLAY_URGENCY_RANK = { High: 0, Medium: 1, Low: 2 };
 const STATUS_STYLES = {
   Reported: "gf-badge gf-badge--reported",
   "In Progress": "gf-badge gf-badge--progress",
-  "BDRRMO Takeover": "gf-badge gf-badge--takeover",
+  "Forwarded to BDRRMO": "gf-badge gf-badge--takeover",
   "Handed Over": "gf-badge gf-badge--progress",
   "Verified Fixed": "gf-badge gf-badge--fixed",
   Duplicate: "gf-badge gf-badge--duplicate",
