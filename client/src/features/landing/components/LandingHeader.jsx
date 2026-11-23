@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from "react";
-import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
+import HotlineLink from "../../../shared/components/HotlineLink";
+import { useState, useEffect } from "react";
+import { Link, NavLink, useNavigate } from "react-router-dom";
 import {
   Menu,
   X,
@@ -12,28 +13,15 @@ import {
   CheckCircle2,
   LogIn,
   ChevronRight,
-  ChevronDown,
   Phone,
   Radio,
-  Megaphone,
 } from "lucide-react";
 import { PATHS } from "../../../router/paths";
 
 export default function LandingHeader({ onReportClick }) {
   const navigate = useNavigate();
-  const location = useLocation();
   const reportAction = onReportClick ?? (() => navigate(PATHS.publicMap));
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [servicesOpen, setServicesOpen] = useState(false);
-  const servicesRef = useRef(null);
-  const mobileServicesRef = useRef(null);
-  useEffect(() => {
-    const outside = (event) => { if (!servicesRef.current?.contains(event.target) && !mobileServicesRef.current?.contains(event.target)) setServicesOpen(false); };
-    const escape = (event) => { if (event.key === "Escape") setServicesOpen(false); };
-    document.addEventListener("pointerdown", outside); document.addEventListener("keydown", escape);
-    return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape); };
-  }, []);
-
   // Prevent body scroll when mobile menu drawer is open
   useEffect(() => {
     if (mobileMenuOpen) {
@@ -54,13 +42,6 @@ export default function LandingHeader({ onReportClick }) {
     { label: "Accomplishments", href: PATHS.accomplishments, icon: CheckCircle2 },
   ];
 
-  const handleNavClick = (e, link) => {
-    if (link.onClick) {
-      link.onClick();
-    }
-    setMobileMenuOpen(false);
-  };
-
   return (
     <>
       <header className="landing-header sticky top-0 z-40 h-[72px] shrink-0 border-b sm:h-[76px]">
@@ -74,9 +55,7 @@ export default function LandingHeader({ onReportClick }) {
                 <span className="text-base sm:text-lg md:text-xl font-extrabold tracking-tight text-[#2E8B57] truncate">
                   GeoFix 167
                 </span>
-                <span className="hidden xs:inline rounded bg-emerald-100 px-1.5 py-0.2 text-[9px] sm:text-[10px] font-bold text-emerald-800 shrink-0">
-                  CAPSTONE
-                </span>
+
               </div>
               <span className="text-[10px] sm:text-[11px] font-semibold tracking-wider text-slate-500 uppercase truncate">
                 Barangay 167<span className="hidden sm:inline"> · Caloocan City</span>
@@ -87,19 +66,12 @@ export default function LandingHeader({ onReportClick }) {
           {/* Desktop Navigation Links */}
           <nav className="hidden items-center gap-8 md:flex">
             {navLinks.map((link) => (
-              link.label === "Barangay Services" ? <div key={link.label} ref={servicesRef} className="relative">
-                <button type="button" aria-label="Barangay services and announcements" aria-haspopup="menu" aria-expanded={servicesOpen} onClick={() => setServicesOpen((v) => !v)} className={`relative inline-flex items-center gap-1.5 py-2 text-[13px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2 ${location.pathname.startsWith(PATHS.services) || location.pathname.startsWith(PATHS.announcements) || servicesOpen ? "text-[#17633f] after:absolute after:inset-x-0 after:-bottom-1 after:h-0.5 after:rounded-full after:bg-[#2e8b57]" : "text-slate-600 hover:text-[#2E8B57]"}`}><span>{link.label}</span><ChevronDown size={13} className={`transition-transform duration-200 ${servicesOpen ? "rotate-180" : ""}`} /></button>
-                {servicesOpen && <div role="menu" className="absolute left-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg shadow-slate-900/10">
-                  <Link role="menuitem" to={PATHS.services} onClick={() => setServicesOpen(false)} className="group flex items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-emerald-50 hover:text-emerald-900"><span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-800 group-hover:bg-emerald-100"><Wrench size={14} /></span><span className="flex-1">Barangay Services</span><ChevronRight size={13} className="text-slate-300 group-hover:text-emerald-700" /></Link>
-                  <Link role="menuitem" to={PATHS.announcements} onClick={() => setServicesOpen(false)} className="group flex items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-emerald-50 hover:text-emerald-900"><span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-50 text-amber-800 group-hover:bg-amber-100"><Megaphone size={14} /></span><span className="flex-1">Barangay Announcements</span><ChevronRight size={13} className="text-slate-300 group-hover:text-emerald-700" /></Link>
-                </div>}
-              </div> :
               <NavLink
                 key={link.label}
                 to={link.href}
-                onClick={(e) => handleNavClick(e, link)}
+                onClick={() => setMobileMenuOpen(false)}
                 end={link.href === PATHS.home}
-                className={({ isActive }) => `relative py-2 text-[13px] font-bold transition-colors ${isActive ? "text-[#17633f] after:absolute after:inset-x-0 after:-bottom-1 after:h-0.5 after:rounded-full after:bg-[#2e8b57]" : "text-slate-600 hover:text-[#2E8B57]"}`}
+                className={({ isActive }) => `relative whitespace-nowrap py-2 ${link.href === PATHS.services ? "pr-[19px]" : ""} text-[13px] font-bold transition-colors ${isActive ? "text-[#17633f] after:absolute after:inset-x-0 after:-bottom-1 after:h-0.5 after:rounded-full after:bg-[#2e8b57]" : "text-slate-600 hover:text-[#2E8B57]"}`}
               >
                 {link.label}
               </NavLink>
@@ -110,7 +82,7 @@ export default function LandingHeader({ onReportClick }) {
           <div className="hidden items-center gap-3 md:flex">
             <Link
               to={PATHS.login}
-              className="inline-flex h-9.5 items-center justify-center rounded-lg border border-[#9fb6a4] bg-transparent px-4 text-xs font-semibold tracking-wide text-[#174b37] transition-colors hover:border-[#174b37] hover:bg-[#edf3ec] active:scale-[0.98]"
+              className="inline-flex h-9.5 items-center justify-center rounded-lg bg-(--public-action) text-white hover:bg-(--public-action-hover) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--public-action) active:brightness-90 px-4 text-xs font-semibold tracking-wide transition-colors active:scale-[0.98]"
             >
               LOGIN
             </Link>
@@ -207,15 +179,11 @@ export default function LandingHeader({ onReportClick }) {
               <nav className="mt-4 px-3 flex flex-col gap-1">
                 {navLinks.map((link) => {
                   const Icon = link.icon;
-                  if (link.label === "Barangay Services") return <div key={link.label} ref={mobileServicesRef} className="rounded-xl">
-                    <button type="button" onClick={() => setServicesOpen((v) => !v)} aria-haspopup="menu" aria-expanded={servicesOpen} className={`group flex w-full items-center justify-between rounded-xl px-3.5 py-2.5 text-xs font-bold transition-colors ${servicesOpen ? "bg-emerald-50 text-[#2E8B57]" : "text-slate-700 hover:bg-emerald-50 hover:text-[#2E8B57]"}`}><span className="flex items-center gap-3"><span className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-slate-600 transition-colors group-hover:bg-[#2E8B57] group-hover:text-white"><Icon size={14} /></span>{link.label}</span><ChevronDown size={14} className={`text-slate-400 transition-transform group-hover:text-[#2E8B57] ${servicesOpen ? "rotate-180 text-[#2E8B57]" : ""}`} /></button>
-                    {servicesOpen && <div role="menu" className="ml-11 mr-2 grid gap-1 border-l-2 border-emerald-100 py-1 pl-3"><Link role="menuitem" to={PATHS.services} onClick={() => { setMobileMenuOpen(false); setServicesOpen(false); }} className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-semibold text-slate-700 hover:bg-emerald-50"><Wrench size={13} className="text-sky-800" />Barangay Services</Link><Link role="menuitem" to={PATHS.announcements} onClick={() => { setMobileMenuOpen(false); setServicesOpen(false); }} className="flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-semibold text-slate-700 hover:bg-emerald-50"><Megaphone size={13} className="text-amber-700" />Barangay Announcements</Link></div>}
-                  </div>;
                   return (
                     <NavLink
                       key={link.label}
                       to={link.href}
-                      onClick={(e) => handleNavClick(e, link)}
+                      onClick={() => setMobileMenuOpen(false)}
                       className="group flex items-center justify-between rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-700 hover:bg-emerald-50 hover:text-[#2E8B57] transition-all active:scale-[0.99]"
                     >
                       <div className="flex items-center gap-3">
@@ -240,7 +208,7 @@ export default function LandingHeader({ onReportClick }) {
                 <Link
                   to={PATHS.login}
                   onClick={() => setMobileMenuOpen(false)}
-                  className="flex h-10.5 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-800 shadow-sm hover:border-[#2E8B57] hover:bg-emerald-50/50 hover:text-[#2E8B57] transition active:scale-[0.99]"
+                  className="flex min-h-11 items-center justify-center gap-2 rounded-xl text-xs font-bold transition bg-(--public-action) text-white hover:bg-(--public-action-hover) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--public-action) active:brightness-90"
                 >
                   <LogIn size={15} />
                   <span>Resident & Responder Login</span>
@@ -250,7 +218,7 @@ export default function LandingHeader({ onReportClick }) {
                 <Link
                   to={PATHS.adminLogin}
                   onClick={() => setMobileMenuOpen(false)}
-                  className="flex h-10.5 items-center justify-center gap-2 rounded-lg bg-[#174b37] text-xs font-semibold text-white hover:bg-[#103b2b] transition-colors active:scale-[0.99]"
+                  className="flex min-h-11 items-center justify-center gap-2 rounded-xl text-xs font-bold transition bg-(--public-accent) text-(--public-text-strong) hover:brightness-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--public-action) active:brightness-90"
                 >
                   <Shield size={15} />
                   <span>BDRRMO & Officials Portal</span>
@@ -263,14 +231,11 @@ export default function LandingHeader({ onReportClick }) {
               <div className="flex items-center justify-between text-[11px] text-slate-600 mb-2">
                 <span className="flex items-center gap-1.5 font-bold text-slate-900">
                   <Phone size={13} className="text-[#2E8B57]" />
-                  <span>Hotline: 668-338-3141</span>
+                  <HotlineLink>Hotline: </HotlineLink>
                 </span>
                 <span className="text-[10px] font-semibold text-slate-400">24/7 Standby</span>
               </div>
-              <div className="flex items-center justify-between pt-2 border-t border-slate-200/60 text-[10px] text-slate-500">
-                <span className="font-medium">SDG 11: Sustainable Communities</span>
-                <span className="font-bold text-[#2E8B57]">Capstone</span>
-              </div>
+
             </div>
 
           </div>

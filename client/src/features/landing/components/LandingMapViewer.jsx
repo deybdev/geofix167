@@ -32,7 +32,14 @@ export default function LandingMapViewer({
       id: unit.id,
       lat: unit.lat,
       lng: unit.lng,
-      color: unit.type === "maintenance" ? "#d97706" : "#0284c7",
+      category: unit.type === "fire"
+        ? "fire"
+        : unit.type === "police"
+          ? "crime"
+          : unit.type === "maintenance"
+            ? "infrastructure"
+            : "incident",
+      label: unit.label || unit.name,
     })),
     [bdrrmoUnits],
   );

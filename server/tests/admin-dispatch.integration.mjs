@@ -21,11 +21,12 @@ INSERT INTO roles VALUES(1,'admin'),(2,'resident'),(3,'tanod');
 INSERT INTO account_statuses VALUES(1,'ACTIVE');
 INSERT INTO users VALUES('admin','Admin','User','09123123123','hash',1,1),('resident','Resident','User','09246246246','hash',2,1),
 ('usr_demo_responder_001','Renus','Manipon','09369369369','hash',3,1);`);
-for (const file of ['0005_guest_incidents.sql', '0006_review_alerts.sql', '0007_dispatch_support.sql', '0012_community_audit.sql', '0015_admin_dispatch.sql', '0017_report_attachments.sql', '0018_guest_report_intake.sql', '0019_resident_report_notifications.sql', '0020_guest_report_location_metadata.sql', '0021_guest_report_urgency.sql', '0022_normalize_maintenance_categories.sql', '0028_responder_dispatches.sql', '0029_dispatch_coordinates.sql', '0033_live_tracking.sql']) {
+for (const file of ['0005_guest_incidents.sql', '0006_review_alerts.sql', '0007_dispatch_support.sql', '0009_qr_handovers.sql', '0012_community_audit.sql', '0015_admin_dispatch.sql', '0017_report_attachments.sql', '0018_guest_report_intake.sql', '0019_resident_report_notifications.sql', '0020_guest_report_location_metadata.sql', '0021_guest_report_urgency.sql', '0022_normalize_maintenance_categories.sql', '0028_responder_dispatches.sql', '0029_dispatch_coordinates.sql', '0033_live_tracking.sql', '0037_admin_notifications.sql','0038_report_categories.sql']) {
   sql.exec(readFileSync(resolve(serverRoot, `src/migrations/${file}`), 'utf8'));
 }
+sql.exec("INSERT INTO roles VALUES (4,'bdrrmo'),(5,'fire'); INSERT INTO users VALUES ('bdrrmo','Dispatch','Officer','123','hash',4,1),('fire','Fire','Responder','456','hash',5,1),('admin2','Another','Admin','789','hash',1,1)");
 const sha256 = async (value) => Buffer.from(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))).toString('hex');
-for (const [id, role] of [['admin', 'admin'], ['resident', 'resident']]) {
+for (const [id, role] of [['admin', 'admin'], ['admin2', 'admin'], ['usr_demo_responder_001', 'tanod'], ['resident', 'resident'], ['bdrrmo', 'bdrrmo'], ['fire', 'fire']]) {
   const token = `${id}-session`;
   sql.prepare('INSERT INTO user_sessions_and_devices (user_id, token_hash, expires_at) VALUES(?,?,?)').run(id, await sha256(token), '2099-01-01');
 }
@@ -37,7 +38,7 @@ const db = {
       bind(...args) { values = args; return this; },
       async first() { return statement.get(...values) ?? null; },
       async all() { return { results: statement.all(...values) }; },
-      async run() { const result = statement.run(...values); return { meta: { changes: result.changes } }; },
+      async run() { if (/^\s*SELECT/i.test(query)) return { results: statement.all(...values) }; const result = statement.run(...values); return { meta: { changes: result.changes } }; },
     };
   },
   async batch(statements) {
@@ -89,10 +90,15 @@ for (let index = 0; index < 5; index += 1) {
   assert.equal(response.status, 201, response.status === 201 ? undefined : await response.text());
   reportIds.push((await response.json()).report.incident_id);
 }
-const emergencyReportId = 'sudden-emergency-review';
-sql.prepare(`INSERT INTO incident_reports
-  (incident_id, reported_by_user_id, incident_status_id, category, priority_code, is_emergency, title, description_original)
-  VALUES(?, 'resident', 1, 'Incident / Emergency', 'P2', 1, 'Sudden emergency report', '')`).run(emergencyReportId);
+const emergencyResponse = await request('/reports', 'POST', guestReportForm({
+  reporter_type: 'GUEST', guest_alias: 'Test Guest', title: 'Sudden emergency report', classification: 'sudden',
+  incident_category: 'Incident / Emergency', landmark_description: 'Barangay hall',
+}));
+assert.equal(emergencyResponse.status, 201);
+const { report: emergency } = await emergencyResponse.json();
+const emergencyReportId = emergency.incident_id;
+assert.equal(emergency.status_code, 'FORWARDED_TO_BDRRMO');
+assert.ok(emergency.status_events.some(event => event.to_incident_status_id === 5 && event.created_at));
 
 // Compare complete rows, including timestamps, so rejected dispatches cannot
 // silently change a report, consume a unit, or append either kind of event.
@@ -109,8 +115,7 @@ const assertRejectedDispatch = async (reportId, unitId, account, status, message
 };
 
 const emergencyReview = await request(`/admin/dispatch/reports/${emergencyReportId}/verify`, 'POST', { decision: 'VERIFIED' }, 'admin');
-assert.equal(emergencyReview.status, 200);
-assert.equal((await emergencyReview.json()).status, 'FORWARDED_TO_BDRRMO');
+assert.equal(emergencyReview.status, 409);
 assert.equal(sql.prepare(`SELECT s.code AS status FROM incident_reports r
   JOIN incident_statuses s ON s.incident_status_id = r.incident_status_id WHERE r.incident_id = ?`).get(emergencyReportId).status, 'FORWARDED_TO_BDRRMO');
 const listedEmergency = (await (await request('/admin/dispatch/reports', 'GET', undefined, 'admin')).json()).reports
@@ -174,3 +179,99 @@ assert.equal(requested.count, 1);
 assert.equal((await request(`/admin/dispatch/reports/${reportIds[3]}/verify`, 'POST', { decision: 'REJECTED', reason: 'Invalid' }, 'admin')).status, 409, 'closed workflow states cannot be re-verified');
 assert.equal((await request('/admin/dispatch/reports', 'GET', undefined, 'resident')).status, 403);
 console.log('PASS admin dispatch integration: role guards, seeding, verification, atomic dispatch, unit availability, DRRMO request, and invalid transitions');
+
+const dispatchTeam = await request('/responder/dispatches', 'POST', {
+  incident_id: emergencyReportId, incident_title: emergency.title, incident_category: emergency.category,
+  target_roles: ['fire'], urgency: 'High', vehicle_name: 'Fire Truck 1',
+}, 'bdrrmo');
+assert.equal(dispatchTeam.status, 201);
+const assignment = sql.prepare('SELECT responder_dispatch_id AS id FROM responder_dispatches WHERE incident_id = ?').get(emergencyReportId);
+assert.equal((await request('/responder/dispatches/' + assignment.id + '/status', 'PATCH', {status:'ACCEPTED'}, 'fire')).status, 200);
+assert.equal((await request('/responder/location', 'POST', {assignment_id:assignment.id, lat:14.73, lng:121.01}, 'fire')).status, 200);
+const monitorResponse = await request('/reports', 'GET', undefined, 'admin');
+assert.equal(monitorResponse.status, 200);
+const monitored = (await monitorResponse.json()).reports.find(report => report.incident_id === emergencyReportId);
+const team = monitored.dispatched_units[0];
+assert.ok(monitored.forwarded_at && monitored.history.length >= 2);
+assert.deepEqual([team.name, team.dispatched_by, team.dispatcher_role, team.responder, team.contact, team.status],
+  ['Fire Truck 1', 'Dispatch Officer', 'bdrrmo', 'Fire Responder', '456', 'ACCEPTED']);
+assert.equal(team.location.lat, 14.73);
+console.log('PASS monitor: forwarded timestamp, dispatcher, team, responder, timeline and last location');
+
+const actor = 'admin';
+const colleague = 'admin2';
+const notices = (type, owner = actor, eventId) => sql.prepare(
+  'SELECT * FROM notifications WHERE recipient_user_id = ? AND type = ?' + (eventId ? ' AND dedupe_key = ?' : '')
+).all(owner, type, ...(eventId ? [type + ':' + eventId + ':' + owner] : []));
+assert.equal(notices('maintenance_intake').length, 5);
+assert.equal(notices('emergency_forwarded').length, 1);
+assert.equal(notices('support_requested').length, 0, 'own support request excluded');
+assert.equal(notices('support_requested', colleague).length, 1);
+assert.equal(notices('team_dispatched', actor, assignment.id).length, 1);
+assert.equal(notices('team_dispatched', colleague, additionalAssignment.assignment_id).length, 1);
+
+for (const status of ['DECLINED', 'ACCEPTED', 'EN_ROUTE', 'ON_SCENE']) {
+  for (let retry = 0; retry < 2; retry++) {
+    const response = await request('/responder/dispatches/' + assignment.id + '/status', 'PATCH', {status}, 'fire');
+    assert.equal(response.status, 200);
+  }
+  assert.equal(notices(status, actor, assignment.id).length, 1);
+}
+const handover = await request('/responder/dispatches/' + assignment.id + '/qr-handover', 'POST', {
+  incident_id: emergencyReportId, hospital_name: 'Test Hospital',
+}, 'fire');
+assert.equal(handover.status, 201);
+const {handover_id} = await handover.json();
+assert.equal(notices('handover_submitted', actor, handover_id).length, 1);
+for (let retry = 0; retry < 2; retry++) {
+  sql.prepare("UPDATE qr_handovers SET qr_status_id=3, accepted_at=datetime('now') WHERE qr_handover_id=?").run(handover_id);
+}
+assert.equal(notices('hospital_acknowledged', actor, handover_id).length, 1);
+assert.equal((await request('/bdrrmo/incidents/' + emergencyReportId + '/verify-closure', 'POST', {}, 'bdrrmo')).status, 200);
+assert.equal(notices('resolution_ready', actor, emergencyReportId).length, 1);
+const verifyTask = await request('/admin/maintenance/tasks/' + additionalAssignment.assignment_id,
+  'PATCH', {admin_check_approved: true}, actor);
+assert.equal(verifyTask.status, 200);
+assert.equal(notices('maintenance_verification', actor).length, 0);
+assert.equal(notices('maintenance_verification', colleague, additionalAssignment.assignment_id).length, 1);
+const inbox = '/admin/notifications';
+for (const [path, method] of [[inbox,'GET'], [inbox + '/read-all','POST'], [inbox + '/' + '0'.repeat(32) + '/read','POST']]) {
+  assert.equal((await request(path, method, undefined, 'resident')).status, 403);
+}
+assert.equal((await request(inbox + '?limit=0', 'GET', undefined, actor)).status, 400);
+assert.equal((await request(inbox + '?cursor=bad', 'GET', undefined, actor)).status, 400);
+assert.equal((await request(inbox + '/bad/read', 'POST', {}, actor)).status, 400);
+const page = async (query, owner = actor) => (await request(inbox + query, 'GET', undefined, owner)).json();
+const first = await page('?limit=1');
+assert.ok(first.unread_count > 9 && first.next_cursor);
+const next = await page('?limit=1&cursor=' + encodeURIComponent(first.next_cursor));
+assert.notEqual(next.items[0].id, first.items[0].id);
+assert.equal((await request(inbox + '/' + first.items[0].id + '/read', 'POST', {}, colleague)).status, 404);
+assert.equal((await request(inbox + '/' + first.items[0].id + '/read', 'POST', {}, actor)).status, 200);
+assert.equal((await page('?unread_only=true')).unread_count, first.unread_count - 1);
+const colleagueCount = (await page('', colleague)).unread_count;
+assert.equal((await request(inbox + '/read-all', 'POST', {}, actor)).status, 200);
+assert.equal((await page('?unread_only=true')).items.length, 0);
+assert.equal((await page('', colleague)).unread_count, colleagueCount);
+sql.prepare("UPDATE notifications SET created_at='2000-01-01T00:00:00.000Z' WHERE recipient_user_id=?").run(colleague);
+assert.deepEqual((await page('', colleague)).items, []);
+console.log('PASS admin bell: dispatch lifecycle, hospital acknowledgment, work orders, dedupe, pagination, expiry, actor exclusion, roles and independent receipts');
+
+sql.exec(`ALTER TABLE users ADD COLUMN email TEXT;
+  CREATE TABLE resident_verifications(verification_id TEXT PRIMARY KEY, user_id TEXT, status TEXT, review_reason TEXT);
+  CREATE TABLE auth_rate_limits(rate_limit_key TEXT, action TEXT, window_started_at TEXT, attempt_count INTEGER, blocked_until TEXT, PRIMARY KEY(rate_limit_key,action));
+  CREATE TABLE auth_audit_events(auth_audit_event_id TEXT, user_id TEXT, action TEXT, outcome TEXT);`);
+sql.exec(readFileSync(resolve(serverRoot, 'src/migrations/0017_registration_identity.sql'), 'utf8'));
+sql.exec(`UPDATE users SET email='resident@example.test' WHERE user_id='resident';
+  INSERT INTO resident_verifications(verification_id,user_id,status) VALUES('verification','resident','NEEDS_CORRECTION');
+  INSERT INTO registration_requests(request_id,user_id,verification_id,date_of_birth,terms_version,privacy_version,consent_at)
+    VALUES('request','resident','verification','1990-01-01','1','1','2026-01-01');`);
+sql.prepare("INSERT INTO auth_flows(token_hash,kind,payload,expires_at) VALUES(?,'IDENTITY',?,?)")
+  .run(await sha256('resident-identity'), JSON.stringify({email:'resident@example.test'}),Date.now()+60000);
+const submitDocument = () => app.request('/api/auth/registration/document', {
+  method:'POST', body:png, headers:{'Content-Type':'image/png',Cookie:'geofix_identity=resident-identity'},
+}, {geofix167_db:db,geofix167_uploads:uploads,AUTH_HASH_SECRET:'local-test-secret'}, {waitUntil() {}});
+assert.equal((await submitDocument()).status,202);
+assert.equal((await submitDocument()).status,409);
+assert.equal(notices('registration_pending').length,1);
+console.log('PASS registration: successful document submission notifies admin once and rejects duplicate submission');

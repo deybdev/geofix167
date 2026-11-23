@@ -1,7 +1,8 @@
+import { isEmergency } from "../../utils";
 import { ChevronDown, Flag, GitMerge, History, Printer, Radio, Siren } from "lucide-react";
 import { useRef, useState } from "react";
 
-function ActionCell({ report, escalated, primaryLabel, menuOpen, onToggleMenu, onCloseMenu, onOpenDrawer, onBackup, onFlag, onMerge, onAudit, onFieldOps, onPrintable }) {
+function ActionCell({ report, primaryLabel, menuOpen, onToggleMenu, onCloseMenu, onOpenDrawer, onBackup, onFlag, onMerge, onAudit, onFieldOps, onPrintable }) {
   const triggerRef = useRef(null);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
   const menu = [
@@ -13,7 +14,7 @@ function ActionCell({ report, escalated, primaryLabel, menuOpen, onToggleMenu, o
     ...(report.status === "Verified Fixed" && report.incidentId
       ? [{ key: "print", label: "View Printable Incident Report", icon: Printer, run: onPrintable }]
       : []),
-  ];
+  ].filter((item) => !isEmergency(report) || ["audit", "print"].includes(item.key));
   const openMenu = () => {
     if (!menuOpen && triggerRef.current) {
       const rect = triggerRef.current.getBoundingClientRect();
@@ -29,10 +30,9 @@ function ActionCell({ report, escalated, primaryLabel, menuOpen, onToggleMenu, o
   };
   return (
     <td className="px-3 py-3">
-      <div className="flex min-w-[150px] items-center gap-1.5">
+      <div className="flex w-max whitespace-nowrap items-center gap-1.5">
         <button type="button" onClick={() => onOpenDrawer(report)}
-          className="h-9 min-w-[68px] rounded-md bg-(--gf-green) px-3 text-[11px] font-bold text-white shadow-sm transition hover:-translate-y-px hover:bg-(--gf-green-dark) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--gf-green)"
-          style={escalated ? { background: "var(--gf-red)", borderColor: "var(--gf-red)" } : undefined}>
+          className="h-9 min-w-[68px] rounded-md bg-(--gf-green) px-3 text-[11px] font-bold text-white shadow-sm transition hover:bg-(--gf-green-dark) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--gf-green)">
           {primaryLabel}
         </button>
         <button ref={triggerRef} type="button" title="Available report actions" aria-expanded={menuOpen} onClick={openMenu}

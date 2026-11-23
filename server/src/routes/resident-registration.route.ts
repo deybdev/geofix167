@@ -1,3 +1,4 @@
+import { notify as notifyInbox } from "../services/notifications";
 import { Hono } from "hono";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
@@ -117,6 +118,8 @@ route.post("/document", async c => {
       c.env.geofix167_db.prepare(`UPDATE resident_verifications SET status = 'PENDING', review_reason = NULL WHERE verification_id = ? AND status = 'NEEDS_CORRECTION'
         AND EXISTS (SELECT 1 FROM registration_requests WHERE request_id = ? AND document_key = ?)`)
         .bind(request.verification_id, request.request_id, key),
+      notifyInbox(c.env.geofix167_db, { type: "registration_pending", actorId: request.user_id,
+        eventId: key, afterChange: true }),
     ]);
     if (!result[0]?.meta.changes) { await c.env.geofix167_uploads.delete(key); return c.json({ error: "Registration status changed. Refresh and try again." }, 409); }
   } catch (error) { await c.env.geofix167_uploads.delete(key); throw error; }

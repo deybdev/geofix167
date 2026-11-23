@@ -1,3 +1,4 @@
+import HotlineLink from "../../../shared/components/HotlineLink";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Megaphone, Calendar, ChevronRight, Video } from "lucide-react";
@@ -58,7 +59,7 @@ export default function BarangayAnnouncementsCard() {
       {selectedId && <AnnouncementDetailsModal id={selectedId} onClose={closeAnnouncement} />}
 
       <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
-        <span>Barangay Hall Hotline: 668-338-3141</span>
+        <HotlineLink>Barangay Hall Hotline: </HotlineLink>
         <Link
           to={PATHS.announcements}
           className="text-[#2E8B57] font-bold hover:underline inline-flex items-center gap-0.5"

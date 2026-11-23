@@ -1,4 +1,6 @@
-import { Route } from "react-router-dom";
+import AccomplishmentsLayout from "../features/admin/accomplishments/AccomplishmentsLayout";
+import BdrrmoCompletedTasks from "../features/admin/accomplishments/BdrrmoCompletedTasks";
+import { Navigate, Route } from "react-router-dom";
 import { PATHS } from "./paths";
 
 import ProtectedRoute from "../shared/components/ProtectedRoute";
@@ -34,7 +36,11 @@ export const adminRoutes = (
       <Route path="dispatch" element={<AdminDispatch />} />
       <Route path="maintenance-tasks" element={<MaintenanceTasks />} />
       <Route path="resolution-verification" element={<ResolutionVerification />} />
-      <Route path="accomplishment-log" element={<AccomplishmentLog />} />
+      <Route path="accomplishment-log" element={<Navigate to={PATHS.adminAccomplishmentLog} replace />} />
+      <Route path="accomplishments" element={<AccomplishmentsLayout />}>
+        <Route index element={<AccomplishmentLog />} />
+        <Route path="bdrrmo" element={<BdrrmoCompletedTasks />} />
+      </Route>
       <Route path="residents" element={<Residents />} />
       <Route path="registrations" element={<RegistrationReview />} />
       <Route path="reports-analytics" element={<ReportsAnalytics />} />

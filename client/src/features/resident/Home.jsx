@@ -1,3 +1,4 @@
+import HotlineLink from "../../shared/components/HotlineLink";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -330,7 +331,7 @@ export default function Home() {
         )}
 
         <p className="mt-3 text-center text-[11px] text-slate-400">
-          Barangay Hall Hotline: 668-338-3141
+          <HotlineLink>Barangay Hall Hotline: </HotlineLink>
         </p>
       </section>
     </div>

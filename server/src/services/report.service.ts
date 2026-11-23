@@ -129,13 +129,14 @@ export async function submitIncidentReport(
         ? reportCatalog.guestUrgency.sudden
         : reportCatalog.guestUrgency.maintenanceDefault)
     : null;
-  if (guestSubmission && photos.length === 0) {
+  if (guestSubmission && input.is_emergency === 1 && photos.length === 0) {
     throw new ReportError("Attach at least one photo to submit a guest report.", 400);
   }
   if (photos.length && (!guestSubmission || !uploads)) throw new ReportError("Guest evidence photos are not available for this report.", 400);
   const priority = guestSubmission
     ? guestPriorityCode(guestUrgency ?? reportCatalog.guestUrgency.maintenanceDefault)
     : resolveCategoryPriority(category, input.is_emergency === 1);
+  const initialStatusId = input.is_emergency === 1 ? 5 : 1;
   const assignedTeam = classification?.assignedTeam ?? (input.is_emergency === 1 ? "BDRRMO Response" : "Maintenance Team A");
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
@@ -183,18 +184,19 @@ export async function submitIncidentReport(
   } : undefined;
   try {
     await createIncidentReportBundle(db, {
+      actorId: user?.id ?? null,
       creationAudit,
       trackingLink,
       guestSession: guestId && token ? {
-        guest_session_id: guestId, display_name: cleanSingleLine(input.guest_alias) || "Guest",
+        guest_session_id: guestId, display_name: "Guest",
         access_token_hash: await sha256(token), created_at: now,
       } : null,
       guestPhotos: preparedPhotos.rows,
       report: {
         incident_id: id, reported_by_user_id: userId, guest_session_id: guestId,
-        incident_status_id: 1, category, priority_code: priority,
+        incident_status_id: initialStatusId, category, categories: JSON.stringify(input.categories), priority_code: priority,
         is_emergency: input.is_emergency === 1 ? 1 : 0,
-        title: cleanSingleLine(input.title) || `${category} Incident Report`, description_original: description,
+        title: guestSubmission ? input.categories.join(" + ").slice(0, 120) : cleanSingleLine(input.title) || category, description_original: description,
         description_sanitized: language.sanitizedText, callback_mobile_number: input.callback_contact?.trim() || null,
         latitude: input.latitude ?? null, longitude: input.longitude ?? null,
         accuracy_meters: input.accuracy_meters ?? null,
@@ -207,8 +209,8 @@ export async function submitIncidentReport(
       },
       statusEvent: {
         incident_status_event_id: crypto.randomUUID(), incident_id: id,
-        from_incident_status_id: null, to_incident_status_id: 1,
-        changed_by_user_id: userId, note: "Initial report submitted", created_at: now,
+        from_incident_status_id: null, to_incident_status_id: initialStatusId,
+        changed_by_user_id: userId, note: input.is_emergency ? "Emergency forwarded to BDRRMO on submission." : "Initial report submitted", created_at: now,
       },
       languageFlags,
     });
@@ -288,6 +290,7 @@ export async function updateReportStatus(db: Database, id: string,
   }
   const report = await findIncidentReportById(db, id);
   if (!report) throw new ReportError("Incident report not found.", 404);
+  if (user.role === "admin" && report.is_emergency) throw new ReportError("Emergency reports are managed by BDRRMO.", 403);
   const status = await findIncidentStatus(db, input.status_id);
   if (!status) throw new ReportError("Unknown incident status.", 400);
   if (!STATUS_TRANSITIONS[report.incident_status_id]?.includes(input.status_id)) {

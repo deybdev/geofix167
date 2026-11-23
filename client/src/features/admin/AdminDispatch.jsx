@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import ReportCategories from "../../shared/components/ReportCategories";
+import { formatForwardedTime } from "./incident-reports/utils";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle, Check, ChevronLeft, ChevronRight, Eye, Image as ImageIcon,
   MapPin, Radio, RefreshCw, ShieldCheck, Truck, X,
@@ -60,7 +62,8 @@ export default function AdminDispatch() {
   const [reports, setReports] = useState([]);
   const [units, setUnits] = useState([]);
   const [barangayBoundary, setBarangayBoundary] = useState(null);
-  const [selectedId, setSelectedId] = useState("");
+  const [selectedId, setSelectedId] = useState(() => new URLSearchParams(window.location.search).get("report") || "");
+  const selectedIdRef = useRef(selectedId);
   const [selectedUnit, setSelectedUnit] = useState("");
   const [mapFocusedIncident, setMapFocusedIncident] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
@@ -76,25 +79,36 @@ export default function AdminDispatch() {
   const [photoIndex, setPhotoIndex] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const [reportData, unitData] = await Promise.all([request("/reports"), request("/units")]);
+  const selectReport = useCallback((id) => {
+    if (selectedIdRef.current === id) return;
+    selectedIdRef.current = id;
+    setSelectedId(id);
+    setPhotoIndex(0);
+    setLightboxOpen(false);
+    setRejectOpen(false);
+    setRejectReason("");
+    setMapFocusedIncident(null);
+  }, []);
+
+  const refresh = useCallback(() => Promise.all([request("/reports"), request("/units")])
+    .then(([reportData, unitData]) => {
       const nextReports = reportData.reports || [];
       const nextUnits = unitData.units || [];
+      setError("");
       setReports(nextReports);
       setUnits(nextUnits);
-      setSelectedId((current) => nextReports.some((report) => report.id === current) ? current : nextReports[0]?.id || "");
+      if (!nextReports.some((report) => report.id === selectedIdRef.current)) selectReport(nextReports[0]?.id || "");
       setSelectedUnit((current) => nextUnits.some((unit) => unit.id === current && canReceiveDispatch(unit))
         ? current
         : nextUnits.find(canReceiveDispatch)?.id || "");
-    } catch (requestError) {
-      setError(requestError.message);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    })
+    .catch((requestError) => setError(requestError.message))
+    .finally(() => setLoading(false)), [selectReport]);
+
+  function reload() {
+    setLoading(true);
+    return refresh();
+  }
 
   useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => {
@@ -105,7 +119,6 @@ export default function AdminDispatch() {
       .catch(() => { });
     return () => { active = false; };
   }, []);
-  useEffect(() => { setPhotoIndex(0); setLightboxOpen(false); setRejectOpen(false); setRejectReason(""); setMapFocusedIncident(null); }, [selectedId]);
 
   const sortedReports = useMemo(() => [...reports].sort((a, b) =>
     urgencyRank[urgencyLabel(a)] - urgencyRank[urgencyLabel(b)]
@@ -155,12 +168,12 @@ export default function AdminDispatch() {
     ? Number(selectedReport.within_barangay_boundary) === 0
     : Boolean(barangayBoundary && !isInside(reportLatitude, reportLongitude, barangayBoundary)));
   const reviewStatus = String(selectedReport?.status_code || "").toUpperCase();
-  const canReview = ["SUBMITTED", "UNDER_REVIEW"].includes(reviewStatus);
+  const canReview = !isEmergencyReport(selectedReport) && ["SUBMITTED", "UNDER_REVIEW"].includes(reviewStatus);
   const isVerified = reviewStatus === "VERIFIED";
   const isForwarded = reviewStatus === "FORWARDED_TO_BDRRMO";
   const reviewComplete = isVerified || isForwarded;
   const selectedIsEmergency = isEmergencyReport(selectedReport);
-  const awaitingActionCount = reports.filter((report) => String(report.status_code).toUpperCase() !== "FORWARDED_TO_BDRRMO").length;
+  const awaitingActionCount = reports.filter((report) => !isEmergencyReport(report)).length;
   const canDispatch = Boolean(selectedReport && !selectedIsEmergency && isVerified && units.some((unit) => unit.id === selectedUnit && canReceiveDispatch(unit)) && !busy);
   const dispatchReason = selectedIsEmergency ? "Sudden incident reports are forwarded to BDRRMO; Tanod dispatch is not available."
     : !isVerified ? "Approve the report before dispatching."
@@ -187,7 +200,7 @@ export default function AdminDispatch() {
       setRejectReason("");
       setRejectOpen(false);
       setHelpNote("");
-      await refresh();
+      await reload();
     } catch (actionError) {
       toast.add({ title: "Action failed", description: actionError.message, type: "error" });
     } finally {
@@ -209,11 +222,9 @@ export default function AdminDispatch() {
       path: `/reports/${encodeURIComponent(selectedReport.id)}/verify`,
       body: { decision: "VERIFIED" },
       title: "Approve this report?",
-      description: isEmergencyReport(selectedReport)
-        ? `Confirm that “${selectedReport.title || "Incident report"}” is valid. It will be marked reviewed and forwarded to BDRRMO. Tanod dispatch will not be available.`
-        : `Confirm that “${selectedReport.title || "Incident report"}” is valid. It will be marked reviewed and become eligible for responder dispatch.`,
-      successMessage: isEmergencyReport(selectedReport) ? "Emergency report verified and forwarded to BDRRMO" : "Report approved and marked reviewed",
-      confirmLabel: isEmergencyReport(selectedReport) ? "Verify and forward" : "Approve report",
+      description: "Approval makes this maintenance report eligible for responder dispatch.",
+      successMessage: "Report approved and marked reviewed",
+      confirmLabel: "Approve report",
     });
   }
 
@@ -250,17 +261,17 @@ export default function AdminDispatch() {
           <h2 className="text-lg font-bold text-slate-900">Incoming reports &amp; dispatch</h2>
           <p className="mt-1 text-xs text-slate-500">{awaitingActionCount} awaiting · {reports.filter((report) => urgencyLabel(report) === "High").length} High · {availableUnits.length} {availableUnits.length === 1 ? "unit" : "units"} available</p>
         </div>
-        <button type="button" onClick={refresh} disabled={loading} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 disabled:opacity-60"><RefreshCw size={14} className={loading ? "animate-spin" : ""} />Refresh</button>
+        <button type="button" onClick={reload} disabled={loading} className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 disabled:opacity-60"><RefreshCw size={14} className={loading ? "animate-spin" : ""} />Refresh</button>
       </div>
 
       {allDeployed && <div role="alert" className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"><AlertTriangle size={15} />All units are deployed. Request City Hall DRRMO support for maintenance reports.</div>}
-      {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800"><span>{error}</span><button type="button" onClick={refresh} className="font-bold underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600">Try again</button></div>}
+      {error && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800"><span>{error}</span><button type="button" onClick={reload} className="font-bold underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600">Try again</button></div>}
 
       {loading ? <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[380px_minmax(0,1fr)]" aria-label="Loading dispatch reports" aria-busy="true"><div className={`${card} space-y-3 p-4`}>{[1, 2, 3].map((item) => <div key={item} className="animate-pulse space-y-2 border-b border-slate-100 pb-3"><div className="h-3 w-1/3 rounded bg-slate-100" /><div className="h-3 w-2/3 rounded bg-slate-100" /><div className="h-2 w-1/2 rounded bg-slate-100" /></div>)}</div><div className={`${card} min-h-72 animate-pulse bg-slate-50`} /></div> : (
         <div className="grid min-h-0 flex-1 items-stretch gap-3 xl:grid-cols-[380px_minmax(0,1fr)] max-xl:grid-cols-1">
           <section className={`${card} flex min-h-0 flex-col overflow-hidden`}>
             <div className="sticky top-0 z-10 space-y-3 border-b border-slate-200 bg-white p-4">
-              <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-bold">Reports awaiting action</h3><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-800">{awaitingActionCount} awaiting</span></div>
+              <div className="flex items-center justify-between gap-2"><h3 className="text-sm font-bold">Incoming reports</h3><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-800">{awaitingActionCount} awaiting</span></div>
               <div className="grid grid-cols-[1fr_1fr] gap-2">
                 <AccessibleDropdown label="Filter by urgency" value={urgencyFilter} onChange={setUrgencyFilter} options={[
                   { value: "All", label: "All urgency", tone: "neutral" },
@@ -285,10 +296,10 @@ export default function AdminDispatch() {
                     const fullTime = submitted && Number.isFinite(submitted.getTime()) ? submitted.toLocaleString() : "Time unavailable";
                     const count = report.photos?.length ?? report.photo_count ?? 0;
                     const reportStatus = String(report.status_code).toUpperCase();
-                    const statusLabel = reportStatus === "FORWARDED_TO_BDRRMO" ? "Verified - Forwarded to BDRRMO" : reportStatus === "VERIFIED" ? "Verified" : "Submitted";
-                    return <button key={report.id} type="button" aria-pressed={selectedId === report.id} onClick={() => setSelectedId(report.id)} className={`w-full border-l-2 px-3 py-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-600 ${selectedId === report.id ? "border-l-emerald-700 bg-emerald-50/70" : "border-l-transparent hover:bg-slate-50"}`}>
+                    const statusLabel = reportStatus === "FORWARDED_TO_BDRRMO" ? "Forwarded to BDRRMO" : reportStatus === "VERIFIED" ? "Verified" : "Submitted";
+                    return <button key={report.id} type="button" aria-pressed={selectedId === report.id} onClick={() => selectReport(report.id)} className={`w-full border-l-2 px-3 py-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-600 ${selectedId === report.id ? "border-l-emerald-700 bg-emerald-50/70" : "border-l-transparent hover:bg-slate-50"}`}>
                       <div className="flex items-start justify-between gap-2"><p className="min-w-0 truncate text-sm font-bold">{report.title || "Incident report"}</p><span className={`shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-bold ${urgencyClasses[urgency]}`}>{urgency}</span></div>
-                      <p className="mt-1 truncate text-[11px] text-slate-600">{report.category || "Uncategorized"} · {report.location || "Location unavailable"}</p>
+                      <p className="mt-1 truncate text-[11px] text-slate-600"><ReportCategories report={report} /> · {report.location || "Location unavailable"}</p>
                       <div className="mt-1 flex items-center gap-2 truncate text-[10px] text-slate-500"><span className="truncate">{report.reporter || "Guest"}</span><span title={fullTime} className="shrink-0">{relativeTime(report.submitted_at)}</span><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${reportStatus === "VERIFIED" || reportStatus === "FORWARDED_TO_BDRRMO" ? "bg-emerald-600" : "bg-amber-500"}`} title={statusLabel} /><span className="inline-flex shrink-0 items-center gap-1" title={`${count} photos`}><ImageIcon size={11} />{count}</span></div>
                     </button>;
                   })}
@@ -299,9 +310,9 @@ export default function AdminDispatch() {
             {!selectedReport ? <div className="px-5 py-12 text-center"><ShieldCheck size={28} className="mx-auto text-emerald-700" /><p className="mt-3 text-sm font-semibold">Select a report</p><p className="mt-1 text-xs text-slate-500">The report details and responder actions will appear here.</p></div> : <>
               <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4 pb-3 sm:p-5">
                 <section aria-label="Report summary" className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
-                  <div className="flex flex-wrap items-center gap-2"><span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${urgencyClasses[urgencyLabel(selectedReport)]}`}>{urgencyLabel(selectedReport)} urgency</span><span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${reviewComplete ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>{isForwarded ? "Verified - Forwarded to BDRRMO" : isVerified ? "Verified" : selectedReport.status || "Submitted"}</span></div>
+                  <div className="flex flex-wrap items-center gap-2"><span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold ${urgencyClasses[urgencyLabel(selectedReport)]}`}>{urgencyLabel(selectedReport)} urgency</span><span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${reviewComplete ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>{isForwarded ? "Forwarded to BDRRMO" : isVerified ? "Verified" : selectedReport.status || "Submitted"}</span></div>
                   <h3 className="mt-3 text-lg font-bold leading-snug text-slate-900">{selectedReport.title || "Incident report"}</h3>
-                  <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-600"><span className="font-semibold text-slate-700">{selectedReport.category || "Uncategorized"}</span><span className="text-slate-300">•</span><span>Reported by {selectedReport.reporter || "Guest"}</span><span className="text-slate-300">•</span><span title={selectedReport.submitted_at ? new Date(selectedReport.submitted_at).toLocaleString() : "Time unavailable"}>{relativeTime(selectedReport.submitted_at)}</span></div>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-slate-600"><span className="font-semibold text-slate-700"><ReportCategories report={selectedReport} /></span><span className="text-slate-300">•</span><span>Reported by {selectedReport.reporter || "Guest"}</span><span className="text-slate-300">•</span><span title={selectedReport.submitted_at ? new Date(selectedReport.submitted_at).toLocaleString() : "Time unavailable"}>{relativeTime(selectedReport.submitted_at)}</span></div>
                 </section>
 
                 <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(290px,0.85fr)]">
@@ -316,7 +327,7 @@ export default function AdminDispatch() {
                       </> : <div className="flex min-h-20 items-center justify-center gap-2 rounded-lg border border-dashed border-slate-200 bg-slate-50 text-xs text-slate-500"><ImageIcon size={15} />No photo submitted</div>}
                     </section>
 
-                    <section aria-label="Description" className="rounded-xl border border-slate-200 bg-white p-3.5"><h4 className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">Incident description</h4><p className={`whitespace-pre-wrap text-xs leading-relaxed ${selectedReport.description || selectedReport.description_original ? "text-slate-700" : "text-slate-500"}`}>{String(selectedReport.description || selectedReport.description_original || "").trim() || (isEmergencyReport(selectedReport) ? "Description is optional for emergencies. Review based on the photo evidence." : "No description. See photo evidence.")}</p></section>
+                    <section aria-label="Description" className="rounded-xl border border-slate-200 bg-white p-3.5"><h4 className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">Incident description</h4><p className={`whitespace-pre-wrap text-xs leading-relaxed ${selectedReport.description || selectedReport.description_original ? "text-slate-700" : "text-slate-500"}`}>{String(selectedReport.description || selectedReport.description_original || "").trim() || "No description. See photo evidence."}</p></section>
 
                     <section aria-label="Location" className="rounded-xl border border-slate-200 bg-white p-3.5"><h4 className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">Location</h4><p className="flex items-start gap-1.5 text-xs text-slate-600"><MapPin size={13} className="mt-0.5 shrink-0 text-emerald-700" />{selectedReport.location || "Location not provided"}{hasCoordinates && <span className="text-slate-400">· {Number(selectedReport.latitude).toFixed(5)}, {Number(selectedReport.longitude).toFixed(5)}</span>}</p>
                       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
@@ -329,7 +340,7 @@ export default function AdminDispatch() {
                   </div>
                   <div className="space-y-4">
                     <section aria-label="Verification" className={`rounded-xl border p-3.5 ${reviewComplete ? "border-emerald-200 bg-emerald-50/70" : "border-amber-200 bg-amber-50/60"}`}>
-                      <div className="flex items-start gap-3"><span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${reviewComplete ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}><ShieldCheck size={17} /></span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center justify-between gap-2"><h4 className="text-xs font-bold text-slate-900">Report review</h4><span className={`rounded-full px-2 py-1 text-[9px] font-bold ${reviewComplete ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>{isForwarded ? "Verified - Forwarded to BDRRMO" : isVerified ? "Verified" : "Awaiting review"}</span></div><p className="mt-1 text-[11px] leading-relaxed text-slate-600">{isForwarded ? "This emergency report is verified and forwarded to BDRRMO. Tanod dispatch is disabled." : selectedIsEmergency ? "Review the report and evidence. Approval forwards it to BDRRMO; Tanod dispatch is not available." : isVerified ? "This report has been approved. Available and deployed responders can receive it for acceptance." : "Check the report details and evidence before approving it for dispatch."}</p></div></div>
+                      <div className="flex items-start gap-3"><span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${reviewComplete ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}><ShieldCheck size={17} /></span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center justify-between gap-2"><h4 className="text-xs font-bold text-slate-900">Report review</h4><span className={`rounded-full px-2 py-1 text-[9px] font-bold ${reviewComplete ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>{isForwarded ? "Forwarded to BDRRMO" : isVerified ? "Verified" : "Awaiting review"}</span></div><p className="mt-1 text-[11px] leading-relaxed text-slate-600">{isForwarded ? formatForwardedTime(selectedReport.forwarded_at) : selectedIsEmergency ? "BDRRMO handles emergency response." : isVerified ? "This report has been approved. Available and deployed responders can receive it for acceptance." : "Check the report details and evidence before approving it for dispatch."}</p></div></div>
                     </section>
 
                     {!selectedIsEmergency && <section aria-label="Responders" className="rounded-xl border border-slate-200 bg-white p-3.5">
@@ -360,7 +371,7 @@ export default function AdminDispatch() {
 
               {(canReview || rejectOpen) && <div className="shrink-0 border-t border-slate-200 bg-white p-4">
                 {canReview && <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <button type="button" disabled={busy} onClick={requestVerification} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-emerald-800 px-4 text-xs font-bold text-white shadow-sm shadow-emerald-900/10 transition hover:bg-emerald-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 disabled:opacity-60"><Check size={14} />{selectedIsEmergency ? "Verify & forward to BDRRMO" : "Approve / mark reviewed"}</button>
+                  <button type="button" disabled={busy} onClick={requestVerification} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-emerald-800 px-4 text-xs font-bold text-white shadow-sm shadow-emerald-900/10 transition hover:bg-emerald-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 disabled:opacity-60"><Check size={14} />Approve / mark reviewed</button>
                   <button type="button" disabled={busy} onClick={() => setRejectOpen((open) => !open)} className="min-h-10 rounded-lg border border-red-200 bg-white px-4 text-xs font-semibold text-red-700 transition hover:border-red-300 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-600 disabled:opacity-60">{rejectOpen ? "Cancel rejection" : "Reject as invalid"}</button>
                 </div>}
                 {rejectOpen && canReview && <div className="mb-2 flex gap-2"><textarea value={rejectReason} onChange={(event) => setRejectReason(event.target.value)} placeholder="Reason for rejecting this report" rows={2} maxLength={500} className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-xs outline-none focus:border-red-400 focus-visible:ring-2 focus-visible:ring-red-200" /><button type="button" disabled={busy || !rejectReason.trim()} onClick={() => performAction(`/reports/${encodeURIComponent(selectedReport.id)}/verify`, { decision: "REJECTED", reason: rejectReason }, "Report rejected")} className="rounded-lg border border-red-200 px-3 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50">Confirm</button></div>}

@@ -766,17 +766,15 @@ function IntegrityTable({ rows, onOpen }) {
 /* ------------------------------------------------------------------ */
 
 const TABS = [
-  { key: "evidence", label: "Evidence Review", icon: FileCheck },
-  { key: "handover", label: "QR Handover Reconciliation", icon: QrCode },
   { key: "integrity", label: "False-Report Controls", icon: Scale },
 ];
 
-export default function ResolutionVerification() {
+export default function ResolutionVerification({ embedded = false }) {
   const [submissions, setSubmissions] = useState(seedSubmissions);
   const [printableIncidentIds, setPrintableIncidentIds] = useState({});
   const [integrity, setIntegrity] = useState(seedIntegrity);
   const [audit, setAudit] = useState(seedAudit);
-  const [tab, setTab] = useState("evidence");
+  const [tab, setTab] = useState("integrity");
   const [query, setQuery] = useState("");
   const [drawer, setDrawer] = useState(null); // { mode: "review" | "reconcile" | "integrity", id }
 
@@ -932,7 +930,7 @@ export default function ResolutionVerification() {
   return (
     <div className="space-y-4">
       {/* 1 — Header + KPI banner */}
-      <section className="flex flex-wrap items-center justify-between gap-3">
+      {!embedded && <section className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h1 className="flex items-center gap-2 text-base font-bold text-slate-800">
             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white"><ShieldCheck size={16} /></span>
@@ -948,14 +946,14 @@ export default function ResolutionVerification() {
             <Printer size={12} />Export PDF
           </button>
         </div>
-      </section>
+      </section>}
 
-      <section aria-label="Verification KPI summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {!embedded && <section aria-label="Verification KPI summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard label="Awaiting Review" value={stats.awaiting} icon={FileCheck} tone="amber" hint="proof awaiting admin decision" />
         <KpiCard label="Handovers to Reconcile" value={stats.reconcile} icon={QrCode} tone="rose" hint="pending or failed QR scans" />
         <KpiCard label="Closures Authorized" value={stats.closed} icon={CheckCircle2} hint="role-based closures on record" />
         <KpiCard label="Active Restrictions" value={stats.restricted} icon={Ban} tone="slate" hint="progressive controls active" />
-      </section>
+      </section>}
 
       {/* 2 — Tabbed governance workspace */}
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">

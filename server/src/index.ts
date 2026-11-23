@@ -1,3 +1,4 @@
+import adminNotifications from "./routes/admin-notifications.route";
 
 import { Hono } from "hono";
 import { cors } from "hono/cors";
@@ -53,6 +54,7 @@ app.route("/api/track", trackingRoutes);
 // GET  /api/reports
 // GET  /api/reports/:id
 app.route("/api/reports", reportRoutes);
+app.route("/api/admin/notifications", adminNotifications);
 app.route("/api/notifications", notificationRoutes);
 app.route("/api/media", mediaRoutes);
 app.route("/api/admin/dispatch", adminDispatchRoutes);

@@ -1,3 +1,4 @@
+import ReportCategories from "../../shared/components/ReportCategories";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Camera, CheckCircle2, Clock, Download, Eye, EyeOff, FileText, FileUp, History, Languages, Link2,
@@ -7,6 +8,7 @@ import {
 import { toast } from "../../shared/components/ui/toast";
 import MapViewer from "../../shared/components/MapViewer";
 import { ModalShell, SelectFilter, stamp } from "../../shared/components/GovernanceUi";
+import ResolutionVerification from "./ResolutionVerification";
 import reportCatalog from "../../../../server/src/shared/reportCatalog.json";
 
 /* ----------------------------------------------------------------------- */
@@ -350,7 +352,7 @@ function IntakeCard({ item, onReview }) {
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-1.5">
             <Chip className="bg-(--gf-green-tint-2) text-(--gf-green)">{item.reportId}</Chip>
-            <Chip className="bg-[#eef2f4] text-[#60738f]">{item.category}</Chip>
+            <Chip className="bg-[#eef2f4] text-[#60738f]"><ReportCategories report={item} /></Chip>
           </div>
           <h3 className="mt-2 text-[15px] font-bold leading-snug text-[#263246]">{item.issue}</h3>
         </div>
@@ -459,7 +461,7 @@ function IntakeReviewDrawer({ item, tanods, onClose, onConfirmIngest, logAudit }
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-[14px] font-bold text-(--gf-green)">{item.reportId}</h2>
               <Chip className="bg-[#fff1c6] text-[#e69500]">Intake Review</Chip>
-              <Chip className="bg-[#eef2f4] text-[#60738f]">{item.category}</Chip>
+              <Chip className="bg-[#eef2f4] text-[#60738f]"><ReportCategories report={item} /></Chip>
             </div>
             <p className="mt-0.5 truncate text-[10px] text-[#60738f]">{item.issue} • {item.location}</p>
           </div>
@@ -477,7 +479,7 @@ function IntakeReviewDrawer({ item, tanods, onClose, onConfirmIngest, logAudit }
           <DrawerSection title="Intake Report & Reporter" icon={ShieldCheck}>
             <div>
               <InfoRow label="Report ID">{item.reportId}</InfoRow>
-              <InfoRow label="Category">{item.category}</InfoRow>
+              <InfoRow label="Category"><ReportCategories report={item} /></InfoRow>
               <InfoRow label="Reporter">
                 <span className="inline-flex items-center gap-1">
                   {item.reporter.type === "guest"
@@ -1531,6 +1533,7 @@ const TABS = [
   { key: "active", label: "Active Work Orders", icon: Wrench },
   { key: "verify", label: "Awaiting Verification", icon: TriangleAlert },
   { key: "resolved", label: "Resolved & Logged", icon: CheckCircle2 },
+  { key: "integrity", label: "False-Report Controls", icon: ShieldCheck },
 ];
 
 export default function MaintenanceTasks() {
@@ -1597,6 +1600,7 @@ export default function MaintenanceTasks() {
             lat: report.latitude == null ? null : Number(report.latitude),
             lng: report.longitude == null ? null : Number(report.longitude),
             category: report.category || "Maintenance",
+            categories: report.categories,
             geotag: {
               source: report.pin_manually_adjusted ? "Pin adjusted" : "GPS pin",
               accuracy: accuracy == null ? "Not available" : `±${Math.round(accuracy)} m`,
@@ -1668,6 +1672,7 @@ export default function MaintenanceTasks() {
               originReportId: st.originReportId,
               reporter: st.reporter,
               category: st.category,
+              categories: st.categories,
               location: st.location,
               zone: existing?.zone || ZONES[0],
               lat: st.lat,
@@ -1955,6 +1960,7 @@ export default function MaintenanceTasks() {
     active: stats.active,
     verify: stats.verifying,
     resolved: tasks.filter((t) => t.status === "Verified Fixed").length,
+    integrity: "Open",
   };
 
   const actionLabel = tab === "verify" ? "Review" : "Manage";
@@ -1962,11 +1968,12 @@ export default function MaintenanceTasks() {
   return (
     <div className="space-y-4">
       {/* 1 — KPI summary banner */}
-      <section aria-label="Maintenance KPI summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section aria-label="Maintenance KPI summary" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard label="Pending Intake" value={stats.intake} icon={FileText} hint="auto-routed reports awaiting work orders" onClick={() => setTab("intake")} />
         <StatCard label="Active Tasks" value={stats.active} icon={Wrench} hint="ongoing repairs in the field" onClick={() => setTab("active")} />
         <StatCard label="Awaiting Verification" value={stats.verifying} icon={ShieldCheck} hint="crew done — needs admin proof-review" onClick={() => setTab("verify")} />
         <StatCard label="Overdue Tasks" value={stats.overdue} icon={Clock} hint="past deadline — escalate now" alert onClick={() => setTab("active")} />
+        <StatCard label="False-Report Controls" value={3} icon={ShieldCheck} hint="review flagged resident reports" onClick={() => setTab("integrity")} />
       </section>
 
       {/* 2 — Tabbed workspaces */}
@@ -1998,7 +2005,9 @@ export default function MaintenanceTasks() {
         </div>
 
         <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="p-5">
-          {tab === "intake" ? (
+          {tab === "integrity" ? (
+            <ResolutionVerification embedded />
+          ) : tab === "intake" ? (
             queue.length ? (
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {queue.map((item) => (

@@ -1,3 +1,4 @@
+import { reportCategories } from "../../../shared/utils/reportCategories";
 import reportCatalog from "../../../../../server/src/shared/reportCatalog.json";
 import { HOSPITALS, RESPONSE_FACILITIES, TANOD_BASE } from "./constants";
 
@@ -36,6 +37,21 @@ function formatApiReportDate(value) {
     : "Date unavailable";
 }
 
+export function parseTimestamp(value) {
+  if (!value) return NaN;
+  const utc = /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/.test(value) ? value.replace(" ", "T") + "Z" : value;
+  return Date.parse(utc);
+}
+
+export function formatTimestamp(value) {
+  const time = parseTimestamp(value);
+  return Number.isFinite(time) ? new Date(time).toLocaleString() : "Time unavailable";
+}
+
+export function formatForwardedTime(value) {
+  return value ? "Forwarded " + formatTimestamp(value) : "Forwarding time unavailable";
+}
+
 function mapApiReport(item, fetchedAt) {
   const latitude = item.latitude == null ? null : Number(item.latitude);
   const longitude = item.longitude == null ? null : Number(item.longitude);
@@ -54,7 +70,7 @@ function mapApiReport(item, fetchedAt) {
   const location = address || (hasCoordinates ? `${latitude.toFixed(5)}, ${longitude.toFixed(5)}` : "Location unavailable");
   const rawStatus = String(item.status_label ?? item.status_code ?? "Reported");
   const hasActiveUnits = Array.isArray(item.dispatched_units) && item.dispatched_units.length > 0;
-  const status = /resolved|closed|complete/i.test(rawStatus) ? "Verified Fixed"
+  const status = item.status_code === "FOR_CLOSURE_REVIEW" ? "Awaiting closure review" : /resolved|closed|complete/i.test(rawStatus) ? "Verified Fixed"
     : /closure|handed/i.test(rawStatus) ? "Handed Over"
       : hasActiveUnits || /assigned|dispatched|accepted|en.route|on.scene|progress/i.test(rawStatus) ? "In Progress"
         : /submitted|pending/i.test(rawStatus) ? "Reported"
@@ -64,14 +80,12 @@ function mapApiReport(item, fetchedAt) {
   const accuracy = item.accuracy_meters == null ? null : Number(item.accuracy_meters);
   const outsideBoundary = item.within_barangay_boundary === 0 || item.within_barangay_boundary === false;
   const submittedAt = item.submitted_at ?? item.received_at;
-  const submittedTime = submittedAt ? Date.parse(submittedAt) : NaN;
-  const triageStartedAt = Number.isFinite(submittedTime) ? submittedTime : fetchedAt;
-
   return {
     id: String(item.reference_number ?? item.incident_id ?? "Unknown report"),
     incidentId: String(item.incident_id ?? ""),
     title: String(item.title ?? "").trim() || "Incident report",
     category,
+    categories: item.categories,
     urgency,
     displayUrgency: displayPriority,
     accident: classification.value === "sudden",
@@ -80,7 +94,14 @@ function mapApiReport(item, fetchedAt) {
     reporterType: reporterType === "guest" ? "guest" : "resident",
     date: formatApiReportDate(submittedAt),
     submittedAt,
-    team: String(item.assigned_team ?? "").trim() || classification.assignedTeam,
+    statusCode: item.status_code,
+    fetchedAt,
+    history: item.history ?? [],
+    forwardedAt: item.forwarded_at,
+    month: submittedAt ? new Date(submittedAt).toLocaleDateString("en-US", { month: "long", year: "numeric" }) : "",
+    team: classification.isEmergency
+      ? (item.dispatched_units ?? []).filter((unit) => !["DECLINED", "CANCELLED"].includes(unit.status)).map((unit) => unit.name).join(", ") || "Unassigned"
+      : String(item.assigned_team ?? "").trim() || classification.assignedTeam,
     status,
     ...(hasCoordinates ? { lat: latitude, lng: longitude } : {}),
     evidence: [],
@@ -121,15 +142,15 @@ function mapApiReport(item, fetchedAt) {
       ...(accuracy != null && accuracy > 100 ? { note: "GPS accuracy is over 100 m; the reporter was prompted to adjust the pin." } : {}),
     },
     ...(outsideBoundary ? { outsideBarangayBoundary: true } : {}),
+    originalText: item.description_original ?? "",
     text: String(item.sanitized_description ?? item.description_sanitized ?? item.description_original ?? "").trim(),
-    ...(classification.isEmergency && status === "Reported" ? { sla: { start: triageStartedAt } } : {}),
   };
 }
 
 function downloadReportsCsv(reports) {
   const columns = ["ID", "Incident Details", "Category", "Urgency", "Location", "Reporter", "Date Reported", "Assigned Team", "Status", "Photo Count"];
   const rows = reports.map((report) => [
-    report.id, report.title, report.category, displayUrgency(report), report.location, report.reporter,
+    report.id, report.title, reportCategories(report).join("; "), displayUrgency(report), report.location, report.reporter,
     report.date, report.team, report.status, report.photos?.length ?? 0,
   ]);
   const csv = [columns, ...rows].map((row) => row.map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`).join(",")).join("\r\n");

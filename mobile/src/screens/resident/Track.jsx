@@ -790,6 +790,8 @@ function TrackingSession({ reportId }) {
         heading: u.location.heading,
         rotation: u.location.heading,
         label: u.name,
+        roleCode: u.roleCode,
+        role: u.role,
         type: 'responder',
         stale: false,
       }));
@@ -804,6 +806,8 @@ function TrackingSession({ reportId }) {
             heading,
             rotation: heading,
             label: responderName,
+            roleCode: responder?.roleCode,
+            role: responder?.role,
             type: 'responder',
             stale,
           },
@@ -811,7 +815,7 @@ function TrackingSession({ reportId }) {
       : [];
 
     return [...leadTracker, ...extraTrackers];
-  }, [trackerValid, trackerLat, trackerLng, heading, stale, responderId, responderName, dispatchedUnits]);
+  }, [trackerValid, trackerLat, trackerLng, heading, stale, responderId, responderName, responder?.roleCode, responder?.role, dispatchedUnits]);
 
   const trackingRoutes = useMemo(
     () =>
