@@ -39,6 +39,16 @@ const guestForm = (report, includePhoto=true) => {
   return form;
 };
 const payload={reporter_type:'RESIDENT',incident_category:'Flood',description:'Saved report',reverse_geocoded_address:'Address',landmark_description:'Landmark'};
+const emptyMap = await request('/map-feed');
+assert.equal(emptyMap.status, 200);
+assert.deepEqual(await emptyMap.json(), { items: [] });
+const queryError = new Error('Simulated D1 failure');
+const failedMap = await app.request('/api/reports/map-feed', {}, {
+  ...env,
+  geofix167_db: { prepare: () => ({ all: () => Promise.reject(queryError) }) },
+});
+assert.equal(failedMap.status, 500);
+console.log('PASS public map feed returns an empty list on success and HTTP 500 on D1 failure');
 const guestPayload={reporter_type:'GUEST',guest_alias:'Guest Reporter',title:'Flood report',classification:'sudden',is_emergency:1,incident_category:'Incident / Emergency',priority_level:'HIGH',description:'Saved report',reverse_geocoded_address:'Address',landmark_description:'Landmark'};
 let res=await request('/','POST',payload,'a');assert.equal(res.status,201);const resident=(await res.json()).report;
 assert.equal(resident.reported_by_user_id,'a');assert.equal(resident.guest_session_id,null);assert.equal(resident.latitude,null);assert.equal(resident.longitude,null);assert.equal(resident.location_description,'Address');

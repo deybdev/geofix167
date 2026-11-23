@@ -158,7 +158,63 @@ function pass(label) {
   checks++;
   console.log('PASS', label);
 }
+async function testResidentMap() {
+  const originalRequest = api.request;
+  const mapHooks = { ...hooks, useMemo: fn => fn(), memo: component => component };
+  const mapImports = {
+    react: mapHooks, 'react-native': native, 'lucide-react-native': {}, twrnc: () => ({}),
+    '@react-navigation/native': {
+      useFocusEffect: cb => hooks.useEffect(cb, [cb]),
+      useNavigation: () => ({ navigate: () => {} }),
+    },
+    '../../components/map/MapViewer': 'MapViewer',
+    '../../services/residentService': {
+      ...service, getReports: async () => ({ data: { reports: personalReports } }),
+      getAnnouncements: async () => ({ data: { announcements: [] } }),
+    },
+  };
+  let personalReports = [];
+  const feed = [
+    { id: 'fire', lat: 14.73, lng: 121.013, report_type: 'emergency', category: 'fire' },
+    { id: 'repair', lat: 14.731, lng: 121.014, report_type: 'maintenance' },
+    { id: 'outside', lat: 0, lng: 0, report_type: 'maintenance' },
+  ];
+  api.request = async () => ({ data: { items: feed } });
+  const home = runner(load('src/screens/resident/Home.jsx', mapImports).default);
+  const full = runner(load('src/screens/resident/Map.jsx', mapImports).default);
+  const viewer = load('src/components/map/MapViewer.js', {
+    ...mapImports, 'react-native-safe-area-context': { useSafeAreaInsets: () => ({}) },
+    'react-native-maps': {}, './IncidentSheet': {}, '../../utils/map/mapUtils': {},
+    '../../utils/map/sampleIncidents': {},
+    '../../../assets/map/barangay-167.json': require('../assets/map/barangay-167.json'),
+  }).default;
+  const visiblePins = screen => {
+    const props = find(screen.render(), node => node.type === 'MapViewer').props;
+    return nodes(runner(viewer, props).render()).filter(node => node.props?.incident)
+      .map(({ props: { incident } }) => [incident.id, incident.lat, incident.lng, incident.category]);
+  };
+  home.render();
+  full.render();
+  await tick();
+  const expected = [['fire', 14.73, 121.013, 'fire'], ['repair', 14.731, 121.014, 'infrastructure']];
+  assert.deepEqual(visiblePins(home), expected);
+  assert.deepEqual(visiblePins(full), expected);
+  personalReports = [{ public_id: 'resident-report', report_type: 'maintenance' }];
+  api.request = async () => { throw new Error('Offline'); };
+  await home.render().props.refreshControl.props.onRefresh();
+  assert.deepEqual(visiblePins(home), expected);
+  find(home.render(), node => node.props?.report === personalReports[0]);
+  const retry = find(home.render(), node => node.props?.accessibilityLabel === 'Retry loading map pins');
+  api.request = async () => ({ data: { items: [] } });
+  await retry.props.onPress();
+  assert.deepEqual(visiblePins(home), []);
+  assert.doesNotMatch(text(home.render()), /Retry loading map pins/);
+  pass('Home and All render identical in-boundary pins with no personal reports; failed refresh preserves pins and loads reports; empty retry clears pins');
+  api.request = originalRequest;
+}
 (async () => {
+  await testResidentMap();
+  if (process.argv.includes("--map-feed")) return;
   assert.equal(util.canEditReport({
     status_id: 1
   }), true);

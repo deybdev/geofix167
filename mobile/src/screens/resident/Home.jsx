@@ -23,8 +23,8 @@ import {
 import tw from 'twrnc';
 
 import MapViewer from '../../components/map/MapViewer';
-import { loadSampleIncidents } from './sampleIncident';
 import {
+  getPublicMapFeed,
   getReports,
   summarizeReports,
   getAnnouncements,
@@ -385,6 +385,22 @@ export default function Home() {
   const [activeEmergencyReport, setActiveEmergencyReport] = useState(null);
   const [announcements, setAnnouncements] = useState([]);
   const [incidents, setIncidents] = useState([]);
+  const [mapError, setMapError] = useState(false);
+  const mapRequest = useRef(null);
+
+  const loadMap = useCallback(async () => {
+    mapRequest.current?.abort();
+    const request = new AbortController();
+    mapRequest.current = request;
+    try {
+      const pins = await getPublicMapFeed({ signal: request.signal });
+      if (request.signal.aborted) return;
+      setIncidents(pins);
+      setMapError(false);
+    } catch {
+      if (!request.signal.aborted) setMapError(true);
+    }
+  }, []);
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -395,11 +411,6 @@ export default function Home() {
   ------------------------------------------ */
 
   const loadDashboard = useCallback(async () => {
-    // Demo map incidents load independently so they never block the page.
-    loadSampleIncidents()
-      .then((data) => mounted.current && setIncidents(data))
-      .catch(() => {});
-
     const [reportsResult, announcementsResult] =
       await Promise.allSettled([
         getReports(),
@@ -430,17 +441,19 @@ export default function Home() {
   useFocusEffect(
     useCallback(() => {
       mounted.current = true;
+      void loadMap();
       loadDashboard();
 
       return () => {
         mounted.current = false;
+        mapRequest.current?.abort();
       };
-    }, [loadDashboard])
+    }, [loadDashboard, loadMap])
   );
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await loadDashboard();
+    await Promise.all([loadDashboard(), loadMap()]);
     if (mounted.current) setRefreshing(false);
   };
 
@@ -557,6 +570,16 @@ export default function Home() {
             </Text>
           </View>
         </Pressable>
+        {mapError && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading map pins"
+            onPress={loadMap}
+            style={tw`absolute bottom-2 left-2 rounded-lg bg-white px-3 py-2`}
+          >
+            <Text style={tw`text-xs text-slate-700`}>Couldn’t load map pins. Retry</Text>
+          </Pressable>
+        )}
       </View>
 
       {/* REPORT OVERVIEW */}

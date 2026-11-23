@@ -34,20 +34,7 @@ export default function MapScreen() {
   }, [items]);
 
   const filteredIncidents = useMemo(() => {
-    return items
-      .filter((item) => {
-        if (filter === 'emergency') return item.report_type === 'emergency';
-        if (filter === 'maintenance') return item.report_type === 'maintenance';
-        return true;
-      })
-      .map((item) => ({
-        ...item,
-        pinType: item.report_type === 'maintenance' ? 'maintenance' : 'incident',
-        category:
-          item.report_type === 'maintenance'
-            ? 'infrastructure'
-            : item.category || 'emergency',
-      }));
+    return filter === 'all' ? items : items.filter(item => item.report_type === filter);
   }, [items, filter]);
 
   return (
