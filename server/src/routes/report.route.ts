@@ -74,7 +74,7 @@ reportRoutes.get("/map-feed", async (c) => {
   const db = c.env.geofix167_db;
   const rows = await db.prepare(`
     SELECT r.incident_id, COALESCE(printf('GF-%03d', rr.reference_sequence), r.incident_id) AS reference_number,
-      r.title, r.category, r.description_sanitized, r.is_emergency,
+      r.title, r.category, r.categories, r.description_sanitized, r.is_emergency,
       r.latitude, r.longitude, r.location_description, r.incident_status_id, r.assigned_team,
       r.submitted_at, ta.notes AS maint_notes, ta.assignment_status_id
     FROM incident_reports r
@@ -114,6 +114,7 @@ reportRoutes.get("/map-feed", async (c) => {
       id: String(row.incident_id),
       reference_number: String(row.reference_number || row.incident_id),
       title: String(row.title || row.category || "Incident"),
+      categories: row.categories,
       category: String(row.category || (isEmergency ? "emergency" : "infrastructure")),
       report_type: isEmergency ? "emergency" : "maintenance",
       description: stripSelectedDetails(row.description_sanitized),
@@ -360,13 +361,14 @@ reportRoutes.post("/:id/resolve", requireAuth, requireRole("admin"), async (c) =
   const body = resolveSchema.safeParse(await c.req.json().catch(() => ({})));
   if (!body.success) return c.json({ error: "Invalid resolution details.", details: body.error.flatten() }, 400);
 
-  const report = await db.prepare(`SELECT r.incident_id, r.incident_status_id, r.closed_at
+  const report = await db.prepare(`SELECT r.incident_id, r.is_emergency, r.incident_status_id, r.closed_at
     FROM incident_reports r LEFT JOIN incident_report_references ref ON ref.incident_id = r.incident_id
     WHERE r.incident_id = ? OR printf('GF-%03d', ref.reference_sequence) = ?
     ORDER BY CASE WHEN r.incident_id = ? THEN 0 ELSE 1 END LIMIT 1`)
     .bind(incidentId, incidentId, incidentId)
-    .first<{ incident_id: string; incident_status_id: number; closed_at: string | null }>();
+    .first<{ incident_id: string; incident_status_id: number; is_emergency: number; closed_at: string | null }>();
   if (!report) return c.json({ error: "Incident report not found." }, 404);
+  if (report.is_emergency && ![9, 10].includes(report.incident_status_id)) return c.json({ error: "Emergency reports are managed by BDRRMO." }, 403);
   if (report.closed_at) {
     const snapshot = await ensureIncidentReportSnapshot(db, report.incident_id, currentUser.id, body.data.resolution_notes);
     return c.json({ ok: true, status: "CLOSED", snapshot });

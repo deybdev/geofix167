@@ -1,3 +1,4 @@
+import { notify } from "../services/notifications";
 import { Hono } from "hono";
 import { requireAuth, requireRole } from "../middleware/auth";
 import type { AppEnv } from "../types/env";
@@ -87,7 +88,7 @@ route.get("/intake", async (c) => {
     await resolveLegacyReportAddresses(db);
     const result = await db.prepare(`
       SELECT r.incident_id, COALESCE(printf('GF-%03d', rr.reference_sequence), r.incident_id) AS report_id,
-        r.title, r.category, r.description_original AS description,
+        r.title, r.category, r.categories, r.description_original AS description,
         r.latitude, r.longitude, r.accuracy_meters,
         r.within_barangay_boundary, r.pin_manually_adjusted, r.submitted_at,
         CASE
@@ -163,6 +164,11 @@ route.post("/ingest", async (c) => {
     return c.json({ error: "incident_id is required." }, 400);
   }
 
+  const report = await db.prepare("SELECT is_emergency FROM incident_reports WHERE incident_id = ?")
+    .bind(body.incident_id).first<{ is_emergency: number }>();
+  if (!report) return c.json({ error: "Report not found." }, 404);
+  if (report.is_emergency) return c.json({ error: "Sudden incidents cannot be assigned as Tanod maintenance tasks." }, 409);
+
   let resource = body.unit_id
     ? await db.prepare(`
         SELECT responder_resource_id, responder_user_id, display_name
@@ -235,6 +241,8 @@ route.post("/ingest", async (c) => {
       body.urgency === "Urgent" ? "P2" : "P3",
       body.incident_id,
     ),
+    notify(db, { type: "team_dispatched", actorId: c.get("user").id, eventId: assignmentId,
+      reportId: body.incident_id, assignmentId, linkPath: "/admin/maintenance-tasks" }),
   ]);
 
   if (resource?.responder_resource_id) {
@@ -265,7 +273,7 @@ route.get("/tasks", async (c) => {
   const rows = await db.prepare(`
     SELECT ta.tanod_assignment_id, ta.incident_id, ta.assignment_status_id,
       ta.assigned_at, ta.accepted_at, ta.completed_at, ta.notes,
-      r.title, r.category, r.description_sanitized, r.description_original,
+      r.title, r.category, r.categories, r.description_sanitized, r.description_original,
       r.latitude, r.longitude, r.location_description, r.accuracy_meters,
       r.submitted_at, r.incident_status_id, r.assigned_team,
       COALESCE(printf('GF-%03d', rr_ref.reference_sequence), r.incident_id) AS report_id,
@@ -339,6 +347,7 @@ route.get("/tasks", async (c) => {
       originReportId: String(row.report_id),
       issue: String(row.title || "Maintenance Task"),
       category: String(row.category || "Maintenance"),
+      categories: row.categories,
       location: String(row.location_description || "Barangay 167"),
       lat: row.latitude == null ? null : Number(row.latitude),
       lng: row.longitude == null ? null : Number(row.longitude),
@@ -389,7 +398,7 @@ route.patch("/tasks/:assignmentId", async (c) => {
   const existing = await db.prepare(`
     SELECT tanod_assignment_id, incident_id, responder_resource_id, notes
     FROM tanod_assignments
-    WHERE tanod_assignment_id = ?
+    WHERE tanod_assignment_id = ? AND EXISTS (SELECT 1 FROM incident_reports r WHERE r.incident_id = tanod_assignments.incident_id AND r.is_emergency = 0)
   `).bind(assignmentId).first<{
     tanod_assignment_id: string;
     incident_id: string;
@@ -413,6 +422,7 @@ route.patch("/tasks/:assignmentId", async (c) => {
     repair_photo_ids: [],
   };
 
+  const newlyAwaiting = !meta.admin_check_approved && body?.admin_check_approved === true && !body?.verified_fixed;
   if (typeof body?.admin_notes === "string") meta.admin_notes = body.admin_notes;
   if (typeof body?.for_funding === "boolean") {
     meta.for_funding = body.for_funding;
@@ -434,7 +444,7 @@ route.patch("/tasks/:assignmentId", async (c) => {
   if (Array.isArray(body?.inspection_photo_ids)) meta.inspection_photo_ids = body.inspection_photo_ids;
   if (Array.isArray(body?.repair_photo_ids)) meta.repair_photo_ids = body.repair_photo_ids;
 
-  await db.prepare(`
+  await db.batch([db.prepare(`
     UPDATE tanod_assignments
     SET notes = ?,
         assignment_status_id = CASE WHEN ? = 1 THEN 5 ELSE assignment_status_id END,
@@ -445,7 +455,8 @@ route.patch("/tasks/:assignmentId", async (c) => {
     body?.verified_fixed ? 1 : 0,
     body?.verified_fixed ? 1 : 0,
     assignmentId,
-  ).run();
+  ), ...(newlyAwaiting ? [notify(db, { type: "maintenance_verification", actorId: c.get("user").id,
+    eventId: assignmentId, assignmentId, reportId: existing.incident_id, afterChange: true })] : [])]);
 
   if (body?.verified_fixed) {
     await db.prepare(`

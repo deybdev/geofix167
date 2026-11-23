@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { ChevronDown, LogOut, Menu } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ADMIN_NAVIGATION } from "../../router/adminNavigation";
@@ -11,9 +11,29 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
-  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [isSignOutDialogOpen, setIsSignOutDialogOpen] = useState(false);
-  const accountRef = useRef(null);
+
+  const isNavItemActive = (item) => {
+    if (item.children?.length) {
+      return item.children.some(
+        (child) =>
+          location.pathname === child.path ||
+          location.pathname.startsWith(`${child.path}/`),
+      );
+    }
+    if (!item.path) return false;
+    return item.path === PATHS.admin
+      ? location.pathname === item.path
+      : location.pathname.startsWith(item.path);
+  };
+
+  const [expandedMenus, setExpandedMenus] = useState(() =>
+    Object.fromEntries(
+      ADMIN_NAVIGATION.filter(
+        (item) => item.children?.length && isNavItemActive(item),
+      ).map((item) => [item.key, true]),
+    ),
+  );
 
   const displayName =
     user?.name ||
@@ -28,29 +48,10 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
       .join("")
       .toUpperCase() || "BA";
 
-  useEffect(() => {
-    if (!accountMenuOpen) return undefined;
-    const handlePointerDown = (event) => {
-      if (accountRef.current && !accountRef.current.contains(event.target)) {
-        setAccountMenuOpen(false);
-      }
-    };
-    const handleKeyDown = (event) => {
-      if (event.key === "Escape") setAccountMenuOpen(false);
-    };
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [accountMenuOpen]);
-
   async function handleSignOut() {
     try {
       await signOut();
       setIsSignOutDialogOpen(false);
-      setAccountMenuOpen(false);
       toast.add({
         title: "Logout successful",
         description: "You have been safely logged out.",
@@ -114,10 +115,13 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
           ><Menu size={19} /></button>}
         </div>
         <nav className="max-h-[calc(100dvh-230px)] space-y-1 overflow-y-auto pr-0.5" aria-label="Admin navigation">
-          {ADMIN_NAVIGATION.map(({ label, icon: Icon, path, section }) => {
-            const active = path && (path === PATHS.admin ? location.pathname === path : location.pathname.startsWith(path));
+          {ADMIN_NAVIGATION.map((item) => {
+            const { key, label, icon: Icon, path, section, children } = item;
+            const hasChildren = Boolean(children?.length);
+            const active = isNavItemActive(item);
+            const expanded = Boolean(expandedMenus[key]);
             return (
-              <div key={label}>
+              <div key={key}>
                 {section && open && (
                   <div className="mb-2 mt-4 px-3 text-[10px] font-semibold tracking-[0.08em] text-slate-400 first:mt-0">
                     {section}
@@ -125,8 +129,19 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
                 )}
                 <button
                   type="button"
-                  title={open ? undefined : label}
+                  title={label}
+                  aria-expanded={hasChildren ? expanded : undefined}
+                  aria-controls={hasChildren ? `sidebar-submenu-${key}` : undefined}
                   onClick={() => {
+                    if (hasChildren) {
+                      if (!open) {
+                        onToggle?.();
+                        setExpandedMenus((prev) => ({ ...prev, [key]: true }));
+                      } else {
+                        setExpandedMenus((prev) => ({ ...prev, [key]: !prev[key] }));
+                      }
+                      return;
+                    }
                     if (path) {
                       navigateTo(path);
                     }
@@ -141,59 +156,55 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
                 >
                   <Icon size={14} strokeWidth={1.8} />
                   <span className={`min-w-0 flex-1 truncate ${open ? "" : "md:hidden"}`}>{label}</span>
+                  {hasChildren && open && (
+                    <ChevronDown
+                      size={14}
+                      className={`shrink-0 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
+                      aria-hidden="true"
+                    />
+                  )}
                   {!open && (
                     <span className="pointer-events-none absolute left-[calc(100%+10px)] z-50 hidden whitespace-nowrap rounded-md bg-slate-900 px-2.5 py-1.5 text-[12px] text-white shadow-lg group-hover:md:block">
                       {label}
                     </span>
                   )}
                 </button>
+                {hasChildren && expanded && open && (
+                  <div
+                    id={`sidebar-submenu-${key}`}
+                    className="ml-5 mt-1 space-y-0.5 border-l border-(--gf-green-border) py-1 pl-2"
+                  >
+                    {children.map((child) => {
+                      const childActive = location.pathname === child.path;
+                      return (
+                        <button
+                          key={child.key}
+                          type="button"
+                          onClick={() => navigateTo(child.path)}
+                          aria-current={childActive ? "page" : undefined}
+                          className={`block w-full rounded-md px-2.5 py-2 text-left text-[11px] leading-tight transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--gf-green) ${
+                            childActive
+                              ? "bg-(--gf-green-soft) font-semibold text-(--gf-green)"
+                              : "font-medium text-slate-600 hover:bg-(--gf-green-soft) hover:text-(--gf-green)"
+                          }`}
+                        >
+                          {child.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           })}
         </nav>
-        <div ref={accountRef} className={`absolute bottom-4 left-2 right-2`}>
-          {accountMenuOpen && (
-            <div
-              role="menu"
-              aria-label="Account options"
-              className={`absolute bottom-[calc(100%+8px)] ${open ? "left-0 right-0" : "left-0 w-[220px]"} overflow-hidden rounded-xl border border-[#e5eaed] bg-white p-1.5 shadow-xl`}
-            >
-              <div className="px-2.5 py-2">
-                <p className="truncate text-[11px] font-bold text-[#263246]">{displayName}</p>
-                <p className="mt-0.5 truncate text-[9px] text-slate-400">System Administrator</p>
-              </div>
-              <div className="my-1 h-px bg-[#eef1f3]" />
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setAccountMenuOpen(false);
-                  setIsSignOutDialogOpen(true);
-                }}
-                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[11px] font-semibold text-red-600 transition hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
-              >
-                <LogOut size={14} />
-                Log out
-              </button>
-            </div>
-          )}
-          <button
-            type="button"
-            onClick={() => setAccountMenuOpen((value) => !value)}
-            aria-haspopup="menu"
-            aria-expanded={accountMenuOpen}
-            aria-label="Account menu"
-            title={open ? undefined : displayName}
-            className={`flex w-full items-center gap-2 rounded-xl border border-[#e5eaed] bg-[#f8fafb] p-2 text-left transition hover:border-(--gf-green-border) hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--gf-green) ${open ? "" : "md:justify-center md:px-0"}`}
-          >
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-(--gf-green) text-[9px] font-bold text-white">
-              {initials}
-            </span>
-            <span className={`min-w-0 flex-1 ${open ? "" : "md:hidden"}`}>
-              <strong className="block truncate text-[10px] text-[#263246]">{displayName}</strong>
-              <span className="block text-[8px] text-slate-400">System Administrator</span>
-            </span>
-            {open && <ChevronDown size={12} className={`shrink-0 text-slate-400 transition-transform ${accountMenuOpen ? "rotate-180" : ""}`} />}
+        <div className="absolute bottom-4 left-2 right-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
+          <div className="flex items-center gap-2">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-(--gf-green) text-[9px] font-bold text-white">{initials}</span>
+            {open && <span className="min-w-0 truncate text-xs font-semibold" title={displayName}>{displayName}</span>}
+          </div>
+          <button type="button" title="Log out" aria-label="Log out" onClick={() => setIsSignOutDialogOpen(true)} className="mt-2 flex min-h-9 w-full items-center justify-center gap-2 rounded-lg text-xs font-semibold text-red-700 hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-300">
+            <LogOut size={14} />{open && "Log out"}
           </button>
         </div>
       </aside>

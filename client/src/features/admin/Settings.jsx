@@ -1,3 +1,4 @@
+import HotlineLink from "../../shared/components/HotlineLink";
 import { useState } from "react";
 import { Bell, Building2, Globe2, KeyRound, Save, ShieldCheck, Smartphone, Users2 } from "lucide-react";
 import { toast } from "../../shared/components/ui/toast";
@@ -44,6 +45,7 @@ export default function AdminSettings() {
                   className="h-8 rounded-md border border-[#dfe5e8] px-2 text-[10px] text-[#263246] outline-none focus:border-(--gf-green)" />
               </label>
             ))}
+            {/^[\d -]+$/.test(profile.hotline) && <HotlineLink number={profile.hotline}>Call </HotlineLink>}
           </div>
         </article>
 

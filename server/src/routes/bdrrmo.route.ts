@@ -1,3 +1,4 @@
+import { notify } from "../services/notifications";
 import { Hono } from "hono";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { ensureIncidentReportSnapshot } from "../services/incidentReportSnapshot.service";
@@ -261,7 +262,7 @@ route.get("/overview", async (c) => {
   });
 });
 
-route.post("/incidents/:incidentId/dispatch", async (c) => {
+route.post("/incidents/:incidentId/dispatch", requireRole("bdrrmo"), async (c) => {
   const db = c.env.geofix167_db;
   const incidentId = c.req.param("incidentId");
   const body = (await c.req.json().catch(() => null)) as {
@@ -300,7 +301,11 @@ route.post("/incidents/:incidentId/dispatch", async (c) => {
   const statements = [];
 
   for (const role of selectedDepts) {
+<<<<<<< HEAD
     if (role === "tanod") continue;
+=======
+    const assignmentId = crypto.randomUUID();
+>>>>>>> 33678143854e6845f3cbe33923a3ea998ce2efc5
     statements.push(
       db.prepare(`
         INSERT INTO responder_dispatches
@@ -309,7 +314,7 @@ route.post("/incidents/:incidentId/dispatch", async (c) => {
            dispatched_by_user_id, target_role, urgency, vehicle_name, status)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'DISPATCHED')
       `).bind(
-        crypto.randomUUID(),
+        assignmentId,
         incident.incident_id,
         incident.title,
         incident.category || "Emergency",
@@ -321,6 +326,8 @@ route.post("/incidents/:incidentId/dispatch", async (c) => {
         urgencyLabel,
         role === "fire" ? "BFP Fire Unit" : "PNP Patrol Unit",
       ),
+      notify(db, { type: "team_dispatched", actorId: currentUser.id, eventId: assignmentId, assignmentId,
+        reportId: incidentId, body: role.toUpperCase() + " dispatched to " + incident.title }),
     );
   }
 
@@ -349,14 +356,18 @@ route.post("/incidents/:incidentId/dispatch", async (c) => {
         }>();
 
     if (resource) {
+<<<<<<< HEAD
       tanodDispatched = true;
+=======
+      const assignmentId = crypto.randomUUID();
+>>>>>>> 33678143854e6845f3cbe33923a3ea998ce2efc5
       statements.push(
         db.prepare(`
           INSERT INTO tanod_assignments
             (tanod_assignment_id, incident_id, tanod_user_id, responder_resource_id, assignment_status_id, assigned_by_user_id, notes)
           VALUES (?, ?, ?, ?, 1, ?, 'BDRRMO Emergency Transport Dispatch')
         `).bind(
-          crypto.randomUUID(),
+          assignmentId,
           incident.incident_id,
           resource.responder_user_id,
           resource.responder_resource_id,
@@ -367,6 +378,8 @@ route.post("/incidents/:incidentId/dispatch", async (c) => {
           SET availability_status = 'BUSY', updated_at = datetime('now')
           WHERE responder_resource_id = ?
         `).bind(resource.responder_resource_id),
+        notify(db, { type: "team_dispatched", actorId: currentUser.id, eventId: assignmentId,
+          assignmentId, reportId: incidentId, body: resource.display_name + " dispatched to " + incident.title }),
       );
     }
   }
@@ -569,6 +582,7 @@ route.post("/incidents/:incidentId/verify-closure", async (c) => {
         (incident_status_event_id, incident_id, from_incident_status_id, to_incident_status_id, changed_by_user_id, note)
       VALUES (?, ?, 9, 9, ?, ?)
     `).bind(crypto.randomUUID(), incidentId, currentUser.id, verifyNote),
+    notify(db, { type: "resolution_ready", actorId: currentUser.id, eventId: incidentId, reportId: incidentId }),
   ]);
 
   return c.json({ ok: true, status: "FOR_CLOSURE_REVIEW", bdrrmo_verified: true });

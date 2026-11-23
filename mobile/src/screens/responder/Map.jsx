@@ -978,7 +978,7 @@ export default function ResponderMap() {
           }
           trackers={
             activeAssignment && currentLocation
-              ? [{ id: 'responder-current', ...currentLocation }]
+              ? [{ id: 'responder-current', roleCode: userRole, role: userRole, ...currentLocation }]
               : []
           }
           fitPoints={fitPoints}

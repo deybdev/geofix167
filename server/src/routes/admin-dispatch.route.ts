@@ -1,3 +1,4 @@
+import { notify } from "../services/notifications";
 import { Hono } from "hono";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middleware/auth";
@@ -20,9 +21,10 @@ route.use("*", ...adminOnly);
 
 route.get("/reports", async (c) => {
   const result = await c.env.geofix167_db.prepare(`
-    SELECT r.incident_id AS id, r.title, r.category, r.description_sanitized AS description,
+    SELECT r.incident_id AS id, r.title, r.category, r.categories, r.description_sanitized AS description,
       r.description_original, r.latitude, r.longitude, r.location_description AS location,
       r.submitted_at, r.is_emergency, r.priority_code, r.within_barangay_boundary,
+      (SELECT min(e.created_at) FROM incident_status_events e WHERE e.incident_id = r.incident_id AND e.to_incident_status_id = 5) AS forwarded_at,
       s.code AS status_code, s.display_name AS status,
       COALESCE(NULLIF(trim(u.first_name || ' ' || u.last_name), ''), gs.display_name, 'Guest') AS reporter
     FROM incident_reports r
@@ -90,11 +92,9 @@ route.post("/reports/:reportId/verify", async (c) => {
   const report = await db.prepare("SELECT is_emergency FROM incident_reports WHERE incident_id = ?")
     .bind(id.data).first<{ is_emergency: number }>();
   if (!report) return c.json({ error: "Report not found." }, 404);
-  const forwardedEmergency = statusCode === "VERIFIED" && report.is_emergency === 1;
-  const statusId = statusCode === "REJECTED" ? 11 : forwardedEmergency ? 5 : 4;
-  const note = body.data.reason || (forwardedEmergency
-    ? "Emergency report verified and forwarded to BDRRMO."
-    : "Report verified by administrator.");
+  if (report.is_emergency) return c.json({ error: "Emergency reports go directly to BDRRMO and do not require admin review." }, 409);
+  const statusId = statusCode === "REJECTED" ? 11 : 4;
+  const note = body.data.reason || "Report verified by administrator.";
   const eventId = crypto.randomUUID();
   const statements = [
     db.prepare(`INSERT INTO incident_status_events
@@ -120,7 +120,7 @@ route.post("/reports/:reportId/verify", async (c) => {
   }
   const result = await db.batch(statements);
   if (!result[1]?.meta.changes) return c.json({ error: "This report is no longer pending verification." }, 409);
-  return c.json({ ok: true, status: forwardedEmergency ? "FORWARDED_TO_BDRRMO" : statusCode });
+  return c.json({ ok: true, status: statusCode });
 });
 
 route.post("/reports/:reportId/dispatch", async (c) => {
@@ -180,6 +180,8 @@ route.post("/reports/:reportId/request-drrmo", async (c) => {
       WHERE incident_id = ? AND incident_status_id IN (1, 2, 4)
         AND EXISTS (SELECT 1 FROM external_support_requests WHERE external_support_request_id = ?)`)
       .bind(id.data, supportId),
+    notify(db, { type: "support_requested", actorId: c.get("user").id, eventId: supportId,
+      reportId: id.data, afterChange: true }),
   ]);
   if (!result[0]?.meta.changes) {
     const exists = await db.prepare("SELECT incident_id, is_emergency FROM incident_reports WHERE incident_id = ?")

@@ -316,7 +316,7 @@ function AnnouncementCard({ ann }) {
   const categoryStyle =
     ANN_CATEGORY_COLORS[ann.category] || ANN_CATEGORY_COLORS.General;
 
-  const isLong = (ann.content?.length ?? 0) > READ_MORE_THRESHOLD;
+  const isLong = (ann.details?.length ?? 0) > READ_MORE_THRESHOLD;
 
   return (
     <View
@@ -353,7 +353,7 @@ function AnnouncementCard({ ann }) {
         numberOfLines={expanded ? undefined : 3}
         style={tw`mt-1 text-xs leading-5 text-slate-600`}
       >
-        {ann.content}
+        {ann.details}
       </Text>
 
       {isLong && (
@@ -384,6 +384,26 @@ export default function Home() {
   const [recentReports, setRecentReports] = useState([]);
   const [activeEmergencyReport, setActiveEmergencyReport] = useState(null);
   const [announcements, setAnnouncements] = useState([]);
+  const [announcementsLoading, setAnnouncementsLoading] = useState(true);
+  const [announcementsError, setAnnouncementsError] = useState(false);
+  const announcementsRequest = useRef(null);
+
+  const loadAnnouncements = useCallback(async () => {
+    announcementsRequest.current?.abort();
+    const request = new AbortController();
+    announcementsRequest.current = request;
+    setAnnouncementsLoading(true);
+    try {
+      const response = await getAnnouncements({ signal: request.signal });
+      if (request.signal.aborted) return;
+      setAnnouncements(response.data.announcements);
+      setAnnouncementsError(false);
+    } catch {
+      if (!request.signal.aborted) setAnnouncementsError(true);
+    } finally {
+      if (!request.signal.aborted) setAnnouncementsLoading(false);
+    }
+  }, []);
   const [incidents, setIncidents] = useState([]);
   const [mapError, setMapError] = useState(false);
   const mapRequest = useRef(null);
@@ -411,10 +431,9 @@ export default function Home() {
   ------------------------------------------ */
 
   const loadDashboard = useCallback(async () => {
-    const [reportsResult, announcementsResult] =
+    const [reportsResult] =
       await Promise.allSettled([
         getReports(),
-        getAnnouncements(),
       ]);
 
     if (!mounted.current) return;
@@ -431,10 +450,6 @@ export default function Home() {
       setError('Could not load reports.');
     }
 
-    if (announcementsResult.status === 'fulfilled') {
-      setAnnouncements(announcementsResult.value.data?.announcements ?? []);
-    }
-
     setLoading(false);
   }, []);
 
@@ -442,18 +457,20 @@ export default function Home() {
     useCallback(() => {
       mounted.current = true;
       void loadMap();
+      void loadAnnouncements();
       loadDashboard();
 
       return () => {
         mounted.current = false;
         mapRequest.current?.abort();
+        announcementsRequest.current?.abort();
       };
-    }, [loadDashboard, loadMap])
+    }, [loadDashboard, loadMap, loadAnnouncements])
   );
 
   const handleRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([loadDashboard(), loadMap()]);
+    await Promise.all([loadDashboard(), loadMap(), loadAnnouncements()]);
     if (mounted.current) setRefreshing(false);
   };
 
@@ -670,9 +687,30 @@ export default function Home() {
           </View>
         </SectionHeader>
 
-        {loading && <LoadingState label="Loading announcements..." />}
+        {announcementsError && (
+          <View style={tw`mb-3 rounded-xl bg-red-50 p-3`}>
+            <Text accessibilityRole="alert" style={tw`text-xs text-red-600`}>
+              Could not load announcements. Please try again.
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Retry announcements"
+              disabled={announcementsLoading}
+              onPress={loadAnnouncements}
+              style={tw`mt-2 self-start`}
+            >
+              <Text style={tw`text-xs font-semibold text-green-700`}>
+                {announcementsLoading ? 'Retrying...' : 'Retry'}
+              </Text>
+            </Pressable>
+          </View>
+        )}
 
-        {!loading && announcements.length === 0 && (
+        {announcementsLoading && announcements.length === 0 && (
+          <LoadingState label="Loading announcements..." />
+        )}
+
+        {!announcementsLoading && !announcementsError && announcements.length === 0 && (
           <View style={tw`rounded-xl bg-white px-4 py-6`}>
             <Text style={tw`text-center text-sm text-slate-500`}>
               No announcements at this time.
@@ -680,10 +718,10 @@ export default function Home() {
           </View>
         )}
 
-        {!loading && announcements.length > 0 && (
+        {announcements.length > 0 && (
           <View style={tw`gap-3`}>
             {announcements.map((ann) => (
-              <AnnouncementCard key={ann.public_id} ann={ann} />
+              <AnnouncementCard key={ann.id} ann={ann} />
             ))}
           </View>
         )}

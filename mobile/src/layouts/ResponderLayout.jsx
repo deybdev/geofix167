@@ -163,7 +163,8 @@ function NavTab({ item, isActive, onPress }) {
 }
 
 export default function ResponderLayout({ children }) {
-  const { user, onDuty, toggleDuty } = useAuth();
+  const { user, onDuty, toggleDuty, dutyBusy, dutyError, retryDuty } = useAuth();
+  const navigation = useNavigation();
   const { name: currentRoute } = useRoute();
   const role = String(user?.role || '').toLowerCase();
 
@@ -191,10 +192,11 @@ export default function ResponderLayout({ children }) {
             </View>
 
             <Pressable
+              disabled={dutyBusy || onDuty === null}
               onPress={() => void toggleDuty()}
               accessibilityRole="button"
               accessibilityLabel={onDuty ? 'Set responder off duty' : 'Set responder on duty'}
-              accessibilityState={{ selected: onDuty }}
+              accessibilityState={{ selected: onDuty === true }}
               style={({ pressed }) => [
                 tw`flex-row items-center rounded-full border px-2.5 py-2 ${onDuty ? 'border-green-200 bg-green-50' : 'border-slate-200 bg-slate-100'
                   }`,
@@ -211,13 +213,19 @@ export default function ResponderLayout({ children }) {
                 style={tw`pr-0.5 text-[10px] font-bold ${onDuty ? 'text-[#1F7A4D]' : 'text-slate-500'
                   }`}
               >
-                {onDuty ? 'ON DUTY' : 'OFF DUTY'}
+                {onDuty === null ? 'Duty unconfirmed' : onDuty ? 'ON DUTY' : 'OFF DUTY'}
               </Text>
             </Pressable>
           </View>
         </>
       ) : null}
 
+      {dutyError && <View style={tw`bg-red-50 px-4 py-2`}>
+        <Text accessibilityRole="alert">{dutyError}</Text>
+        <Pressable accessibilityRole="button" disabled={dutyBusy} onPress={retryDuty}>
+          <Text style={tw`py-2 font-bold text-green-700`}>Retry duty status</Text>
+        </Pressable>
+      </View>}
       {/* Content */}
       <View style={tw`flex-1`}>
         <View style={tw`flex-1`}>{children}</View>

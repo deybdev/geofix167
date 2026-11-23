@@ -1,11 +1,8 @@
 import {
   BarChart3,
   BookOpen,
-  CheckSquare,
-  ClipboardList,
   Grid2X2,
   Megaphone,
-  Radio,
   Settings,
   ShieldCheck,
   Users,
@@ -21,23 +18,10 @@ export const ADMIN_NAVIGATION = [
     section: "MAIN MENU",
   },
   {
-    key: "incident-reports",
-    label: "Incident Reports",
-    icon: ClipboardList,
-    path: PATHS.adminIncidentReports,
-  },
-  { key: "dispatch", label: "Dispatch Responders", icon: Radio, path: PATHS.adminDispatch },
-  {
     key: "maintenance-tasks",
     label: "Maintenance Tasks",
     icon: ShieldCheck,
     path: PATHS.adminMaintenanceTasks,
-  },
-  {
-    key: "resolution-verification",
-    label: "Resolution & Verification",
-    icon: CheckSquare,
-    path: PATHS.adminResolutionVerification,
   },
   {
     key: "announcements",
@@ -50,18 +34,24 @@ export const ADMIN_NAVIGATION = [
     label: "Accomplishment Log",
     icon: BookOpen,
     path: PATHS.adminAccomplishmentLog,
+    children: [
+      {
+        key: "barangay-accomplishments",
+        label: "Barangay Accomplishments",
+        path: PATHS.adminAccomplishmentLog,
+      },
+      {
+        key: "bdrrmo-completed-tasks",
+        label: "BDRRMO Completed Tasks",
+        path: PATHS.adminBdrrmoAccomplishments,
+      },
+    ],
   },
   {
     key: "residents",
-    label: "Residents & Access",
+    label: "Residents & Registration",
     icon: Users,
     path: PATHS.adminResidents,
-  },
-  {
-    key: "registrations",
-    label: "Registrations",
-    icon: ShieldCheck,
-    path: PATHS.adminRegistrations,
   },
   {
     key: "reports-analytics",

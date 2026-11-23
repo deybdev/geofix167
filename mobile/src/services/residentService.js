@@ -246,73 +246,12 @@ export async function updateReportDetails(id, { description_sanitized, location_
   }));
 }
 
-// Announcements and notifications are separate demo features, not report data.
-export const SAMPLE_ANNOUNCEMENTS = [
-  {
-    public_id: "ann_001",
-    title: "Barangay De-Clogging & Cleanliness Drive",
-    content:
-      "De-clogging and desilting operations scheduled across Molave, Sampaguita, and Prosera Streets this Saturday starting 7:00 AM. Residents are requested to coordinate waste segregation with Barangay Agents.",
-    category: "Clean & Green",
-    published_at: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(),
-    author_name: "Admin",
-  },
-  {
-    public_id: "ann_002",
-    title: "Heavy Rainfall Alert & Emergency Hotline Standby",
-    content:
-      "PAGASA monsoon rains forecast for Northern Caloocan. BDRRMO response teams are stationed on 24/7 emergency alert. Report waterlogged areas immediately via GeoFix 167 or call Hotline 668-338-3141.",
-    category: "BDRRMO Advisory",
-    published_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    author_name: "Admin",
-  },
-  {
-    public_id: "ann_003",
-    title: "Free Anti-Rabies Vaccination & Medical Mission",
-    content:
-      "Caloocan City Health Department in partnership with Barangay 167 will conduct free pet anti-rabies vaccination and adult blood pressure checkups at the Barangay Covered Court this Tuesday from 8:00 AM to 3:00 PM.",
-    category: "Health & Safety",
-    published_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-    author_name: "Admin",
-  },
-];
-
-export const SAMPLE_NOTIFICATIONS = [
-  {
-    id: 1,
-    title: "Team Dispatched",
-    body: "A maintenance team has been dispatched to address your drainage report.",
-    type: "report_update",
-    ref_id: "rpt_a1b2c3d4",
-    is_read: 0,
-    created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 2,
-    title: "Report Submitted",
-    body: "Your report about clogged drainage has been received and is under review.",
-    type: "report_update",
-    ref_id: "rpt_a1b2c3d4",
-    is_read: 0,
-    created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: 3,
-    title: "Report Resolved",
-    body: "Your pothole report on Balagtas St. has been resolved. Thank you for reporting!",
-    type: "report_update",
-    ref_id: "rpt_i9j0k1l2",
-    is_read: 1,
-    created_at: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-];
-
-// Simulated async helpers — swap these for real axios calls later.
-const delay = (ms = 300) => new Promise((res) => setTimeout(res, ms));
-
-export async function getAnnouncements() {
-  await delay();
-  return { data: { announcements: SAMPLE_ANNOUNCEMENTS } };
+export async function getAnnouncements({ signal } = {}) {
+  const response = await api.get('/announcements', { signal });
+  if (!Array.isArray(response.data?.announcements)) {
+    throw new Error('Invalid announcements response');
+  }
+  return response;
 }
 
 export async function getNotifications({ signal, cursor } = {}) {
@@ -328,17 +267,18 @@ export async function getNotifications({ signal, cursor } = {}) {
   return response;
 }
 
-export async function markNotificationRead(id) {
-  await delay(100);
-  const n = SAMPLE_NOTIFICATIONS.find((n) => n.id === id);
-  if (n) n.is_read = 1;
-  return { data: { ok: true } };
+async function patchRead(path) {
+  const response = await api.patch(path);
+  if (response.data?.ok !== true) throw new Error('Unable to confirm notification read status.');
+  return response;
 }
 
-export async function markAllNotificationsRead() {
-  await delay(100);
-  SAMPLE_NOTIFICATIONS.forEach((n) => { n.is_read = 1; });
-  return { data: { ok: true } };
+export function markNotificationRead(id) {
+  return patchRead(`/notifications/${encodeURIComponent(id)}/read`);
+}
+
+export function markAllNotificationsRead() {
+  return patchRead('/notifications/read-all');
 }
 
 export async function discardReport(publicId, { signal } = {}) {

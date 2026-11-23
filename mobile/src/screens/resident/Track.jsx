@@ -15,7 +15,6 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  AlertCircle,
   AlertTriangle,
   Check,
   ChevronDown,
@@ -57,10 +56,6 @@ const NATIONAL_EMERGENCY = '911';
 const STALE_MS = 30000; // responder position older than this is flagged
 const MAX_MESSAGE = 300;
 
-// The live simulator below only runs in development so a fake responder can
-// never appear on a real emergency. In production the screen waits for the
-// real backend feed (see subscribeToTracking).
-const USE_SIMULATION = typeof __DEV__ !== 'undefined' && __DEV__;
 
 const STATUS_STEPS = [
   { key: 'received', label: 'Report received', hint: 'The barangay has your report.' },
@@ -247,244 +242,6 @@ function boundsCorners(points) {
   ];
 }
 
-// Resample a polyline so consecutive points are about `step` meters apart.
-function densify(points, step = 25) {
-  const out = [points[0]];
-
-  for (let i = 0; i < points.length - 1; i += 1) {
-    const a = points[i];
-    const b = points[i + 1];
-    const parts = Math.max(1, Math.round((distanceMeters(a, b) || 0) / step));
-
-    for (let k = 1; k <= parts; k += 1) {
-      out.push({
-        lat: a.lat + ((b.lat - a.lat) * k) / parts,
-        lng: a.lng + ((b.lng - a.lng) * k) / parts,
-      });
-    }
-  }
-
-  return out;
-}
-
-/* -----------------------------------------
-   TRACKING SERVICE
-   ----------------------------------------
-   Replace the two functions below with your realtime backend (Firestore
-   onSnapshot, Supabase realtime, WebSocket, etc.). The screen only relies on
-   this contract:
-
-   subscribeToTracking(reportId, handlers) -> unsubscribe()
-     handlers.onReport({ status, priority, location: {lat,lng} })
-     handlers.onResponder(null | {
-       id, name, role, phone,
-       location: { lat, lng, updatedAt (ms) },
-       etaMinutes?
-     })
-     handlers.onRoute(points: [{ lat, lng }])
-     handlers.onMessage({ id, from: 'responder' | 'system', text, at (ms) })
-     handlers.onError(error)
-
-   sendResponderMessage(reportId, text) -> Promise (reject on failure)
------------------------------------------- */
-
-let simHandlers = null;
-
-function simulateTracking(reportId, handlers, initialReport) {
-  simHandlers = handlers;
-
-  // Demo coordinates only (development builds).
-  const incident = initialReport?.location ?? { lat: 14.5995, lng: 120.9842 };
-  let responderPos = { lat: incident.lat + 0.007, lng: incident.lng + 0.006 };
-  let mover = null;
-  let cancelled = false;
-  const timers = [];
-  const STEP_METERS = 25;
-
-  const payload = (pos, etaMinutes) => ({
-    id: 'sim-1',
-    name: 'Kgd. Ramon Dela Cruz',
-    role: 'Barangay Tanod',
-    phone: HOTLINE,
-    location: { ...pos, updatedAt: Date.now() },
-    etaMinutes,
-  });
-
-  // Fetch the real road route up front so the simulated responder drives along it.
-  const routePromise = fetchRoadRoute(responderPos, incident).catch(() => null);
-
-  handlers.onReport({
-    status: 'received',
-    priority: initialReport?.priority ?? 1,
-    location: incident,
-  });
-
-  timers.push(setTimeout(() => handlers.onReport({ status: 'validated' }), 3000));
-
-  timers.push(
-    setTimeout(async () => {
-      const info = await routePromise;
-      if (cancelled) return;
-
-      if (info) responderPos = info.points[0];
-
-      handlers.onReport({ status: 'dispatched' });
-      handlers.onResponder(payload(responderPos, 5));
-      handlers.onMessage({
-        id: 'sim-m1',
-        from: 'responder',
-        text: 'Copy. I am heading to your location now.',
-        at: Date.now(),
-      });
-    }, 6000)
-  );
-
-  timers.push(
-    setTimeout(async () => {
-      const info = await routePromise;
-      if (cancelled) return;
-
-      const path = info
-        ? densify(info.points, STEP_METERS)
-        : densify([responderPos, incident], STEP_METERS);
-
-      let i = 0;
-      handlers.onReport({ status: 'on_the_way' });
-
-      mover = setInterval(() => {
-        i = Math.min(i + 1, path.length - 1);
-        responderPos = path[i];
-
-        const remaining = (path.length - 1 - i) * STEP_METERS;
-        handlers.onResponder(payload(responderPos, Math.max(1, Math.ceil(remaining / 500))));
-
-        if (i >= path.length - 1) {
-          clearInterval(mover);
-          mover = null;
-          handlers.onReport({ status: 'arrived' });
-        }
-      }, 2000);
-    }, 8000)
-  );
-
-  return () => {
-    cancelled = true;
-    timers.forEach(clearTimeout);
-    if (mover) clearInterval(mover);
-    simHandlers = null;
-  };
-}
-
-function subscribeToTracking(reportId, handlers, initialReport) {
-  if (!reportId || reportId === 'demo') {
-    return simulateTracking(reportId, handlers, initialReport);
-  }
-
-  let cancelled = false;
-
-  const pollLiveTracking = async () => {
-    try {
-      const { data } = await getReportDetails(reportId);
-      if (cancelled || !data?.report) return;
-      const rep = data.report;
-      const units = Array.isArray(rep.dispatched_units) ? rep.dispatched_units : [];
-
-      const anyCompleted = units.some((u) => u.status === 'COMPLETED') || rep.status_id === 10 || rep.status_id === 9;
-      const anyOnScene = units.some((u) => u.status === 'ON_SCENE') || rep.status_id === 8;
-      const anyMoving = units.some((u) => ['ACCEPTED', 'EN_ROUTE'].includes(u.status) || u.location) || rep.status_id === 7;
-      const anyDispatched = units.length > 0 || [6, 13, 14].includes(rep.status_id);
-      const isValidated = [4, 5].includes(rep.status_id);
-
-      const trackedStatus = anyCompleted
-        ? 'resolved'
-        : anyOnScene
-          ? 'arrived'
-          : anyMoving
-            ? 'on_the_way'
-            : anyDispatched
-              ? 'dispatched'
-              : isValidated
-                ? 'validated'
-                : 'received';
-
-      const loc =
-        Number.isFinite(rep.latitude) && Number.isFinite(rep.longitude)
-          ? { lat: rep.latitude, lng: rep.longitude }
-          : initialReport?.location || null;
-
-      handlers.onReport({
-        status: trackedStatus,
-        priority: rep.urgency === 'Critical' ? 1 : rep.urgency === 'High' ? 2 : initialReport?.priority ?? 1,
-        location: loc,
-      });
-
-      const normalizedUnits = units
-        .filter((u) => !['DECLINED', 'CANCELLED'].includes(u.status))
-        .map((u) => ({
-          id: u.id,
-          name: u.name,
-          role:
-            u.role === 'fire'
-              ? 'BFP Fire Protection'
-              : u.role === 'police'
-                ? 'PNP Police Responder'
-                : 'Barangay Tanod',
-          roleCode: u.role,
-          status: u.status,
-          phone: HOTLINE,
-          location:
-            u.location && Number.isFinite(Number(u.location.lat)) && Number.isFinite(Number(u.location.lng))
-              ? {
-                  lat: Number(u.location.lat),
-                  lng: Number(u.location.lng),
-                  heading: u.location.heading,
-                  updatedAt: Date.parse(u.location.updated_at) || Date.now(),
-                }
-              : null,
-        }));
-
-      handlers.onResponders?.(normalizedUnits);
-
-      const leadUnit =
-        normalizedUnits.find((u) => u.location) ||
-        normalizedUnits.find((u) => ['ON_SCENE', 'EN_ROUTE', 'ACCEPTED'].includes(u.status)) ||
-        normalizedUnits[0] ||
-        null;
-
-      handlers.onResponder(leadUnit);
-    } catch {
-      // Keep last known tracking state during transient network hiccups
-    }
-  };
-
-  void pollLiveTracking();
-  const timer = setInterval(pollLiveTracking, 4000);
-
-  return () => {
-    cancelled = true;
-    clearInterval(timer);
-  };
-}
-
-async function sendResponderMessage(reportId, text) {
-  if (USE_SIMULATION) {
-    await new Promise((resolve) => setTimeout(resolve, 400));
-
-    setTimeout(() => {
-      simHandlers?.onMessage({
-        id: `sim-r-${Date.now()}`,
-        from: 'responder',
-        text: 'Message received. Stay safe, I am almost there.',
-        at: Date.now(),
-      });
-    }, 1800);
-    return;
-  }
-
-  // TODO: send the message through your backend.
-  throw new Error("Messaging isn't connected to the backend yet.");
-}
-
 /* -----------------------------------------
    SMALL COMPONENTS
 ------------------------------------------ */
@@ -534,13 +291,17 @@ function PulseDot({ color, size = 10 }) {
 }
 
 function getHeadline(report, responder, arrived, etaMinutes) {
+  if (report.status === 'loading') return { title: 'Loading tracking...', sub: 'Checking the latest report status.', tone: 'wait' };
+  if (report.status === 'unavailable') return { title: 'Tracking unavailable', sub: 'This report is missing, unavailable, or you do not have access.', tone: 'wait' };
+  if (report.status === 'closure_review') return { title: 'Awaiting closure review', sub: 'The report is still active pending final review.', tone: 'wait' };
+  if (report.status === 'inactive') return { title: report.status_label || 'Report closed', sub: 'Active emergency tracking has ended.', tone: 'wait' };
   if (report.status === 'resolved') {
     return { title: 'Emergency resolved', sub: 'Thank you for reporting.', tone: 'good' };
   }
   if (arrived) {
-    return { title: 'Responder has arrived', sub: 'Help is at your location.', tone: 'good' };
+    return { title: 'Responder arrived', sub: 'Help is at your location.', tone: 'good' };
   }
-  if (responder && report.status === 'on_the_way') {
+  if (report.status === 'on_the_way') {
     return {
       title: etaMinutes
         ? `Responder on the way · ${etaMinutes} min`
@@ -549,10 +310,10 @@ function getHeadline(report, responder, arrived, etaMinutes) {
       tone: 'live',
     };
   }
-  if (responder) {
+  if (report.status === 'dispatched') {
     return {
       title: 'Responder assigned',
-      sub: `${responder.name} is getting ready to head out.`,
+      sub: responder ? `${responder.name} is getting ready to head out.` : 'A responder has been assigned.',
       tone: 'live',
     };
   }
@@ -776,9 +537,12 @@ function MessageBubble({ message, onRetry }) {
 ------------------------------------------ */
 
 export default function Track({ reportId: reportIdProp, route }) {
-  const reportId = reportIdProp ?? route?.params?.reportId ?? 'demo';
-  const initialLocation = route?.params?.location ?? null;
-  const initialPriority = route?.params?.priority ?? null;
+  const value = reportIdProp ?? route?.params?.reportId;
+  const reportId = typeof value === 'string' ? value.trim() : '';
+  return <TrackingSession key={reportId} reportId={reportId} />;
+}
+
+function TrackingSession({ reportId }) {
 
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
@@ -789,9 +553,9 @@ export default function Track({ reportId: reportIdProp, route }) {
 
   const [report, setReport] = useState({
     id: reportId,
-    status: 'received',
-    priority: initialPriority,
-    location: initialLocation,
+    status: 'loading',
+    priority: null,
+    location: null,
   });
   const [responder, setResponder] = useState(null);
   const [dispatchedUnits, setDispatchedUnits] = useState([]);
@@ -807,7 +571,7 @@ export default function Track({ reportId: reportIdProp, route }) {
   const [messages, setMessages] = useState([]);
   const [error, setError] = useState(null);
   const [draft, setDraft] = useState('');
-  const [now, setNow] = useState(Date.now());
+  const [now, setNow] = useState(() => Date.now());
 
   const [expanded, setExpanded] = useState(false);
   const [tab, setTab] = useState('progress'); // 'progress' | 'messages'
@@ -816,29 +580,27 @@ export default function Track({ reportId: reportIdProp, route }) {
   /* ---------- realtime subscription ---------- */
 
   useEffect(() => {
-    setReport({
-      id: reportId,
-      status: 'received',
-      priority: initialPriority,
-      location: initialLocation,
-    });
-    setResponder(null);
-    setRoadRoute([]);
-    setRouteInfo(null);
-    setFitPoints(null);
-    routeInfoRef.current = null;
-    routeFetchingRef.current = false;
-    lastRouteFetchRef.current = 0;
-    routeSessionRef.current += 1;
-    fitStageRef.current = 0;
-    setMessages([]);
-    setSeenCount(0);
-    setError(null);
-
+    let cancelled = false;
+    let hasReport = false;
     const unsubscribe = subscribeToTracking(
       reportId,
       {
-        onReport: (patch) => setReport((current) => ({ ...current, ...patch })),
+        onReport: (patch) => {
+          hasReport = true;
+          setError(null);
+          setReport((current) => ({ ...current, ...patch }));
+        },
+        onUnavailable: () => {
+          hasReport = false;
+          setReport({ id: reportId, status: 'unavailable', location: null, priority: null });
+          setResponder(null);
+          setDispatchedUnits([]);
+          setMessages([]);
+          setRouteInfo(null);
+          setRoadRoute([]);
+          setFitPoints(null);
+          routeSessionRef.current += 1;
+        },
         onResponder: (next) => setResponder(next),
         onResponders: (list) => setDispatchedUnits(Array.isArray(list) ? list : []),
         onRoute: (points) => {
@@ -854,8 +616,7 @@ export default function Track({ reportId: reportIdProp, route }) {
             current.some((item) => item.id === message.id) ? current : [...current, message]
           ),
         onError: (err) => setError(err?.message || 'Could not connect to live tracking.'),
-      },
-      { location: initialLocation, priority: initialPriority }
+      }
     );
 
     const mapIncidentMsg = (item) => {
@@ -883,12 +644,37 @@ export default function Track({ reportId: reportIdProp, route }) {
     };
 
     const pollMessages = () => {
-      if (!reportId) return;
+      if (cancelled || !hasReport) return;
       getIncidentMessages(reportId)
         .then((loaded) => {
-          setMessages(loaded.map(mapIncidentMsg));
+          if (cancelled || !hasReport) return;
+          setMessages(
+            loaded.map((item) => {
+              const role = String(item.sender_role || '').toLowerCase();
+              const roleBadge =
+                role === 'bdrrmo'
+                  ? 'BDRRMO Dispatcher'
+                  : role === 'admin'
+                    ? 'Barangay Dispatcher'
+                    : role === 'fire'
+                      ? 'BFP Fire Unit'
+                      : role === 'police'
+                        ? 'PNP Police Unit'
+                        : role === 'tanod'
+                          ? 'Barangay Tanod'
+                          : 'Responder';
+              return {
+                id: item.id,
+                from: role === 'resident' ? 'resident' : 'responder',
+                senderLabel: item.sender_name ? `${item.sender_name} • ${roleBadge}` : roleBadge,
+                text: item.body,
+                at: Date.parse(item.sent_at) || Date.now(),
+                state: 'sent',
+              };
+            }),
+          );
         })
-        .catch(() => {});
+        .catch(() => { });
     };
 
     pollMessages();
@@ -903,11 +689,13 @@ export default function Track({ reportId: reportIdProp, route }) {
     });
 
     return () => {
+      cancelled = true;
+      routeSessionRef.current += 1;
       clearInterval(messageTimer);
       closeSocket();
       unsubscribe();
     };
-  }, [reportId, initialLocation, initialPriority]);
+  }, [reportId]);
 
   // Re-render periodically so "updated Xs ago" and the stale warning stay true.
   useEffect(() => {
@@ -918,13 +706,13 @@ export default function Track({ reportId: reportIdProp, route }) {
   /* ---------- derived state ---------- */
 
   const resolved = report.status === 'resolved';
-  const stepIndex = resolved
+  const stepIndex = resolved || report.status === 'closure_review'
     ? STATUS_STEPS.length
     : Math.max(
-        STATUS_STEPS.findIndex((step) => step.key === report.status),
-        0
-      );
-  const arrived = report.status === 'arrived' || resolved;
+      STATUS_STEPS.findIndex((step) => step.key === report.status),
+      -1
+    );
+  const arrived = report.status === 'arrived';
 
   const distance = useMemo(
     () => distanceMeters(responder?.location, report.location),
@@ -962,7 +750,7 @@ export default function Track({ reportId: reportIdProp, route }) {
   // Fetch the real road route once the responder has a position, and again only
   // if they drift well off it. GPS ticks alone never trigger a request.
   useEffect(() => {
-    if (routeFromBackend || arrived || !report.location || !hasResponderPoint) return;
+    if (routeFromBackend || report.status !== 'on_the_way' || !report.location || !hasResponderPoint) return;
     if (routeFetchingRef.current) return;
 
     const here = { lat: responderLat, lng: responderLng };
@@ -984,11 +772,11 @@ export default function Track({ reportId: reportIdProp, route }) {
       .then((info) => {
         if (routeSessionRef.current === session) setRouteInfo(info);
       })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => {
         if (routeSessionRef.current === session) routeFetchingRef.current = false;
       });
-  }, [routeFromBackend, arrived, report.location, hasResponderPoint, responderLat, responderLng]);
+  }, [routeFromBackend, report.status, report.location, hasResponderPoint, responderLat, responderLng]);
 
   const baseRoute = routeFromBackend ? roadRoute : routeInfo?.points;
 
@@ -1008,11 +796,11 @@ export default function Track({ reportId: reportIdProp, route }) {
 
   // The line drawn on the map: from the responder's current position to the incident.
   const displayRoute = useMemo(() => {
-    if (arrived) return [];
+    if (report.status !== 'on_the_way') return [];
     if (!baseRoute || baseRoute.length < 2) return [];
     if (!snapped) return baseRoute;
     return snapped.rest.length ? [snapped.position, ...snapped.rest] : [];
-  }, [arrived, baseRoute, snapped]);
+  }, [report.status, baseRoute, snapped]);
 
   // Heading follows the road ahead (ignoring tiny segments so it doesn't jitter).
   const heading = useMemo(() => {
@@ -1039,28 +827,32 @@ export default function Track({ reportId: reportIdProp, route }) {
         heading: u.location.heading,
         rotation: u.location.heading,
         label: u.name,
+        roleCode: u.roleCode,
+        role: u.role,
         type: 'responder',
         stale: false,
       }));
 
     const leadTracker = trackerValid
       ? [
-          {
-            id: responderId,
-            lat: trackerLat,
-            lng: trackerLng,
-            color: stale ? COLORS.accent : COLORS.primary,
-            heading,
-            rotation: heading,
-            label: responderName,
-            type: 'responder',
-            stale,
-          },
-        ]
+        {
+          id: responderId,
+          lat: trackerLat,
+          lng: trackerLng,
+          color: stale ? COLORS.accent : COLORS.primary,
+          heading,
+          rotation: heading,
+          label: responderName,
+          roleCode: responder?.roleCode,
+          role: responder?.role,
+          type: 'responder',
+          stale,
+        },
+      ]
       : [];
 
     return [...leadTracker, ...extraTrackers];
-  }, [trackerValid, trackerLat, trackerLng, heading, stale, responderId, responderName, dispatchedUnits]);
+  }, [trackerValid, trackerLat, trackerLng, heading, stale, responderId, responderName, responder?.roleCode, responder?.role, dispatchedUnits]);
 
   const trackingRoutes = useMemo(
     () =>
@@ -1122,7 +914,7 @@ export default function Track({ reportId: reportIdProp, route }) {
 
   const send = () => {
     const text = draft.trim();
-    if (!text) return;
+    if (!text || !chatAvailable) return;
 
     const id = `local-${Date.now()}`;
     setMessages((current) => [
@@ -1147,7 +939,7 @@ export default function Track({ reportId: reportIdProp, route }) {
   };
 
   // Residents can always message the BDRRMO Dispatcher or assigned responders during an emergency.
-  const chatAvailable = true;
+  const chatAvailable = !['loading', 'unavailable'].includes(report.status);
   const activeTab = tab;
 
   // Keep the pager on the selected tab (tap on the tab bar, or openChat()).
@@ -1209,7 +1001,7 @@ export default function Track({ reportId: reportIdProp, route }) {
               Emergency Tracking
             </Text>
             <Text numberOfLines={1} style={tw`mt-0.5 text-[11px] text-slate-500`}>
-              Report #{String(reportId).slice(-6).toUpperCase()}
+              {reportId ? `Report #${reportId.slice(-6).toUpperCase()}` : 'No report selected'}
             </Text>
           </View>
 
@@ -1268,22 +1060,22 @@ export default function Track({ reportId: reportIdProp, route }) {
               </View>
             </View>
 
+            {error && (
+              <View style={tw`mt-3 rounded-xl bg-red-50 p-3`}>
+                <Text accessibilityRole="alert" style={tw`text-xs text-red-700`}>{error}</Text>
+              </View>
+            )}
+
             {/* no responder yet */}
             {!responder && !resolved && (
               <View style={[tw`mt-3 rounded-2xl p-3.5`, { backgroundColor: COLORS.emergencyTint }]}>
-                {error && (
-                  <View style={tw`mb-3 flex-row items-start rounded-xl bg-white p-3`}>
-                    <AlertCircle size={14} color={COLORS.emergency} style={tw`mt-0.5`} />
-                    <Text style={tw`ml-2 flex-1 text-xs leading-4 text-red-700`}>{error}</Text>
-                  </View>
-                )}
-
                 <Text style={[tw`text-xs font-bold`, { color: COLORS.emergencyDark }]}>
                   In immediate danger? Don’t wait, call now.
                 </Text>
                 <EmergencyCallRow />
 
                 <Pressable
+                  disabled={!chatAvailable}
                   onPress={openChat}
                   accessibilityRole="button"
                   accessibilityLabel="Message BDRRMO Dispatcher"
@@ -1363,7 +1155,7 @@ export default function Track({ reportId: reportIdProp, route }) {
                           { color: stale ? '#B45309' : '#047857' },
                         ]}
                       >
-                        {stale ? 'Not updating' : 'Live'}
+                        {!responder.location ? 'No GPS' : stale ? 'Not updating' : 'Live'}
                       </Text>
                     </View>
                   )}
@@ -1373,12 +1165,12 @@ export default function Track({ reportId: reportIdProp, route }) {
                   <Stat
                     icon={Clock}
                     label="ETA"
-                    value={arrived ? 'Arrived' : etaMinutes ? `${etaMinutes} min` : '—'}
+                    value={responder.status === 'ON_SCENE' ? 'Arrived' : report.status === 'on_the_way' && etaMinutes ? `${etaMinutes} min` : '—'}
                   />
                   <Stat
                     icon={Navigation}
                     label="Distance"
-                    value={arrived ? '0 m' : formatDistance(roadDistance ?? distance)}
+                    value={formatDistance(roadDistance ?? distance)}
                   />
                   <View style={[tw`flex-1 rounded-2xl px-3 py-2.5`, { backgroundColor: COLORS.surface }]}>
                     <View style={tw`flex-row items-center`}>
@@ -1393,7 +1185,7 @@ export default function Track({ reportId: reportIdProp, route }) {
                         { color: stale ? '#B45309' : '#0F172A' },
                       ]}
                     >
-                      {secondsAgo < 5 ? 'Now' : `${secondsAgo}s`}
+                      {!responder.location?.updatedAt ? '—' : secondsAgo < 5 ? 'Now' : `${secondsAgo}s`}
                     </Text>
                   </View>
                 </View>
@@ -1432,22 +1224,22 @@ export default function Track({ reportId: reportIdProp, route }) {
                     const responderPhone =
                       responder.phone || dispatchedUnits.find((u) => u.phone)?.phone || HOTLINE;
                     return (
-                  <Pressable
-                    onPress={() => callNumber(responderPhone)}
-                    disabled={!responderPhone}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Call ${responder.name}`}
-                    style={({ pressed }) => [
-                      tw`mr-3 h-12 flex-1 flex-row items-center justify-center rounded-2xl`,
-                      {
-                        backgroundColor: COLORS.primary,
-                        opacity: !responderPhone ? 0.4 : pressed ? 0.8 : 1,
-                      },
-                    ]}
-                  >
-                    <Phone size={17} color="#FFFFFF" />
-                    <Text style={tw`ml-2 text-sm font-extrabold text-white`}>Call</Text>
-                  </Pressable>
+                      <Pressable
+                        onPress={() => callNumber(responderPhone)}
+                        disabled={!responderPhone}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Call ${responder.name}`}
+                        style={({ pressed }) => [
+                          tw`mr-3 h-12 flex-1 flex-row items-center justify-center rounded-2xl`,
+                          {
+                            backgroundColor: COLORS.primary,
+                            opacity: !responderPhone ? 0.4 : pressed ? 0.8 : 1,
+                          },
+                        ]}
+                      >
+                        <Phone size={17} color="#FFFFFF" />
+                        <Text style={tw`ml-2 text-sm font-extrabold text-white`}>Call</Text>
+                      </Pressable>
                     );
                   })()}
 

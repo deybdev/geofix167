@@ -4,9 +4,9 @@ import { ModalShell } from "../../../../../shared/components/GovernanceUi";
 function AuditTrailModal({ log, filter, onFilter, onClose }) {
   const entries = log.filter((entry) => filter === "All reports" || entry.reportId === filter);
   return (
-    <ModalShell title="Comprehensive Audit Trail" subtitle="Append-only, tamper-evident record of every governed action" onClose={onClose} width="max-w-[780px]" backdrop="z-[95]" panel="z-[105]"
+    <ModalShell title="Comprehensive Audit Trail" subtitle="Report status history and admin activity" onClose={onClose} width="max-w-[780px]" backdrop="z-[95]" panel="z-[105]"
       footer={<footer className="gf-modal-foot" style={{ justifyContent: "space-between" }}>
-        <span className="flex items-center gap-1 text-[9px] text-[#7184a0]"><Lock size={10} />Retention: 5 years (3–5-year configurable policy). Entries can never be edited or deleted.</span>
+        <span className="flex items-center gap-1 text-[9px] text-[#7184a0]"><Lock size={10} />Report history</span>
         <button type="button" onClick={onClose} className="gf-btn gf-btn--primary">Close</button>
       </footer>}>
       <div className="gf-modal-body">

@@ -18,6 +18,7 @@ import { stripSelectedDetails } from "../utils/stripSelectedDetails";
 async function getDispatchedUnitsForIncidents(
   db: AppEnv["Bindings"]["geofix167_db"],
   incidentIds: string[],
+  includeDispatcher = false,
 ) {
   const unitsByIncident = new Map<
     string,
@@ -28,6 +29,10 @@ async function getDispatchedUnitsForIncidents(
       phone: string | null;
       status: string;
       dispatched_at: string | null;
+      dispatcher_role?: string;
+      dispatched_by?: string;
+      responder?: string;
+      contact?: string;
       location: { lat: number; lng: number; heading: number | null; updated_at: string } | null;
     }>
   >();
@@ -37,17 +42,24 @@ async function getDispatchedUnitsForIncidents(
     const [tanodRows, agencyRows, locRows, rolePhones] = await Promise.all([
       db.prepare(`
         SELECT ta.tanod_assignment_id AS id, ta.incident_id, ta.assignment_status_id,
-          ta.assigned_at, ta.notes,
-          COALESCE(rr.display_name, NULLIF(trim(u.first_name || ' ' || u.last_name), ''), 'Barangay Tanod') AS unit_name,
-          NULLIF(trim(u.mobile_number), '') AS phone
+          ta.assigned_at, ta.notes, roles.code AS dispatcher_role,
+          coalesce(nullif(trim(d.first_name || ' ' || d.last_name), ''), d.user_id) AS dispatched_by,
+          trim(u.first_name || ' ' || u.last_name) AS responder, u.mobile_number AS contact,
+          COALESCE(rr.display_name, NULLIF(trim(u.first_name || ' ' || u.last_name), ''), 'Barangay Tanod') AS unit_name
         FROM tanod_assignments ta
+        JOIN users d ON d.user_id = ta.assigned_by_user_id JOIN roles ON roles.role_id = d.role_id
         LEFT JOIN responder_resources rr ON rr.responder_resource_id = ta.responder_resource_id
         LEFT JOIN users u ON u.user_id = ta.tanod_user_id
         ORDER BY ta.assigned_at DESC
       `).all<Record<string, unknown>>(),
       db.prepare(`
-        SELECT responder_dispatch_id AS id, incident_id, target_role AS department, status, dispatched_at
-        FROM responder_dispatches
+        SELECT responder_dispatch_id AS id, incident_id, target_role AS department, status, dispatched_at, vehicle_name,
+          roles.code AS dispatcher_role, coalesce(nullif(trim(d.first_name || ' ' || d.last_name), ''), d.user_id) AS dispatched_by,
+          trim(u.first_name || ' ' || u.last_name) AS responder, u.mobile_number AS contact
+        FROM responder_dispatches rd
+        JOIN users d ON d.user_id = rd.dispatched_by_user_id JOIN roles ON roles.role_id = d.role_id
+        LEFT JOIN responder_locations loc ON loc.assignment_id = rd.responder_dispatch_id
+        LEFT JOIN users u ON u.user_id = loc.responder_id
         ORDER BY dispatched_at DESC
       `).all<Record<string, unknown>>(),
       db.prepare(`
@@ -101,6 +113,10 @@ async function getDispatchedUnitsForIncidents(
         phone: row.phone ? String(row.phone) : (phoneByRole.get("tanod") ?? null),
         status: statusMap[Number(row.assignment_status_id)] || "DISPATCHED",
         dispatched_at: row.assigned_at ? String(row.assigned_at) : null,
+        ...(includeDispatcher ? {
+          dispatcher_role: String(row.dispatcher_role), dispatched_by: String(row.dispatched_by),
+          responder: String(row.responder || ""), contact: String(row.contact || ""),
+        } : {}),
         location: locByAssign.get(id) ?? null,
       });
       unitsByIncident.set(incId, list);
@@ -115,16 +131,20 @@ async function getDispatchedUnitsForIncidents(
       list.push({
         id,
         role: dept,
-        name: dept === "fire" ? "BFP Fire Unit" : "PNP Police Unit",
-        phone: phoneByRole.get(dept) ?? null,
+        name: String(row.vehicle_name || ({ fire: "BFP Fire Unit", police: "PNP Police Unit" }[dept]) || dept.toUpperCase()),
         status: String(row.status || "DISPATCHED"),
         dispatched_at: row.dispatched_at ? String(row.dispatched_at) : null,
+        ...(includeDispatcher ? {
+          dispatcher_role: String(row.dispatcher_role), dispatched_by: String(row.dispatched_by),
+          responder: String(row.responder || ""), contact: String(row.contact || ""),
+        } : {}),
         location: locByAssign.get(id) ?? null,
       });
       unitsByIncident.set(incId, list);
     }
-  } catch {
-    // Non-fatal if responder tables are empty
+  } catch (error) {
+    if (includeDispatcher) throw error;
+    // Older clients may use a database without dispatch tracking.
   }
 
   return unitsByIncident;
@@ -250,18 +270,34 @@ export async function listReportsController(c: Context<AppEnv>) {
       getDispatchedUnitsForIncidents(
         c.env.geofix167_db,
         reports.map((r) => r.incident_id),
+        c.get("user")?.role === "admin",
       ),
       c.env.geofix167_db.prepare(`
-        SELECT incident_id, incident_status_event_id AS id, note, created_at
-        FROM incident_status_events
-        WHERE note LIKE '[AGENCY REPORT]%' OR note LIKE '[BDRRMO VERIFIED]%' OR note LIKE '[BDRRMO NOTE]%'
+        WITH viewer(role) AS (VALUES (?))
+        SELECT incident_id, incident_status_event_id AS id, coalesce(note, '') AS note, created_at,
+          s.display_name AS status, e.changed_by_user_id AS actor
+        FROM incident_status_events e JOIN incident_statuses s ON s.incident_status_id = e.to_incident_status_id
+        WHERE (SELECT role FROM viewer) = 'admin' OR note LIKE '[AGENCY REPORT]%' OR note LIKE '[BDRRMO VERIFIED]%' OR note LIKE '[BDRRMO NOTE]%'
+        UNION ALL
+        SELECT q.incident_id, q.qr_handover_id, '', q.created_at, 'Handover submitted', q.created_by_tanod_user_id
+        FROM qr_handovers q WHERE (SELECT role FROM viewer) = 'admin'
+        UNION ALL
+        SELECT a.incident_id, e.tanod_assignment_event_id, coalesce(e.note, ''), e.created_at, s.display_name, e.changed_by_user_id
+        FROM tanod_assignment_events e JOIN tanod_assignments a ON a.tanod_assignment_id = e.tanod_assignment_id
+        JOIN assignment_statuses s ON s.assignment_status_id = e.assignment_status_id WHERE (SELECT role FROM viewer) = 'admin'
         ORDER BY created_at DESC
-      `).all<{ incident_id: string; id: string; note: string; created_at: string }>().catch(() => ({ results: [] })),
+      `).bind(c.get("user")?.role ?? "").all<{ incident_id: string; id: string; note: string; created_at: string; status: string; actor: string | null }>(),
     ]);
 
+    const historyByIncident = new Map<string, typeof eventRows.results>();
     const agencyByIncident = new Map<string, Array<{ id: string; note: string; created_at: string }>>();
     const verifiedByIncident = new Map<string, string>();
     for (const ev of eventRows.results ?? []) {
+      if (c.get("user")?.role === "admin") {
+        const history = historyByIncident.get(ev.incident_id) ?? [];
+        history.push(ev);
+        historyByIncident.set(ev.incident_id, history);
+      }
       if (ev.note.startsWith("[AGENCY REPORT]")) {
         const list = agencyByIncident.get(ev.incident_id) ?? [];
         list.push({ id: ev.id, note: ev.note, created_at: ev.created_at });
@@ -272,15 +308,13 @@ export async function listReportsController(c: Context<AppEnv>) {
     }
 
     const reportsWithPhotos = reports
-      .filter((r) => String(r.title || "").trim().toLowerCase() !== "wdad")
       .map((report) => {
         const list = photosByReport.get(report.incident_id) ?? [];
         const firstPhoto = list[0];
         const verifiedNote = verifiedByIncident.get(report.incident_id) ?? null;
         return {
           ...report,
-          description_sanitized: stripSelectedDetails(report.description_sanitized),
-          description_original: stripSelectedDetails(report.description_original),
+          ...(c.get("user")?.role === "admin" ? { history: historyByIncident.get(report.incident_id) ?? [] } : {}),
           photos: list,
           photo_count: list.length,
           photo_url: firstPhoto
@@ -348,38 +382,38 @@ export async function getReportByIdController(c: Context<AppEnv>) {
     const isVerifiedFixed = Number(report.incident_status_id) === 10 || (maintRow && Number(maintRow.assignment_status_id) === 5 && meta?.repair_done);
     const maintenanceProgress = meta
       ? {
-          assignment_id: String(maintRow?.tanod_assignment_id || ""),
-          assigned_tanod: String(maintRow?.tanod_name || report.assigned_team || "Assigned Tanod"),
-          urgency: meta.urgency,
-          deadline: meta.deadline,
-          admin_notes: meta.admin_notes,
-          inspection_done: meta.inspection_done,
-          inspection_at: meta.inspection_at || null,
-          inspection_note: meta.inspection_note,
-          inspection_photo_urls: meta.inspection_photo_ids.map(
-            (pid) => `/api/reports/${encodeURIComponent(report.incident_id)}/photos/${encodeURIComponent(pid)}`,
-          ),
-          for_funding: Boolean(meta.for_funding),
-          for_funding_at: meta.for_funding_at || null,
-          for_funding_note: meta.for_funding_note || "",
-          admin_check_approved: Boolean(meta.admin_check_approved),
-          repair_done: meta.repair_done,
-          repair_at: meta.repair_at || null,
-          repair_note: meta.repair_note,
-          repair_photo_urls: meta.repair_photo_ids.map(
-            (pid) => `/api/reports/${encodeURIComponent(report.incident_id)}/photos/${encodeURIComponent(pid)}`,
-          ),
-          verified_fixed: Boolean(isVerifiedFixed),
-          stage: isVerifiedFixed
-            ? "Verified Fixed"
-            : meta.repair_done
-              ? "Awaiting Verification"
-              : meta.for_funding
-                ? "For Funding"
-                : meta.inspection_done
-                  ? "Area Inspected"
-                  : "Assigned to Tanod",
-        }
+        assignment_id: String(maintRow?.tanod_assignment_id || ""),
+        assigned_tanod: String(maintRow?.tanod_name || report.assigned_team || "Assigned Tanod"),
+        urgency: meta.urgency,
+        deadline: meta.deadline,
+        admin_notes: meta.admin_notes,
+        inspection_done: meta.inspection_done,
+        inspection_at: meta.inspection_at || null,
+        inspection_note: meta.inspection_note,
+        inspection_photo_urls: meta.inspection_photo_ids.map(
+          (pid) => `/api/reports/${encodeURIComponent(report.incident_id)}/photos/${encodeURIComponent(pid)}`,
+        ),
+        for_funding: Boolean(meta.for_funding),
+        for_funding_at: meta.for_funding_at || null,
+        for_funding_note: meta.for_funding_note || "",
+        admin_check_approved: Boolean(meta.admin_check_approved),
+        repair_done: meta.repair_done,
+        repair_at: meta.repair_at || null,
+        repair_note: meta.repair_note,
+        repair_photo_urls: meta.repair_photo_ids.map(
+          (pid) => `/api/reports/${encodeURIComponent(report.incident_id)}/photos/${encodeURIComponent(pid)}`,
+        ),
+        verified_fixed: Boolean(isVerifiedFixed),
+        stage: isVerifiedFixed
+          ? "Verified Fixed"
+          : meta.repair_done
+            ? "Awaiting Verification"
+            : meta.for_funding
+              ? "For Funding"
+              : meta.inspection_done
+                ? "Area Inspected"
+                : "Assigned to Tanod",
+      }
       : null;
 
     return c.json({

@@ -1,3 +1,4 @@
+import { notify } from "../services/notifications";
 import { Hono } from "hono";
 import { z } from "zod";
 
@@ -25,21 +26,25 @@ const statusSchema = z.enum(["ACCEPTED", "DECLINED", "EN_ROUTE", "ON_SCENE", "CO
 
 async function recordTrackingStatus(db: AppEnv["Bindings"]["geofix167_db"], assignmentId: string, userId: string,
   status: "ACCEPTED" | "DECLINED" | "EN_ROUTE" | "ON_SCENE" | "COMPLETED") {
+  const assignment = await db.prepare('SELECT incident_id FROM tanod_assignments WHERE tanod_assignment_id = ? UNION SELECT incident_id FROM responder_dispatches WHERE responder_dispatch_id = ?')
+    .bind(assignmentId, assignmentId).first<{ incident_id: string }>();
+  const notice = assignment && status !== "COMPLETED" ? notify(db, { type: status, actorId: userId,
+    eventId: assignmentId, assignmentId, reportId: assignment.incident_id }) : null;
   if (status === "DECLINED") {
-    await db.prepare("DELETE FROM responder_locations WHERE assignment_id = ? AND responder_id = ?")
-      .bind(assignmentId, userId).run();
+    await db.batch([db.prepare("DELETE FROM responder_locations WHERE assignment_id = ? AND responder_id = ?")
+      .bind(assignmentId, userId), ...(notice ? [notice] : [])]);
     return;
   }
   const incidentStatusId = { ACCEPTED: 6, EN_ROUTE: 7, ON_SCENE: 8, COMPLETED: 10 }[status];
   await db.batch([
     db.prepare(`INSERT INTO incident_status_events
       (incident_status_event_id, incident_id, from_incident_status_id, to_incident_status_id, changed_by_user_id, note)
-      SELECT ?, r.incident_id, r.incident_status_id, ?, ?, 'Responder updated live tracking status'
+      SELECT ?, r.incident_id, r.incident_status_id, ?, ?, ?
       FROM incident_reports r
       WHERE r.incident_id = (SELECT incident_id FROM tanod_assignments WHERE tanod_assignment_id = ?
         UNION SELECT incident_id FROM responder_dispatches WHERE responder_dispatch_id = ?)
         AND r.incident_status_id IN (5, 6, 7, 8, 13)`)
-      .bind(crypto.randomUUID(), incidentStatusId, userId, assignmentId, assignmentId),
+      .bind(crypto.randomUUID(), incidentStatusId, userId, "Responder " + status.toLowerCase().replaceAll("_", " "), assignmentId, assignmentId),
     db.prepare(`UPDATE incident_reports SET incident_status_id = ?, updated_at = datetime('now'),
       closed_at = CASE WHEN ? = 10 THEN datetime('now') ELSE closed_at END,
       closed_by_user_id = CASE WHEN ? = 10 THEN ? ELSE closed_by_user_id END
@@ -47,6 +52,7 @@ async function recordTrackingStatus(db: AppEnv["Bindings"]["geofix167_db"], assi
         UNION SELECT incident_id FROM responder_dispatches WHERE responder_dispatch_id = ?)
         AND incident_status_id IN (5, 6, 7, 8, 13) AND changes() = 1`)
       .bind(incidentStatusId, incidentStatusId, incidentStatusId, userId, assignmentId, assignmentId),
+    ...(notice ? [notice] : []),
   ]);
   if (status === "COMPLETED") {
     const incident = await db.prepare(`SELECT incident_id FROM tanod_assignments WHERE tanod_assignment_id = ?
@@ -149,40 +155,48 @@ route.get("/guest-emergencies", async (c) => {
   return c.json({ emergencies: result.results ?? [] });
 });
 
-route.get("/duty-status", async (c) => {
-  const currentUser = c.get("user");
-  const row = await c.env.geofix167_db.prepare(`
-    SELECT availability_status
-    FROM responder_resources
-    WHERE responder_user_id = ?
-    LIMIT 1
-  `).bind(currentUser.id).first<{ availability_status: string }>().catch(() => null);
+const missingResource = "No responder resource is linked to your account. Contact your dispatcher.";
+function dutyResponse(status: string) {
+  return { ok: true, on_duty: status === "AVAILABLE" || status === "BUSY", availability_status: status };
+}
 
-  const status = row?.availability_status || "AVAILABLE";
-  return c.json({
-    ok: true,
-    on_duty: status === "AVAILABLE" || status === "BUSY",
-    availability_status: status,
-  });
+route.get("/duty-status", async (c) => {
+  try {
+    const row = await c.env.geofix167_db.prepare(
+      "SELECT availability_status FROM responder_resources WHERE responder_user_id = ?"
+    ).bind(c.get("user").id).first<{ availability_status: string }>();
+    if (!row) return c.json({ error: missingResource }, 404);
+    return c.json(dutyResponse(row.availability_status));
+  } catch {
+    return c.json({ error: "Unable to load duty status. Please retry." }, 503);
+  }
 });
 
 route.patch("/duty-status", async (c) => {
-  const currentUser = c.get("user");
-  const raw = await c.req.json().catch(() => null);
-  const onDuty = Boolean((raw as Record<string, unknown> | null)?.on_duty);
-  const nextStatus = onDuty ? "AVAILABLE" : "UNAVAILABLE";
-
-  await c.env.geofix167_db.prepare(`
-    UPDATE responder_resources
-    SET availability_status = ?, updated_at = datetime('now')
-    WHERE responder_user_id = ?
-  `).bind(nextStatus, currentUser.id).run().catch(() => { });
-
-  return c.json({
-    ok: true,
-    on_duty: onDuty,
-    availability_status: nextStatus,
-  });
+  const body = z.object({ on_duty: z.boolean() }).safeParse(await c.req.json().catch(() => null));
+  if (!body.success) return c.json({ error: "on_duty must be a JSON boolean." }, 400);
+  const owner = c.get("user").id;
+  const requested = body.data.on_duty;
+  const db = c.env.geofix167_db;
+  try {
+    const [, read] = await db.batch([
+      db.prepare(`UPDATE responder_resources SET availability_status = ?, updated_at = datetime('now')
+        WHERE responder_user_id = ? AND availability_status IN ('AVAILABLE', 'UNAVAILABLE')`)
+        .bind(requested ? "AVAILABLE" : "UNAVAILABLE", owner),
+      db.prepare("SELECT availability_status FROM responder_resources WHERE responder_user_id = ?").bind(owner),
+    ]);
+    const row = read?.results[0] as { availability_status: string } | undefined;
+    if (!row) return c.json({ error: missingResource }, 404);
+    const result = dutyResponse(row.availability_status);
+    if (result.on_duty !== requested) {
+      return c.json({ error: row.availability_status === "BUSY"
+        ? "Finish your active dispatch before going off duty."
+        : "Your resource availability prevents this duty change." }, 409);
+    }
+    return c.json(result);
+  } catch {
+    return c.json({ error: "Unable to save duty status. Please retry." }, 503);
+  }
 });
 
 route.get("/", async (c) => {
@@ -548,7 +562,9 @@ route.post("/", async (c) => {
       SELECT ?, ?, 5, 13, ?, 'Emergency dispatched by BDRRMO'
       WHERE changes() = 1
     `).bind(statusEventId, incidentId, c.get("user").id),
-    ...targetRoles.map((targetRole) => db.prepare(`
+    ...targetRoles.flatMap((targetRole) => {
+      const assignmentId = crypto.randomUUID();
+      return [db.prepare(`
       INSERT INTO responder_dispatches
         (responder_dispatch_id, incident_id, incident_title, incident_category,
          incident_location, incident_latitude, incident_longitude,
@@ -556,7 +572,7 @@ route.post("/", async (c) => {
       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
       WHERE EXISTS (SELECT 1 FROM incident_status_events WHERE incident_status_event_id = ?)
     `).bind(
-      crypto.randomUUID(),
+      assignmentId,
       incidentId,
       title,
       category,
@@ -568,7 +584,9 @@ route.post("/", async (c) => {
       body.data.urgency,
       body.data.vehicle_name || null,
       statusEventId,
-    )),
+    ), notify(db, { type: "team_dispatched", actorId: c.get("user").id, eventId: assignmentId,
+      reportId: incidentId, assignmentId, afterChange: true })];
+    }),
   ];
 
   const results = await db.batch(statements);
@@ -655,11 +673,14 @@ route.post("/:dispatchId/qr-handover", async (c) => {
     patients: Array.isArray(body.patients) ? body.patients : [],
   });
 
-  await c.env.geofix167_db.prepare(`
+  await c.env.geofix167_db.batch([c.env.geofix167_db.prepare(`
     INSERT INTO qr_handovers
       (qr_handover_id, incident_id, qr_status_id, created_by_tanod_user_id, token_hash, receiving_remarks, expires_at)
     VALUES (?, ?, 2, ?, ?, ?, datetime('now', '+2 hours'))
-  `).bind(handoverId, body.incident_id, currentUser.id, tokenHash, remarksPayload).run();
+  `).bind(handoverId, body.incident_id, currentUser.id, tokenHash, remarksPayload),
+    notify(c.env.geofix167_db, { type: "handover_submitted", actorId: currentUser.id, eventId: handoverId,
+      assignmentId: dispatchId, reportId: body.incident_id }),
+  ]);
 
   await c.env.geofix167_db.prepare(`
     UPDATE responder_dispatches
@@ -872,8 +893,8 @@ route.post("/:dispatchId/maintenance-repair", async (c) => {
   const currentUser = c.get("user");
   const db = c.env.geofix167_db;
   const existing = await db.prepare(`
-    SELECT tanod_assignment_id, notes FROM tanod_assignments WHERE tanod_assignment_id = ?
-  `).bind(dispatchId).first<{ tanod_assignment_id: string; notes: string | null }>();
+    SELECT tanod_assignment_id, incident_id, notes FROM tanod_assignments WHERE tanod_assignment_id = ? AND incident_id = ? AND tanod_user_id = ?
+  `).bind(dispatchId, body.incident_id, currentUser.id).first<{ tanod_assignment_id: string; incident_id: string; notes: string | null }>();
 
   if (!existing) return c.json({ error: "Maintenance assignment not found." }, 404);
 
@@ -907,11 +928,14 @@ route.post("/:dispatchId/maintenance-repair", async (c) => {
     meta.repair_photo_ids = [...meta.repair_photo_ids, mediaId];
   }
 
-  await db.prepare(`
+  await db.batch([db.prepare(`
     UPDATE tanod_assignments
     SET notes = ?
     WHERE tanod_assignment_id = ?
-  `).bind(JSON.stringify(meta), dispatchId).run();
+  `).bind(JSON.stringify(meta), dispatchId),
+    notify(db, { type: "resolution_ready", linkPath: "/admin/maintenance-tasks", actorId: c.get("user").id, eventId: dispatchId,
+      assignmentId: dispatchId, reportId: existing.incident_id, afterChange: true }),
+  ]);
 
   try {
     const rep = await db.prepare(`SELECT reported_by_user_id FROM incident_reports WHERE incident_id = ?`)
@@ -1039,8 +1063,15 @@ route.post("/:dispatchId/complete-agency", async (c) => {
       UPDATE incident_reports
       SET incident_status_id = 9, updated_at = datetime('now')
       WHERE incident_id = ? AND incident_status_id NOT IN (10, 11)
+<<<<<<< HEAD
     `).bind(body.incident_id).run();
   }
+=======
+    `).bind(body.incident_id),
+    notify(db, { type: "resolution_ready", actorId: currentUser.id, eventId: body.incident_id,
+      assignmentId: dispatchId, reportId: body.incident_id, afterChange: true }),
+  ]);
+>>>>>>> 33678143854e6845f3cbe33923a3ea998ce2efc5
 
   return c.json({
     ok: true,
@@ -1146,6 +1177,8 @@ route.post("/:dispatchId/arrive", async (c) => {
     ),
   );
 
+  statements.push(notify(db, { type: "ON_SCENE", actorId: currentUser.id, eventId: dispatchId,
+    assignmentId: dispatchId, reportId: incidentId }));
   await db.batch(statements);
 
   return c.json({ ok: true, status: "ON_SCENE", arrived_at: nowIso });
