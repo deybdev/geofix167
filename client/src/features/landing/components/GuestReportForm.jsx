@@ -694,7 +694,7 @@ export default function GuestReportForm({
 
           <fieldset>
             <legend className="mb-1.5 text-xs font-bold text-slate-700">
-              {isSuddenIncident ? "Sudden incidents (select 1 to 4)" : "Maintenance category (choose one)"}
+              {isSuddenIncident ? "Sudden incidents" : "Maintenance category"}
             </legend>
             {isSuddenIncident ? <div className="space-y-2">
               {categories.map(item => {
@@ -707,16 +707,14 @@ export default function GuestReportForm({
                       clearValidationError("category");
                     }}
                     className="h-4 w-4 accent-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-40" />
-                  <span className="h-2 w-2 shrink-0 rounded-full bg-red-600" aria-hidden="true" />
-                  <span className="flex-1 text-red-700">{item}</span>
-                  <span className="rounded-full bg-red-50 px-2 py-1 text-[9px] font-bold text-red-700">High</span>
+                  <span className="flex-1 text-slate-700">{item}</span>
                 </label>;
               })}
             </div> : <AccessibleDropdown
               value={selectedCategories[0] ?? ""}
               onChange={value => { setSelectedCategories(value ? [value] : []); clearValidationError("category"); }}
               label="Incident category"
-              options={[{ value: "", label: "Choose a maintenance category" }, ...categories.map(item => ({ value: item, label: item, tone: reportCatalog.guestUrgency.maintenanceHighCategories.includes(item) ? "red" : "neutral", tag: reportCatalog.guestUrgency.maintenanceHighCategories.includes(item) ? "High" : undefined }))]}
+              options={[{ value: "", label: "Choose a maintenance category" }, ...categories.map(item => ({ value: item, label: item }))]}
             />}
             {validationErrors.category && <p role="alert" className="mt-1 text-[10px] font-medium text-red-700">{validationErrors.category}</p>}
           </fieldset>
