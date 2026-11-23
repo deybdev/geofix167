@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   Image,
+  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -19,7 +20,6 @@ import {
   Hospital,
   MapPin,
   QrCode,
-  Shield,
   Truck,
   User,
   Wrench,
@@ -49,7 +49,6 @@ function parseAgencyReportNote(note) {
   }
 
   let persons = [];
-  let ltoHandover = null;
 
   for (const seg of segments.slice(1)) {
     if (seg.startsWith('Involved Persons:')) {
@@ -64,17 +63,6 @@ function parseAgencyReportNote(note) {
           };
         });
       }
-    } else if (seg.startsWith('LTO Handover')) {
-      const unitMatch = seg.match(/^LTO Handover\s*\((.*?)\):/i);
-      const vehiclesMatch = seg.match(/Vehicles\s*\[(.*?)\]/i);
-      const driverMatch = seg.match(/Driver\/License\s*\[(.*?)\]/i);
-      const violationMatch = seg.match(/Violation\s*\[(.*?)\]/i);
-      ltoHandover = {
-        receiving_lto_unit: unitMatch?.[1] || 'LTO Traffic Enforcement',
-        vehicles_involved: vehiclesMatch?.[1] || 'N/A',
-        driver_license_info: driverMatch?.[1] || 'N/A',
-        violation_type: violationMatch?.[1] || 'Road Incident',
-      };
     }
   }
 
@@ -82,7 +70,6 @@ function parseAgencyReportNote(note) {
     reportType,
     summary: summary || 'Scene resolved and documented by responding unit.',
     persons,
-    ltoHandover,
   };
 }
 
@@ -117,7 +104,9 @@ export default function HistoryDetails() {
   );
 
   const qrHandover = item?.qr_handover || null;
-  const ltoHandover = agencyForm?.ltoHandover || null;
+  const summaryPdfUrl = item?.incident_id
+    ? `${apiBase}/reports/${encodeURIComponent(item.incident_id)}/handover-summary`
+    : '';
 
   const goBack = () => {
     if (navigation.canGoBack()) navigation.goBack();
@@ -432,46 +421,26 @@ export default function HistoryDetails() {
           )}
         </View>
 
-        {/* 4. Barcode / QR Handover Takeover Section (Hospital or LTO) */}
-        {qrHandover || ltoHandover ? (() => {
+        {/* 4. Incident Summary PDF QR Handover Section */}
+        {qrHandover || agencyForm ? (() => {
           const qrUri = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=16&data=${encodeURIComponent(
-            JSON.stringify(
-              ltoHandover
-                ? {
-                  type: 'LTO_ROAD_HANDOVER',
-                  incident_id: item?.incident_id,
-                  ...ltoHandover,
-                }
-                : {
-                  type: 'HOSPITAL_QR_HANDOVER',
-                  handover_id: qrHandover?.handover_id,
-                  token: qrHandover?.token,
-                  incident_id: item?.incident_id,
-                  hospital: qrHandover?.hospital_name,
-                },
-            ),
+            summaryPdfUrl,
           )}`;
 
           return (
           <View style={tw`rounded-2xl border border-slate-200 bg-white p-4`}>
             <View style={tw`flex-row flex-wrap items-center justify-between gap-2`}>
               <View style={tw`flex-shrink flex-row items-center gap-1.5`}>
-                <QrCode size={16} color={ltoHandover ? '#1D4ED8' : GREEN} />
+                <QrCode size={16} color={GREEN} />
                 <Text
                   numberOfLines={1}
                   style={tw`flex-shrink pr-1 text-xs font-bold text-slate-700`}
                 >
-                  QR Takeover
+                  Incident Summary PDF QR
                 </Text>
               </View>
-              <View
-                style={tw`rounded-full px-2.5 py-1 ${ltoHandover ? 'bg-blue-50' : 'bg-green-50'
-                  }`}
-              >
-                <Text
-                  style={tw`pr-0.5 text-[10px] font-bold ${ltoHandover ? 'text-blue-700' : 'text-[#1F7A4D]'
-                    }`}
-                >
+              <View style={tw`rounded-full bg-green-50 px-2.5 py-1`}>
+                <Text style={tw`pr-0.5 text-[10px] font-bold text-[#1F7A4D]`}>
                   VERIFIED HANDOVER
                 </Text>
               </View>
@@ -494,38 +463,32 @@ export default function HistoryDetails() {
                 Code: {String(qrHandover?.token || item?.incident_id || '').slice(0, 18).toUpperCase()}
               </Text>
               <Text style={tw`mt-1 text-[11px] font-semibold text-[#1F7A4D]`}>
-                Tap barcode to enlarge
+                Scan for Printable Incident Summary PDF • Tap to enlarge
               </Text>
             </Pressable>
 
-            {ltoHandover ? (
-              <View style={tw`mt-3 gap-1.5 rounded-xl bg-blue-50 p-3.5`}>
-                <View style={tw`flex-row items-center gap-1.5`}>
-                  <Shield size={14} color="#1D4ED8" />
-                  <Text style={tw`text-xs font-bold text-blue-950`}>
-                    Receiving Unit: {ltoHandover.receiving_lto_unit}
-                  </Text>
-                </View>
-                <Text style={tw`text-xs text-blue-900`}>
-                  Vehicles Involved: {ltoHandover.vehicles_involved}
+            {summaryPdfUrl ? (
+              <Pressable
+                onPress={() => void Linking.openURL(summaryPdfUrl)}
+                style={tw`mt-3 flex-row items-center justify-center gap-1.5 rounded-xl border border-[#1F7A4D] bg-green-50 py-2.5`}
+              >
+                <FileText size={14} color={GREEN} />
+                <Text style={tw`text-xs font-bold text-[#1F7A4D]`}>
+                  Open / Print Incident Summary PDF
                 </Text>
-                <Text style={tw`text-xs text-blue-900`}>
-                  Driver / License: {ltoHandover.driver_license_info}
-                </Text>
-                <Text style={tw`text-xs text-blue-900`}>
-                  Violation: {ltoHandover.violation_type}
-                </Text>
-              </View>
+              </Pressable>
             ) : null}
 
             {qrHandover ? (
               <View style={tw`mt-3 gap-1.5 rounded-xl bg-green-50 p-3.5`}>
-                <View style={tw`flex-row items-center gap-1.5`}>
-                  <Hospital size={14} color={GREEN} />
-                  <Text style={tw`text-xs font-bold text-slate-900`}>
-                    Receiving Facility: {qrHandover.hospital_name || 'Partner Hospital'}
-                  </Text>
-                </View>
+                {qrHandover.hospital_name ? (
+                  <View style={tw`flex-row items-center gap-1.5`}>
+                    <Hospital size={14} color={GREEN} />
+                    <Text style={tw`text-xs font-bold text-slate-900`}>
+                      Receiving Facility: {qrHandover.hospital_name}
+                    </Text>
+                  </View>
+                ) : null}
                 <Text style={tw`text-xs text-slate-700`}>
                   Handover ID: {qrHandover.handover_id}
                 </Text>

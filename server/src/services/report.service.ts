@@ -194,7 +194,7 @@ export async function submitIncidentReport(
       guestPhotos: preparedPhotos.rows,
       report: {
         incident_id: id, reported_by_user_id: userId, guest_session_id: guestId,
-        incident_status_id: initialStatusId, category, categories: JSON.stringify(input.categories), priority_code: priority,
+        incident_status_id: input.is_emergency === 1 ? 5 : 1, category, categories: JSON.stringify(input.categories), priority_code: priority,
         is_emergency: input.is_emergency === 1 ? 1 : 0,
         title: guestSubmission ? input.categories.join(" + ").slice(0, 120) : cleanSingleLine(input.title) || category, description_original: description,
         description_sanitized: language.sanitizedText, callback_mobile_number: input.callback_contact?.trim() || null,
@@ -209,8 +209,12 @@ export async function submitIncidentReport(
       },
       statusEvent: {
         incident_status_event_id: crypto.randomUUID(), incident_id: id,
-        from_incident_status_id: null, to_incident_status_id: initialStatusId,
-        changed_by_user_id: userId, note: input.is_emergency ? "Emergency forwarded to BDRRMO on submission." : "Initial report submitted", created_at: now,
+        from_incident_status_id: null, to_incident_status_id: input.is_emergency === 1 ? 5 : 1,
+        changed_by_user_id: userId,
+        note: input.is_emergency === 1
+          ? "Emergency report routed directly to BDRRMO"
+          : "Initial report submitted",
+        created_at: now,
       },
       languageFlags,
     });
@@ -261,7 +265,7 @@ export async function getIncidentReportDetails(db: Database, id: string, user?: 
   await resolveLegacyReportAddresses(db, id.trim());
   const report = await findIncidentReportById(db, id.trim());
   if (!report) throw new ReportError("Incident report not found.", 404);
-  const owned = user && (user.role === "admin" || user.role === "bdrrmo" || report.reported_by_user_id === user.id || (["tanod", "police", "fire"].includes(user.role) && await hasReportReadAssignment(db, id, user.id, user.role)));
+  const owned = user && (user.role === "admin" || user.role === "bdrrmo" || report.reported_by_user_id === user.id || (["tanod", "police", "fire"].includes(user.role) && await hasReportReadAssignment(db, report.incident_id, user.id, user.role)));
   let guestOwned = false;
   if (!owned && guestToken && report.guest_session_id) {
     guestOwned = await verifyGuestSession(db, report.guest_session_id, await sha256(guestToken));
@@ -325,15 +329,23 @@ export async function updateReportDetails(db: Database, id: string,
   if (!admin && (input.category !== undefined || input.priority_code !== undefined)) {
     throw new ReportError("Only administrators can modify incident category or priority.", 403);
   }
-  if (!admin && ![1,2,3].includes(report.incident_status_id)) {
+  if (!admin && ![1, 2, 3, 11].includes(report.incident_status_id)) {
     throw new ReportError("Report details can no longer be edited after verification or dispatch.", 409);
   }
   const values = { ...input };
   if (values.description_sanitized !== undefined) {
     values.description_sanitized = filterLanguage(values.description_sanitized).sanitizedText ?? "";
   }
-  if (!await updateIncidentReportDetails(db, id, values, admin, user?.id ?? null)) {
+  if (!await updateIncidentReportDetails(db, id, values, admin || report.incident_status_id === 11, user?.id ?? null)) {
     throw new ReportError("Report is no longer editable. Reload and try again.", 409);
+  }
+  if (report.incident_status_id === 11) {
+    const nextStatusId = report.is_emergency === 1 ? 5 : 1;
+    await db.prepare(`
+      UPDATE incident_reports
+      SET incident_status_id = ?, closed_at = NULL, closed_by_user_id = NULL, updated_at = datetime('now')
+      WHERE incident_id = ?
+    `).bind(nextStatusId, report.incident_id).run();
   }
   return findIncidentReportById(db, id);
 }

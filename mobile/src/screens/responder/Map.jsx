@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   Image,
+  Keyboard,
+  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -17,7 +20,6 @@ import {
   CheckCircle2,
   Compass,
   Hospital,
-  ImagePlus,
   MapPin,
   MessageCircle,
   Navigation,
@@ -46,6 +48,7 @@ import {
   requestFieldBackup,
   submitMaintenanceInspection,
   submitMaintenanceRepair,
+  updateResponderDispatchStatus,
 } from '../../services/responderDispatchService';
 import {
   enqueueOfflineSubmission,
@@ -178,15 +181,55 @@ async function getMultiStopRoadRoute(waypoints) {
   };
 }
 
+const API_ORIGIN = String(process.env.EXPO_PUBLIC_API_URL || '')
+  .replace(/\/api\/?$/, '')
+  .replace(/\/$/, '');
+
+const sanitizePersonName = (val) => String(val || '').replace(/[^a-zA-Z\s.-]/g, '').slice(0, 80);
+const sanitizeContactNumber = (val) => String(val || '').replace(/\D/g, '').slice(0, 11);
+const sanitizeAge = (val) => String(val || '').replace(/\D/g, '').slice(0, 3);
+
+function validatePersonEntry(p) {
+  const errors = {};
+  const name = sanitizePersonName(p.full_name).trim();
+  const contact = sanitizeContactNumber(p.contact).trim();
+  const age = sanitizeAge(p.age).trim();
+  const condition = String(p.condition || '').trim();
+  const notes = String(p.notes || '').trim();
+
+  if (name.length < 2 || !/^[a-zA-Z\s.-]+$/.test(name)) {
+    errors.full_name = 'Letters, spaces, periods, and hyphens only (min 2 chars).';
+  }
+  if (contact && !/^09\d{9}$/.test(contact)) {
+    errors.contact = 'Use 11-digit PH mobile format (09XXXXXXXXX).';
+  }
+  if (age) {
+    const n = Number(age);
+    if (!/^\d{1,3}$/.test(age) || n < 0 || n > 120) {
+      errors.age = 'Whole number 0–120 only.';
+    }
+  }
+  if (p.sex !== 'Male' && p.sex !== 'Female') {
+    errors.sex = 'Select Male or Female.';
+  }
+  if (!condition || condition.length > 120) {
+    errors.condition = 'Required (max 120 characters).';
+  }
+  if (notes.length > 500) {
+    errors.notes = 'Max 500 characters.';
+  }
+  return errors;
+}
+
 function buildInitialPatients(assignment) {
   return [
     {
-      full_name: assignment?.reporter_name || 'Guest Reporter',
-      contact: assignment?.reporter_phone || '',
+      full_name: sanitizePersonName(assignment?.reporter_name || ''),
+      contact: sanitizeContactNumber(assignment?.reporter_phone || ''),
       age: '',
       sex: '',
-      condition: assignment?.incident_title || assignment?.incident_category || '',
-      notes: assignment?.incident_description || '',
+      condition: String(assignment?.incident_title || assignment?.incident_category || '').slice(0, 120),
+      notes: '',
     },
   ];
 }
@@ -201,6 +244,7 @@ export default function ResponderMap() {
   const [activeAssignment, setActiveAssignment] = useState(route.params?.assignment || null);
   const [backupSent, setBackupSent] = useState(false);
   const [currentLocation, setCurrentLocation] = useState(null);
+  const [liveHeading, setLiveHeading] = useState(null);
   const currentLocationRef = useRef(null);
   const [locationPermissionGranted, setLocationPermissionGranted] = useState(false);
   const [locationSharingOff, setLocationSharingOff] = useState(Boolean(route.params?.locationSharingOff));
@@ -214,6 +258,7 @@ export default function ResponderMap() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [showPatientModal, setShowPatientModal] = useState(false);
+  const [forceHospitalQr, setForceHospitalQr] = useState(false);
   const [patients, setPatients] = useState(() => buildInitialPatients(route.params?.assignment));
   const [furtherInfo, setFurtherInfo] = useState('');
   const [proofPhoto, setProofPhoto] = useState(null);
@@ -227,13 +272,9 @@ export default function ResponderMap() {
   const [maintenanceError, setMaintenanceError] = useState('');
   const [hospitalOptions, setHospitalOptions] = useState([]);
   const [showHospitalPicker, setShowHospitalPicker] = useState(false);
+  const [dismissedRejectionNote, setDismissedRejectionNote] = useState('');
   const [offlineQueueCount, setOfflineQueueCount] = useState(0);
   const [syncingOffline, setSyncingOffline] = useState(false);
-  const [ltoEnabled, setLtoEnabled] = useState(false);
-  const [ltoVehicles, setLtoVehicles] = useState('');
-  const [ltoDrivers, setLtoDrivers] = useState('');
-  const [ltoViolation, setLtoViolation] = useState('');
-  const [ltoReceivingUnit, setLtoReceivingUnit] = useState('LTO Caloocan / Traffic Enforcement');
 
   const syncOfflineSubmissions = useCallback(async () => {
     setSyncingOffline(true);
@@ -339,7 +380,11 @@ export default function ResponderMap() {
       const location = { lat: coords.latitude, lng: coords.longitude };
       currentLocationRef.current = location;
       setCurrentLocation(location);
-      if (Date.now() - lastPostAt < 8000) return;
+      const rawHeading = Number(coords.heading);
+      if (Number.isFinite(rawHeading) && rawHeading >= 0 && rawHeading < 360) {
+        setLiveHeading(rawHeading);
+      }
+      if (Date.now() - lastPostAt < 4000) return;
       lastPostAt = Date.now();
       try { await postResponderLocation(assignmentId, coords); }
       catch { /* Location sharing failures do not interrupt responder navigation. */ }
@@ -412,25 +457,11 @@ export default function ResponderMap() {
   }, [activeAssignment]);
 
   useEffect(() => {
-    let active = true;
     if (!patientPoint || activeAssignment?.is_maintenance || isAgencyRole) {
       Promise.resolve().then(() => {
-        if (active) setNearestHospital(null);
+        setNearestHospital(null);
       });
-      return () => {
-        active = false;
-      };
     }
-    getNearestHospitals(patientPoint.lat, patientPoint.lng)
-      .then((list) => {
-        if (active && list.length > 0) {
-          setNearestHospital(list[0]);
-        }
-      })
-      .catch(() => { });
-    return () => {
-      active = false;
-    };
   }, [patientPoint, activeAssignment?.is_maintenance, isAgencyRole]);
 
   const hospitalPoint = useMemo(() => {
@@ -539,11 +570,16 @@ export default function ResponderMap() {
     [activeAssignment, currentLocation, patientPoint, hospitalPoint],
   );
 
-  const handleOpenCompleteForm = () => {
+  const handleOpenCompleteForm = (withQr = false) => {
     if (!activeAssignment) return;
+    setForceHospitalQr(Boolean(withQr));
     setPatients((prev) =>
       prev.length > 0 && prev[0].full_name ? prev : buildInitialPatients(activeAssignment),
     );
+    const cleanedDesc = String(activeAssignment.incident_description || '')
+      .replace(/\r?\n?\s*Selected\s+details\s*:[^\r\n]*/gi, '')
+      .trim();
+    setFurtherInfo((prev) => (prev.trim() ? prev : cleanedDesc));
     setFormError('');
     setShowPatientModal(true);
   };
@@ -583,8 +619,8 @@ export default function ResponderMap() {
   };
 
   const handleLocateNearbyHospital = async () => {
-    if (busy) return;
-    if (isAgencyRole && nearestHospital) {
+    if (busy || isAgencyRole) return;
+    if (nearestHospital) {
       setNearestHospital(null);
       setSelectedPin((prev) => (prev?.pinType === 'hospital' ? null : prev));
       return;
@@ -608,7 +644,7 @@ export default function ResponderMap() {
     }
   };
 
-  const handleArrivedOnScene = async () => {
+  const confirmArrivedOnScene = async () => {
     if (!activeAssignment || busy || activeAssignment.status === 'ON_SCENE') return;
     setBusy(true);
     setError('');
@@ -622,6 +658,23 @@ export default function ResponderMap() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const handleArrivedOnScene = () => {
+    if (!activeAssignment || busy || activeAssignment.status === 'ON_SCENE') return;
+    Alert.alert(
+      'Confirm Arrival on Scene',
+      'Have you arrived at the incident scene? Confirming will notify BDRRMO and the reporting resident.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Yes, Arrived',
+          onPress: () => {
+            void confirmArrivedOnScene();
+          },
+        },
+      ],
+    );
   };
 
   const handleRequestBackup = async () => {
@@ -642,42 +695,79 @@ export default function ResponderMap() {
     }
   };
 
+  const isHospitalHandover = !isAgencyRole && (Boolean(nearestHospital) || forceHospitalQr);
+
+  const personValidationErrors = useMemo(
+    () => (isHospitalHandover ? patients.map((p) => validatePersonEntry(p)) : []),
+    [isHospitalHandover, patients],
+  );
+  const furtherInfoTrimmed = furtherInfo.trim();
+  const furtherInfoError =
+    furtherInfoTrimmed.length < 10
+      ? 'Minimum 10 characters required.'
+      : furtherInfoTrimmed.length > 2000
+        ? 'Maximum 2000 characters allowed.'
+        : '';
+  const isHandoverFormValid =
+    Boolean(proofPhoto) &&
+    !furtherInfoError &&
+    (!isHospitalHandover || personValidationErrors.every((errs) => Object.keys(errs).length === 0));
+
   const handleSubmitPatientForm = async () => {
     if (!activeAssignment || busy) return;
-    if (!proofPhoto) {
-      setFormError(
-        isAgencyRole
-          ? 'Please attach a proof of resolution photo for BDRRMO and Admin.'
-          : 'Please attach a proof photo showing the patient was transported.',
-      );
+
+    const normalizedPatients = isHospitalHandover
+      ? patients.map((p) => ({
+        full_name: sanitizePersonName(p.full_name).trim(),
+        contact: sanitizeContactNumber(p.contact).trim(),
+        age: sanitizeAge(p.age).trim(),
+        sex: p.sex === 'Male' || p.sex === 'Female' ? p.sex : '',
+        condition: String(p.condition || '').trim(),
+        notes: String(p.notes || '').trim(),
+      }))
+      : [];
+
+    if (isHospitalHandover) {
+      for (let i = 0; i < normalizedPatients.length; i += 1) {
+        const errs = validatePersonEntry(normalizedPatients[i]);
+        const firstErr = Object.values(errs)[0];
+        if (firstErr) {
+          const label = i === 0 ? "Reporter's Information" : `Additional Person #${i}`;
+          setFormError(`${label}: ${firstErr}`);
+          return;
+        }
+      }
+    }
+
+    const trimmedInfo = furtherInfo.trim();
+    if (trimmedInfo.length < 10) {
+      setFormError('Short Description / Further Information is required (minimum 10 characters).');
       return;
     }
-    if (userRole === 'police' && ltoEnabled && (!ltoVehicles.trim() || !ltoViolation.trim())) {
-      setFormError('Please enter involved vehicle/plate details and road violation/incident type for LTO QR handover.');
+    if (trimmedInfo.length > 2000) {
+      setFormError('Short Description / Further Information must be 2000 characters or fewer.');
+      return;
+    }
+
+    if (!proofPhoto) {
+      setFormError(
+        isHospitalHandover
+          ? 'Please attach a proof photo showing the patient was transported.'
+          : 'Please attach a proof of completion photo for BDRRMO and Admin.',
+      );
       return;
     }
     setBusy(true);
     setError('');
     setFormError('');
     try {
-      if (isAgencyRole) {
-        const res = await completeAgencyDispatch(activeAssignment.id, {
+      if (!isHospitalHandover) {
+        await completeAgencyDispatch(activeAssignment.id, {
           incident_id: activeAssignment.incident_id,
-          summary: furtherInfo.trim(),
+          summary: trimmedInfo,
           proof_photo_base64: proofPhoto.base64,
           proof_photo_mime: proofPhoto.mimeType,
-          persons: userRole === 'fire' ? [] : patients,
-          ...(userRole === 'police' && ltoEnabled
-            ? {
-              lto_handover: {
-                enabled: true,
-                vehicles_involved: ltoVehicles.trim(),
-                driver_license_info: ltoDrivers.trim(),
-                violation_type: ltoViolation.trim(),
-                receiving_lto_unit: ltoReceivingUnit.trim() || 'LTO Traffic Enforcement',
-              },
-            }
-            : {}),
+          persons: [],
         });
         setIsNavigating(false);
         setCaseClosedOnMap(true);
@@ -687,26 +777,23 @@ export default function ResponderMap() {
         setNearestHospital(null);
         setSelectedPin(null);
         setShowPatientModal(false);
-        if (res?.lto_handover) {
-          setQrResult({
-            is_lto: true,
-            ...res.lto_handover,
-          });
-        } else {
-          navigation.navigate('History');
-        }
+        navigation.navigate('History');
         return;
       }
 
       const res = await generateHospitalQrHandover(activeAssignment.id, {
         incident_id: activeAssignment.incident_id,
         hospital_name: nearestHospital?.name || 'Receiving Hospital',
-        further_info: furtherInfo.trim(),
+        further_info: trimmedInfo,
         proof_photo_base64: proofPhoto.base64,
         proof_photo_mime: proofPhoto.mimeType,
-        patients,
+        patients: normalizedPatients,
       });
-      setQrResult(res);
+      setQrResult({
+        ...res,
+        incident_id: activeAssignment.incident_id,
+        agency_role: 'tanod',
+      });
       setIsNavigating(false);
       setCaseClosedOnMap(true);
       setActiveAssignment(null);
@@ -718,23 +805,23 @@ export default function ResponderMap() {
     } catch (err) {
       if (isNetworkError(err)) {
         const queuedCount = await enqueueOfflineSubmission({
-          kind: isAgencyRole ? 'agency_resolution' : 'tanod_qr_handover',
+          kind: !isHospitalHandover ? 'agency_resolution' : 'tanod_qr_handover',
           dispatchId: activeAssignment.id,
-          payload: isAgencyRole
+          payload: !isHospitalHandover
             ? {
               incident_id: activeAssignment.incident_id,
-              summary: furtherInfo.trim(),
+              summary: trimmedInfo,
               proof_photo_base64: proofPhoto.base64,
               proof_photo_mime: proofPhoto.mimeType,
-              persons: patients,
+              persons: [],
             }
             : {
               incident_id: activeAssignment.incident_id,
               hospital_name: nearestHospital?.name || 'Receiving Hospital',
-              further_info: furtherInfo.trim(),
+              further_info: trimmedInfo,
               proof_photo_base64: proofPhoto.base64,
               proof_photo_mime: proofPhoto.mimeType,
-              patients,
+              patients: normalizedPatients,
             },
         });
         setOfflineQueueCount(queuedCount);
@@ -842,6 +929,31 @@ export default function ResponderMap() {
     return [currentLocation, patientPoint, hospitalPoint].filter(hasValidPoint);
   }, [routePoints, currentLocation, patientPoint, hospitalPoint]);
 
+  const activeHeading = liveHeading ?? getRouteHeading(headingPoints);
+
+  const handleStartNavigation = () => {
+    if (!locationPermissionGranted || !currentLocation) {
+      void tryEnableLocationSharing();
+    }
+    if (activeAssignment?.id && ['DISPATCHED', 'ACCEPTED'].includes(String(activeAssignment.status || '').toUpperCase())) {
+      void updateResponderDispatchStatus(activeAssignment.id, 'EN_ROUTE')
+        .then(() => {
+          setActiveAssignment((prev) => (prev ? { ...prev, status: 'EN_ROUTE' } : prev));
+        })
+        .catch(() => {});
+    }
+    if (activeAssignment?.id && currentLocation) {
+      void postResponderLocation({
+        assignment_id: activeAssignment.id,
+        lat: currentLocation.lat,
+        lng: currentLocation.lng,
+        heading: getRouteHeading(headingPoints),
+      }).catch(() => {});
+    }
+    setIsNavigating(true);
+    setRecenterKey((k) => k + 1);
+  };
+
   return (
     <View style={tw`flex-1`}>
       {offlineQueueCount > 0 ? (
@@ -898,13 +1010,20 @@ export default function ResponderMap() {
               : []
           }
           trackers={
-            activeAssignment && currentLocation
-              ? [{ id: 'responder-current', roleCode: userRole, role: userRole, ...currentLocation }]
+            activeAssignment && currentLocation && !isNavigating
+              ? [{
+                id: 'responder-current',
+                roleCode: userRole,
+                role: userRole,
+                icon: 'arrow',
+                heading: activeHeading,
+                ...currentLocation,
+              }]
               : []
           }
           fitPoints={fitPoints}
           navigationMode={isNavigating}
-          navigationHeading={getRouteHeading(headingPoints)}
+          navigationHeading={activeHeading}
           recenterSignal={recenterKey}
           compassResetSignal={compassResetKey}
           navigationUserLocation={currentLocation}
@@ -1052,7 +1171,7 @@ export default function ResponderMap() {
               <Navigation size={14} color="#1F7A4D" />
               <Text style={tw`ml-1.5 text-xs font-extrabold text-[#1F7A4D]`}>Re-center</Text>
             </Pressable>
-            {isAgencyRole && !activeAssignment.is_maintenance ? (
+            {!isAgencyRole && !activeAssignment.is_maintenance ? (
               <Pressable
                 onPress={handleLocateNearbyHospital}
                 disabled={busy}
@@ -1060,7 +1179,7 @@ export default function ResponderMap() {
               >
                 {nearestHospital ? <X size={14} color="#fff" /> : <Hospital size={14} color="#fff" />}
                 <Text style={tw`ml-1.5 text-xs font-bold text-white`}>
-                  {nearestHospital ? 'Cancel Hospital' : 'Nearest Hospital'}
+                  {nearestHospital ? 'Clear Hospital' : 'Nearest Hospital'}
                 </Text>
               </Pressable>
             ) : null}
@@ -1133,14 +1252,26 @@ export default function ResponderMap() {
                   </Pressable>
 
                   {activeAssignment.status === 'ON_SCENE' ? (
-                    <Pressable
-                      onPress={handleOpenCompleteForm}
-                      disabled={busy}
-                      style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-[#1F7A4D] py-2.5`}
-                    >
-                      <CheckCircle2 size={15} color="#FFFFFF" />
-                      <Text style={tw`text-xs font-extrabold text-white`}>Mark as Completed</Text>
-                    </Pressable>
+                    <>
+                      {!isAgencyRole ? (
+                        <Pressable
+                          onPress={() => handleOpenCompleteForm(true)}
+                          disabled={busy}
+                          style={tw`flex-row items-center justify-center gap-1 rounded-xl border border-[#1F7A4D] bg-green-50 px-3 py-2.5`}
+                        >
+                          <QrCode size={14} color="#1F7A4D" />
+                          <Text style={tw`text-xs font-extrabold text-[#1F7A4D]`}>Generate QR</Text>
+                        </Pressable>
+                      ) : null}
+                      <Pressable
+                        onPress={() => handleOpenCompleteForm(false)}
+                        disabled={busy}
+                        style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-[#1F7A4D] py-2.5`}
+                      >
+                        <CheckCircle2 size={15} color="#FFFFFF" />
+                        <Text style={tw`text-xs font-extrabold text-white`}>Mark as Completed</Text>
+                      </Pressable>
+                    </>
                   ) : (
                     <Pressable
                       onPress={handleArrivedOnScene}
@@ -1254,21 +1385,8 @@ export default function ResponderMap() {
               </View>
             ) : null}
 
-            {/* Secondary quick chips (Hospital / Backup) */}
+            {/* Secondary quick chips (Hospital for Tanod only / Backup for Police & BFP) */}
             {!isMaint && !isAgencyRole ? (
-              <View style={tw`mt-2.5 flex-row gap-2`}>
-                <Pressable
-                  onPress={handleLocateNearbyHospital}
-                  disabled={busy}
-                  style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 py-2`}
-                >
-                  <Hospital size={13} color="#1F7A4D" />
-                  <Text style={tw`text-[11px] font-bold text-slate-700`}>Change Hospital</Text>
-                </Pressable>
-              </View>
-            ) : null}
-
-            {isAgencyRole && !isMaint ? (
               <View style={tw`mt-2.5 flex-row gap-2`}>
                 <Pressable
                   onPress={handleLocateNearbyHospital}
@@ -1279,12 +1397,16 @@ export default function ResponderMap() {
                 >
                   {nearestHospital ? <X size={13} color="#B45309" /> : <Hospital size={13} color="#1F7A4D" />}
                   <Text
-                    numberOfLines={1}
                     style={tw`text-[11px] font-bold ${nearestHospital ? 'text-amber-900' : 'text-slate-700'}`}
                   >
                     {nearestHospital ? 'Clear Hospital' : 'Nearby Hospital'}
                   </Text>
                 </Pressable>
+              </View>
+            ) : null}
+
+            {isAgencyRole && !isMaint ? (
+              <View style={tw`mt-2.5 flex-row gap-2`}>
                 <Pressable
                   onPress={handleRequestBackup}
                   disabled={busy || backupSent}
@@ -1309,13 +1431,7 @@ export default function ResponderMap() {
 
             {/* Primary Turn-by-Turn Navigation CTA */}
             <Pressable
-              onPress={() => {
-                if (!locationPermissionGranted || !currentLocationRef.current) {
-                  void tryEnableLocationSharing();
-                }
-                setIsNavigating(true);
-                setRecenterKey((k) => k + 1);
-              }}
+              onPress={handleStartNavigation}
               style={({ pressed }) => [
                 tw`mt-2.5 flex-row items-center justify-center gap-2 rounded-xl bg-[#1F7A4D] py-3`,
                 { opacity: pressed ? 0.85 : 1 },
@@ -1368,19 +1484,34 @@ export default function ResponderMap() {
                   </Pressable>
 
                   {activeAssignment.status === 'ON_SCENE' || qrResult ? (
-                    <Pressable
-                      onPress={handleOpenCompleteForm}
-                      disabled={busy}
-                      style={({ pressed }) => [
-                        tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-[#1F7A4D] py-2.5`,
-                        { opacity: pressed ? 0.85 : 1 },
-                      ]}
-                    >
-                      <CheckCircle2 size={15} color="#FFFFFF" />
-                      <Text style={tw`text-xs font-extrabold text-white`}>
-                        {qrResult ? 'View QR / Info' : 'Mark as Completed'}
-                      </Text>
-                    </Pressable>
+                    <>
+                      {!isAgencyRole && !qrResult ? (
+                        <Pressable
+                          onPress={() => handleOpenCompleteForm(true)}
+                          disabled={busy}
+                          style={({ pressed }) => [
+                            tw`flex-row items-center justify-center gap-1 rounded-xl border border-[#1F7A4D] bg-green-50 px-3 py-2.5`,
+                            { opacity: pressed ? 0.85 : 1 },
+                          ]}
+                        >
+                          <QrCode size={14} color="#1F7A4D" />
+                          <Text style={tw`text-xs font-extrabold text-[#1F7A4D]`}>Generate QR</Text>
+                        </Pressable>
+                      ) : null}
+                      <Pressable
+                        onPress={() => handleOpenCompleteForm(false)}
+                        disabled={busy}
+                        style={({ pressed }) => [
+                          tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-[#1F7A4D] py-2.5`,
+                          { opacity: pressed ? 0.85 : 1 },
+                        ]}
+                      >
+                        <CheckCircle2 size={15} color="#FFFFFF" />
+                        <Text style={tw`text-xs font-extrabold text-white`}>
+                          {qrResult ? 'View QR / Info' : 'Mark as Completed'}
+                        </Text>
+                      </Pressable>
+                    </>
                   ) : (
                     <Pressable
                       onPress={handleArrivedOnScene}
@@ -1407,7 +1538,7 @@ export default function ResponderMap() {
         animationType="slide"
         onRequestClose={() => setMaintenanceModalMode(null)}
       >
-        <View style={tw`flex-1 justify-end bg-black/45`}>
+        <Pressable onPress={Keyboard.dismiss} style={tw`flex-1 justify-end bg-black/45`}>
           <View style={tw`rounded-t-3xl bg-white px-5 pb-6 pt-5`}>
             <Text style={tw`text-lg font-extrabold text-slate-900`}>
               {maintenanceModalMode === 'repair'
@@ -1446,14 +1577,7 @@ export default function ResponderMap() {
                     style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-[#1F7A4D] py-2.5`}
                   >
                     <Camera size={14} color="#FFFFFF" />
-                    <Text style={tw`text-xs font-bold text-white`}>Take Photo</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => handlePickMaintenancePhoto(false)}
-                    style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white py-2.5`}
-                  >
-                    <ImagePlus size={14} color="#0F172A" />
-                    <Text style={tw`text-xs font-bold text-slate-800`}>Upload Photo</Text>
+                    <Text style={tw`text-xs font-bold text-white`}>Capture Photo (Camera Only)</Text>
                   </Pressable>
                 </View>
               )}
@@ -1500,7 +1624,7 @@ export default function ResponderMap() {
               </Pressable>
             </View>
           </View>
-        </View>
+        </Pressable>
       </Modal>
 
       <Modal
@@ -1509,202 +1633,210 @@ export default function ResponderMap() {
         animationType="slide"
         onRequestClose={() => setShowPatientModal(false)}
       >
-        <View style={tw`flex-1 justify-end bg-black/40`}>
+        <Pressable onPress={Keyboard.dismiss} style={tw`flex-1 justify-end bg-black/40`}>
           <View style={tw`max-h-[82%] rounded-t-3xl bg-white px-5 pb-6 pt-5`}>
             <Text style={tw`text-lg font-extrabold text-slate-900`}>
-              {userRole === 'police'
-                ? 'Criminal / Incident Report Handover'
-                : userRole === 'fire'
-                  ? 'Fire Scene Resolution Report'
-                  : 'Patient / Reporter Information'}
+              {isHospitalHandover
+                ? 'Hospital Handover & Patient Information'
+                : userRole === 'police'
+                  ? 'Police Scene Completion Report'
+                  : userRole === 'fire'
+                    ? 'Fire Scene Completion Report'
+                    : 'Scene Completion Report'}
             </Text>
             <Text style={tw`mt-1 text-xs text-slate-500`}>
-              {userRole === 'fire'
-                ? 'Provide additional fire scene information and attach proof of completion for BDRRMO & Admin.'
-                : isAgencyRole
-                  ? 'Auto-filled from the guest report. Add involved persons and submit proof of resolution for BDRRMO & Admin.'
-                  : 'Auto-filled from the guest incident report. Review or add individuals before generating the hospital QR code.'}
+              {isHospitalHandover
+                ? 'Auto-filled from the emergency report. Review or add individuals before generating the hospital handover QR code.'
+                : 'Provide additional information and capture a real-time proof of completion photo for BDRRMO.'}
             </Text>
 
-            <ScrollView style={tw`mt-3`} contentContainerStyle={tw`gap-3 pb-4`}>
-              {userRole !== 'fire' ? (
+            <ScrollView
+              style={tw`mt-3`}
+              contentContainerStyle={tw`gap-3 pb-4`}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag"
+            >
+              {isHospitalHandover ? (
                 <>
-                  {patients.map((person, index) => (
-                    <View key={index} style={tw`rounded-2xl border border-slate-200 bg-slate-50 p-3`}>
-                      <View style={tw`flex-row items-center justify-between`}>
-                        <Text style={tw`text-xs font-bold text-slate-800`}>
-                          Person #{index + 1} {index === 0 ? '(Auto-filled from Report)' : ''}
+                  {patients.map((person, index) => {
+                const errs = personValidationErrors[index] || {};
+                return (
+                  <View key={index} style={tw`rounded-2xl border border-slate-200 bg-slate-50 p-3`}>
+                    <View style={tw`flex-row items-center justify-between`}>
+                      <Text style={tw`text-xs font-bold text-slate-800`}>
+                        {index === 0 ? "Reporter's Information" : `Additional Person #${index}`}
+                      </Text>
+                      {index > 0 ? (
+                        <Pressable
+                          onPress={() =>
+                            setPatients((prev) => prev.filter((_, i) => i !== index))
+                          }
+                          style={tw`flex-row items-center gap-1 rounded-lg bg-red-50 px-2 py-1`}
+                        >
+                          <Trash2 size={12} color="#DC2626" />
+                          <Text style={tw`text-[10px] font-bold text-red-600`}>Delete</Text>
+                        </Pressable>
+                      ) : (
+                        <Text style={tw`text-[10px] font-semibold text-[#1F7A4D]`}>
+                          Auto-filled
                         </Text>
-                        {patients.length > 1 ? (
-                          <Pressable
-                            onPress={() =>
-                              setPatients((prev) => prev.filter((_, i) => i !== index))
-                            }
-                            style={tw`flex-row items-center gap-1 rounded-lg bg-red-50 px-2 py-1`}
-                          >
-                            <Trash2 size={12} color="#DC2626" />
-                            <Text style={tw`text-[10px] font-bold text-red-600`}>Delete</Text>
-                          </Pressable>
-                        ) : null}
-                      </View>
-                      <TextInput
-                        value={person.full_name}
-                        onChangeText={(val) =>
-                          setPatients((prev) =>
-                            prev.map((p, i) => (i === index ? { ...p, full_name: val } : p)),
-                          )
-                        }
-                        placeholder="Full Name"
-                        style={tw`mt-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900`}
-                      />
-                      <TextInput
-                        value={person.contact}
-                        onChangeText={(val) =>
-                          setPatients((prev) =>
-                            prev.map((p, i) => (i === index ? { ...p, contact: val } : p)),
-                          )
-                        }
-                        placeholder="Contact Number"
-                        style={tw`mt-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900`}
-                      />
-                      <View style={tw`mt-2 flex-row gap-2`}>
-                        <TextInput
-                          value={person.age}
-                          onChangeText={(val) =>
-                            setPatients((prev) =>
-                              prev.map((p, i) => (i === index ? { ...p, age: val } : p)),
-                            )
-                          }
-                          placeholder="Age"
-                          keyboardType="numeric"
-                          style={tw`flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900`}
-                        />
-                        <TextInput
-                          value={person.sex}
-                          onChangeText={(val) =>
-                            setPatients((prev) =>
-                              prev.map((p, i) => (i === index ? { ...p, sex: val } : p)),
-                            )
-                          }
-                          placeholder="Sex"
-                          style={tw`flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900`}
-                        />
-                      </View>
-                      <TextInput
-                        value={person.condition}
-                        onChangeText={(val) =>
-                          setPatients((prev) =>
-                            prev.map((p, i) => (i === index ? { ...p, condition: val } : p)),
-                          )
-                        }
-                        placeholder="Condition / Incident Type"
-                        style={tw`mt-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900`}
-                      />
-                      <TextInput
-                        value={person.notes}
-                        onChangeText={(val) =>
-                          setPatients((prev) =>
-                            prev.map((p, i) => (i === index ? { ...p, notes: val } : p)),
-                          )
-                        }
-                        placeholder="Patient Notes"
-                        multiline
-                        style={tw`mt-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900`}
-                      />
+                      )}
                     </View>
-                  ))}
+                    <TextInput
+                      value={person.full_name}
+                      onChangeText={(val) =>
+                        setPatients((prev) =>
+                          prev.map((p, i) => (i === index ? { ...p, full_name: sanitizePersonName(val) } : p)),
+                        )
+                      }
+                      maxLength={80}
+                      placeholder="Full Name * (letters, spaces, . and - only)"
+                      style={tw`mt-2 rounded-xl border ${errs.full_name ? 'border-red-300' : 'border-slate-200'} bg-white px-3 py-2 text-xs text-slate-900`}
+                    />
+                    {errs.full_name ? (
+                      <Text style={tw`mt-1 text-[10px] font-semibold text-red-600`}>{errs.full_name}</Text>
+                    ) : null}
 
-                  <Pressable
-                    onPress={() =>
-                      setPatients((prev) => [
-                        ...prev,
-                        { full_name: '', contact: '', age: '', sex: '', condition: '', notes: '' },
-                      ])
-                    }
-                    style={tw`flex-row items-center justify-center gap-1.5 rounded-xl border border-dashed border-slate-300 py-2.5`}
-                  >
-                    <Plus size={14} color="#1F7A4D" />
-                    <Text style={tw`text-xs font-bold text-[#1F7A4D]`}>Add Person</Text>
-                  </Pressable>
+                    <TextInput
+                      value={person.contact}
+                      onChangeText={(val) =>
+                        setPatients((prev) =>
+                          prev.map((p, i) => (i === index ? { ...p, contact: sanitizeContactNumber(val) } : p)),
+                        )
+                      }
+                      keyboardType="numeric"
+                      maxLength={11}
+                      placeholder="Contact Number (09XXXXXXXXX, digits only)"
+                      style={tw`mt-2 rounded-xl border ${errs.contact ? 'border-red-300' : 'border-slate-200'} bg-white px-3 py-2 text-xs text-slate-900`}
+                    />
+                    {errs.contact ? (
+                      <Text style={tw`mt-1 text-[10px] font-semibold text-red-600`}>{errs.contact}</Text>
+                    ) : null}
+
+                    <View style={tw`mt-2 flex-row items-center gap-2`}>
+                      <TextInput
+                        value={person.age}
+                        onChangeText={(val) =>
+                          setPatients((prev) =>
+                            prev.map((p, i) => (i === index ? { ...p, age: sanitizeAge(val) } : p)),
+                          )
+                        }
+                        placeholder="Age (0–120)"
+                        keyboardType="numeric"
+                        maxLength={3}
+                        style={tw`w-24 rounded-xl border ${errs.age ? 'border-red-300' : 'border-slate-200'} bg-white px-3 py-2 text-xs text-slate-900`}
+                      />
+                      <View style={tw`flex-1 flex-row gap-1.5`}>
+                        {['Male', 'Female'].map((sexOpt) => {
+                          const selected = person.sex === sexOpt;
+                          return (
+                            <Pressable
+                              key={sexOpt}
+                              onPress={() =>
+                                setPatients((prev) =>
+                                  prev.map((p, i) => (i === index ? { ...p, sex: sexOpt } : p)),
+                                )
+                              }
+                              style={tw`flex-1 items-center rounded-xl border py-2 ${
+                                selected
+                                  ? 'border-[#1F7A4D] bg-green-50'
+                                  : errs.sex
+                                    ? 'border-red-300 bg-white'
+                                    : 'border-slate-200 bg-white'
+                              }`}
+                            >
+                              <Text
+                                style={tw`text-xs font-bold ${
+                                  selected ? 'text-[#1F7A4D]' : 'text-slate-600'
+                                }`}
+                              >
+                                {sexOpt}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    </View>
+                    {errs.age || errs.sex ? (
+                      <Text style={tw`mt-1 text-[10px] font-semibold text-red-600`}>
+                        {[errs.age, errs.sex].filter(Boolean).join(' • ')}
+                      </Text>
+                    ) : null}
+
+                    <TextInput
+                      value={person.condition}
+                      onChangeText={(val) =>
+                        setPatients((prev) =>
+                          prev.map((p, i) => (i === index ? { ...p, condition: val.slice(0, 120) } : p)),
+                        )
+                      }
+                      maxLength={120}
+                      placeholder="Condition / Incident Type *"
+                      style={tw`mt-2 rounded-xl border ${errs.condition ? 'border-red-300' : 'border-slate-200'} bg-white px-3 py-2 text-xs text-slate-900`}
+                    />
+                    {errs.condition ? (
+                      <Text style={tw`mt-1 text-[10px] font-semibold text-red-600`}>{errs.condition}</Text>
+                    ) : null}
+
+                    <TextInput
+                      value={person.notes}
+                      onChangeText={(val) =>
+                        setPatients((prev) =>
+                          prev.map((p, i) => (i === index ? { ...p, notes: val.slice(0, 500) } : p)),
+                        )
+                      }
+                      maxLength={500}
+                      placeholder="Patient / Person Notes (optional, max 500 chars)"
+                      multiline
+                      style={tw`mt-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900`}
+                    />
+                    <Text style={tw`mt-0.5 text-right text-[10px] text-slate-400`}>
+                      {String(person.notes || '').length}/500
+                    </Text>
+                  </View>
+                );
+              })}
+
+              <Pressable
+                onPress={() =>
+                  setPatients((prev) => [
+                    ...prev,
+                    { full_name: '', contact: '', age: '', sex: '', condition: '', notes: '' },
+                  ])
+                }
+                style={tw`flex-row items-center justify-center gap-1.5 rounded-xl border border-dashed border-slate-300 py-2.5`}
+              >
+                <Plus size={14} color="#1F7A4D" />
+                <Text style={tw`text-xs font-bold text-[#1F7A4D]`}>+ Add Additional Person</Text>
+              </Pressable>
                 </>
               ) : null}
 
               <View style={tw`rounded-2xl border border-slate-200 bg-slate-50 p-3`}>
-                <Text style={tw`text-xs font-bold text-slate-800`}>
-                  {userRole === 'fire'
-                    ? 'Additional Information / Fire Scene Summary'
-                    : 'Short Description / Further Information'}
-                </Text>
+                <View style={tw`flex-row items-center justify-between`}>
+                  <Text style={tw`text-xs font-bold text-slate-800`}>
+                    {userRole === 'fire'
+                      ? 'Additional Information / Fire Scene Summary *'
+                      : 'Short Description / Further Information *'}
+                  </Text>
+                  <Text style={tw`text-[10px] text-slate-400`}>{furtherInfo.length}/2000</Text>
+                </View>
                 <TextInput
                   value={furtherInfo}
-                  onChangeText={setFurtherInfo}
+                  onChangeText={(val) => setFurtherInfo(val.slice(0, 2000))}
+                  maxLength={2000}
                   placeholder={
                     isAgencyRole
-                      ? 'Enter scene resolution summary, actions taken, or handover remarks...'
-                      : 'Enter summary of patient transport, hospital arrival details, or remarks...'
+                      ? 'Auto-filled from emergency report additional note. Add scene resolution summary...'
+                      : 'Auto-filled from emergency report additional note. Add transport or handover remarks...'
                   }
                   multiline
-                  style={tw`mt-2 min-h-16 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900`}
+                  style={tw`mt-2 min-h-16 rounded-xl border ${furtherInfoError ? 'border-red-300' : 'border-slate-200'} bg-white px-3 py-2 text-xs text-slate-900`}
                 />
+                {furtherInfoError ? (
+                  <Text style={tw`mt-1 text-[10px] font-semibold text-red-600`}>{furtherInfoError}</Text>
+                ) : null}
               </View>
-
-              {userRole === 'police' ? (
-                <View style={tw`rounded-2xl border border-blue-200 bg-blue-50/70 p-3`}>
-                  <Pressable
-                    onPress={() => setLtoEnabled((v) => !v)}
-                    style={tw`flex-row items-center justify-between`}
-                  >
-                    <View style={tw`mr-3 flex-1`}>
-                      <Text style={tw`text-xs font-extrabold text-blue-950`}>
-                        Road Incident / LTO QR Handover (Optional)
-                      </Text>
-                      <Text style={tw`mt-0.5 text-[10px] text-blue-800`}>
-                        Generate a QR handover for LTO / Traffic Enforcement on road or vehicular problems.
-                      </Text>
-                    </View>
-                    <View
-                      style={tw`rounded-full px-2.5 py-1 ${ltoEnabled ? 'bg-blue-700' : 'bg-slate-200'
-                        }`}
-                    >
-                      <Text
-                        style={tw`text-[10px] font-extrabold ${ltoEnabled ? 'text-white' : 'text-slate-700'
-                          }`}
-                      >
-                        {ltoEnabled ? 'ENABLED' : 'OFF'}
-                      </Text>
-                    </View>
-                  </Pressable>
-
-                  {ltoEnabled ? (
-                    <View style={tw`mt-3 gap-2`}>
-                      <TextInput
-                        value={ltoVehicles}
-                        onChangeText={setLtoVehicles}
-                        placeholder="Involved Vehicle(s) & Plate Number(s) *"
-                        style={tw`rounded-xl border border-blue-200 bg-white px-3 py-2 text-xs text-slate-900`}
-                      />
-                      <TextInput
-                        value={ltoDrivers}
-                        onChangeText={setLtoDrivers}
-                        placeholder="Driver Name(s) & LTO License Number(s)"
-                        style={tw`rounded-xl border border-blue-200 bg-white px-3 py-2 text-xs text-slate-900`}
-                      />
-                      <TextInput
-                        value={ltoViolation}
-                        onChangeText={setLtoViolation}
-                        placeholder="Road Problem / Traffic Violation Type *"
-                        style={tw`rounded-xl border border-blue-200 bg-white px-3 py-2 text-xs text-slate-900`}
-                      />
-                      <TextInput
-                        value={ltoReceivingUnit}
-                        onChangeText={setLtoReceivingUnit}
-                        placeholder="Receiving LTO / Traffic Enforcer Unit"
-                        style={tw`rounded-xl border border-blue-200 bg-white px-3 py-2 text-xs text-slate-900`}
-                      />
-                    </View>
-                  ) : null}
-                </View>
-              ) : null}
 
               <View style={tw`rounded-2xl border border-slate-200 bg-slate-50 p-3`}>
                 <Text style={tw`text-xs font-bold text-slate-800`}>
@@ -1740,14 +1872,7 @@ export default function ResponderMap() {
                       style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl bg-[#1F7A4D] py-2.5`}
                     >
                       <Camera size={14} color="#FFFFFF" />
-                      <Text style={tw`text-xs font-bold text-white`}>Take Photo</Text>
-                    </Pressable>
-                    <Pressable
-                      onPress={() => handlePickProofPhoto(false)}
-                      style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white py-2.5`}
-                    >
-                      <ImagePlus size={14} color="#0F172A" />
-                      <Text style={tw`text-xs font-bold text-slate-800`}>Upload Photo</Text>
+                      <Text style={tw`text-xs font-bold text-white`}>Capture Photo (Camera Only)</Text>
                     </Pressable>
                   </View>
                 )}
@@ -1767,95 +1892,67 @@ export default function ResponderMap() {
               </Pressable>
               <Pressable
                 onPress={handleSubmitPatientForm}
-                disabled={busy}
-                style={tw`flex-1 items-center rounded-xl bg-[#1F7A4D] py-3`}
+                disabled={busy || !isHandoverFormValid}
+                style={tw`flex-1 items-center rounded-xl bg-[#1F7A4D] py-3 ${busy || !isHandoverFormValid ? 'opacity-45' : ''}`}
               >
                 <Text style={tw`text-xs font-bold text-white`}>
                   {busy
                     ? 'Submitting...'
-                    : isAgencyRole
-                      ? 'Submit Resolution Report'
-                      : 'Submit & Generate QR'}
+                    : isHospitalHandover
+                      ? 'Submit & Generate QR'
+                      : 'Submit Completion Report'}
                 </Text>
               </Pressable>
             </View>
           </View>
-        </View>
+        </Pressable>
       </Modal>
 
       <Modal
         visible={Boolean(qrResult)}
         transparent
         animationType="fade"
-        onRequestClose={() => setQrResult(null)}
+        onRequestClose={() => {
+          setQrResult(null);
+          if (isAgencyRole) navigation.navigate('History');
+        }}
       >
         <View style={tw`flex-1 items-center justify-center bg-black/50 px-6`}>
           <View style={tw`w-full items-center rounded-3xl bg-white p-6`}>
             <View style={tw`flex-row items-center gap-2`}>
-              <QrCode size={20} color={qrResult?.is_lto ? '#1D4ED8' : '#1F7A4D'} />
+              <QrCode size={20} color="#1F7A4D" />
               <Text style={tw`text-lg font-extrabold text-slate-900`}>
-                {qrResult?.is_lto ? 'LTO Road Incident QR Handover' : 'Hospital Handover QR Code'}
+                {qrResult?.agency_role === 'police'
+                  ? 'Police Incident Summary QR'
+                  : qrResult?.agency_role === 'fire'
+                    ? 'BFP Incident Summary QR'
+                    : 'Hospital Handover Summary QR'}
               </Text>
             </View>
             <Text style={tw`mt-1 text-center text-xs text-slate-500`}>
-              {qrResult?.is_lto
-                ? 'Show this QR code to the receiving LTO / Traffic Enforcement officer for road incident turnover.'
-                : 'Show this QR code to the receiving hospital staff for patient handover.'}
+              Scan this QR code to view or print the complete Incident Summary PDF (details, persons &amp; attached photos).
             </Text>
 
-            {qrResult?.token ? (
+            {qrResult?.summary_pdf_url || qrResult?.token ? (
               <Image
                 source={{
                   uri: `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
-                    JSON.stringify(
-                      qrResult.is_lto
-                        ? {
-                          type: 'LTO_ROAD_HANDOVER',
-                          handover_id: qrResult.handover_id,
-                          token: qrResult.token,
-                          receiving_lto_unit: qrResult.receiving_lto_unit,
-                          vehicles_involved: qrResult.vehicles_involved,
-                          driver_license_info: qrResult.driver_license_info,
-                          violation_type: qrResult.violation_type,
-                        }
-                        : {
-                          handover_id: qrResult.handover_id,
-                          token: qrResult.token,
-                          incident_id: activeAssignment?.incident_id,
-                          hospital: nearestHospital?.name,
-                          patients,
-                        },
-                    ),
+                    qrResult.summary_pdf_url
+                      ? `${API_ORIGIN}${qrResult.summary_pdf_url}`
+                      : `${API_ORIGIN}/api/reports/${encodeURIComponent(qrResult.incident_id || '')}/handover-summary`,
                   )}`,
                 }}
                 style={tw`mt-4 h-52 w-52 bg-slate-100`}
               />
             ) : null}
 
-            {qrResult?.is_lto ? (
-              <View style={tw`mt-3 w-full rounded-xl bg-blue-50 p-3`}>
-                <Text style={tw`text-xs font-extrabold text-blue-950`}>
-                  Receiving Unit: {qrResult.receiving_lto_unit}
-                </Text>
-                <Text style={tw`mt-1 text-[11px] text-blue-900`}>
-                  Vehicles: {qrResult.vehicles_involved}
-                </Text>
-                {qrResult.driver_license_info ? (
-                  <Text style={tw`mt-0.5 text-[11px] text-blue-900`}>
-                    Driver / License: {qrResult.driver_license_info}
-                  </Text>
-                ) : null}
-                <Text style={tw`mt-0.5 text-[11px] text-blue-900`}>
-                  Violation / Incident: {qrResult.violation_type}
-                </Text>
-              </View>
-            ) : nearestHospital ? (
+            {nearestHospital && qrResult?.agency_role === 'tanod' ? (
               <Text style={tw`mt-3 text-xs font-bold text-blue-900`}>
                 Hospital: {nearestHospital.name}
               </Text>
             ) : null}
             <Text style={tw`mt-1 text-[11px] text-slate-600`}>
-              Patients: {patients.length} • Proof Photo Attached • Token: {qrResult?.token?.slice(0, 8)}...
+              Persons: {patients.length} • Proof Photo Attached • Token: {qrResult?.token?.slice(0, 8)}...
             </Text>
             {furtherInfo ? (
               <Text style={tw`mt-1 text-center text-[11px] text-slate-500`} numberOfLines={2}>
@@ -1864,16 +1961,80 @@ export default function ResponderMap() {
             ) : null}
             <View style={tw`mt-2 rounded-lg bg-green-50 px-3 py-1.5`}>
               <Text style={tw`text-center text-[10px] font-bold text-[#1F7A4D]`}>
-                Sent to Admin → Resolved & Handed Over for final closure
+                Completion report sent to BDRRMO for closure authorization
               </Text>
             </View>
 
             <Pressable
-              onPress={() => setQrResult(null)}
-              style={tw`mt-5 w-full items-center rounded-xl bg-[#1F7A4D] py-3`}
+              onPress={() => {
+                const pdfUrl = qrResult?.summary_pdf_url
+                  ? `${API_ORIGIN}${qrResult.summary_pdf_url}`
+                  : `${API_ORIGIN}/api/reports/${encodeURIComponent(qrResult?.incident_id || '')}/handover-summary`;
+                void Linking.openURL(pdfUrl);
+              }}
+              style={tw`mt-3 w-full items-center rounded-xl border border-[#1F7A4D] bg-green-50 py-2.5`}
+            >
+              <Text style={tw`text-xs font-bold text-[#1F7A4D]`}>
+                Open / Print Incident Summary PDF
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => {
+                setQrResult(null);
+                if (isAgencyRole) navigation.navigate('History');
+              }}
+              style={tw`mt-2.5 w-full items-center rounded-xl bg-[#1F7A4D] py-3`}
             >
               <Text style={tw`text-xs font-bold text-white`}>Done</Text>
             </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={Boolean(
+          activeAssignment?.completion_rejected_note &&
+          activeAssignment.completion_rejected_note !== dismissedRejectionNote &&
+          !showPatientModal,
+        )}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDismissedRejectionNote(activeAssignment?.completion_rejected_note || '')}
+      >
+        <View style={tw`flex-1 items-center justify-center bg-black/55 px-6`}>
+          <View style={tw`w-full rounded-3xl bg-white p-6`}>
+            <View style={tw`flex-row items-center gap-2`}>
+              <AlertTriangle size={22} color="#DC2626" />
+              <Text style={tw`text-base font-extrabold text-red-700`}>
+                Proof of Completion Rejected
+              </Text>
+            </View>
+            <Text style={tw`mt-2 text-xs leading-5 text-slate-700`}>
+              Your proof of completion has been rejected by BDRRMO. Please review the reason below and refill the completion form.
+            </Text>
+            <View style={tw`mt-3 rounded-xl border border-red-200 bg-red-50 p-3`}>
+              <Text style={tw`text-xs font-semibold text-red-900`}>
+                {String(activeAssignment?.completion_rejected_note || '').replace(/^\[COMPLETION REJECTED\]\s*/i, '')}
+              </Text>
+            </View>
+            <View style={tw`mt-5 flex-row gap-2.5`}>
+              <Pressable
+                onPress={() => setDismissedRejectionNote(activeAssignment?.completion_rejected_note || '')}
+                style={tw`flex-1 items-center rounded-xl bg-slate-100 py-3`}
+              >
+                <Text style={tw`text-xs font-bold text-slate-700`}>Dismiss</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  setDismissedRejectionNote(activeAssignment?.completion_rejected_note || '');
+                  handleOpenCompleteForm();
+                }}
+                style={tw`flex-1 items-center rounded-xl bg-[#1F7A4D] py-3`}
+              >
+                <Text style={tw`text-xs font-bold text-white`}>Refill Completion Form</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </Modal>

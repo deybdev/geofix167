@@ -38,7 +38,7 @@ const CATEGORIES = reportCatalog.categories.maintenance;
 /* Strict lifecycle: only these transitions are allowed, forward one step. */
 const STAGE_ORDER = ["Pending", "Assigned", "In Progress", "Awaiting Verification", "Verified Fixed"];
 
-const ACTIVE_STATUSES = ["Pending", "Assigned", "In Progress"];
+const ACTIVE_STATUSES = ["Pending", "Assigned", "In Progress", "For Funding"];
 
 const PRIORITY_BADGE = {
   Urgent: "bg-[#fdecea] text-[#dc2626]",
@@ -51,6 +51,7 @@ const STATUS_BADGE = {
   Pending: "bg-[#eef2f4] text-[#60738f]",
   Assigned: "bg-[#fff1c6] text-[#e69500]",
   "In Progress": "bg-(--gf-green-tint-2) text-(--gf-green)",
+  "For Funding": "bg-[#fef3c7] text-[#b45309]",
   "Awaiting Verification": "bg-[#fff1c6] text-[#e69500]",
   "Verified Fixed": "bg-(--gf-green-tint-2) text-(--gf-green)",
 };
@@ -799,7 +800,7 @@ function TaskTable({ tasks, emptyLabel, actionLabel, onOpen, nowTs }) {
 /* Task management slide-over drawer (Stages 2, 3, 4)                      */
 /* ----------------------------------------------------------------------- */
 
-function TaskDrawer({ task, onClose, onCompleteCheck, onCloseTask, onUpdateInspectionPhotos, onUpdateRepairPhotos, onAddNote, onPublish, onOpenAudit }) {
+function TaskDrawer({ task, onClose, onCompleteCheck, onToggleForFunding, onCloseTask, onUpdateInspectionPhotos, onUpdateRepairPhotos, onAddNote, onPublish, onOpenAudit }) {
   const [publishIntent, setPublishIntent] = useState(true);
   const [noteDraft, setNoteDraft] = useState("");
 
@@ -1388,6 +1389,20 @@ function TaskDrawer({ task, onClose, onCompleteCheck, onCloseTask, onUpdateInspe
           >
             Close
           </button>
+          {isActiveOrder && canCompleteCheck && (
+            <button
+              type="button"
+              onClick={() => onToggleForFunding(task.id)}
+              className={`flex items-center gap-1 rounded-md border px-3 py-2 text-[10px] font-bold transition ${
+                task.status === "For Funding"
+                  ? "border-[#d97706] bg-[#fef3c7] text-[#b45309]"
+                  : "border-[#f5d488] bg-[#fffbeb] text-[#b45309] hover:bg-[#fef3c7]"
+              }`}
+            >
+              <Clock size={11} />
+              {task.status === "For Funding" ? "For Funding (Active)" : "Set Status: For Funding"}
+            </button>
+          )}
           {isActiveOrder && (
             <button
               type="button"
@@ -1827,6 +1842,37 @@ export default function MaintenanceTasks() {
     toast.add({ type: "success", title: "Work order created", description: `${id} filed under Active Work Orders for ${draft.team}.` });
   }
 
+  /* 3a — Optional: Mark Maintenance Task as "For Funding" after Inspection Photo */
+  function toggleForFunding(id) {
+    const task = tasks.find((t) => t.id === id);
+    if (!task || !task.inspectionPhotos?.length) return;
+    const nextForFunding = task.status !== "For Funding";
+    if (task.assignmentId) {
+      fetch(`/api/admin/maintenance/tasks/${encodeURIComponent(task.assignmentId)}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ for_funding: nextForFunding }),
+      }).catch((err) => console.error("Failed to update For Funding status:", err));
+    }
+    updateTask(id, { status: nextForFunding ? "For Funding" : "In Progress", forFunding: nextForFunding });
+    logAudit({
+      taskId: id,
+      actor: "Admin — N. Villanueva",
+      action: nextForFunding ? "Marked as For Funding" : "Returned to In Progress",
+      detail: nextForFunding
+        ? "Admin reviewed the inspection photo and set status to For Funding (synced to Resident and Tanod)."
+        : "Admin cleared For Funding status and resumed In Progress.",
+    });
+    toast.add({
+      type: "success",
+      title: nextForFunding ? `${id} marked For Funding` : `${id} returned to In Progress`,
+      description: nextForFunding
+        ? "Status synced with the reporting Resident and assigned Tanod."
+        : "Maintenance task resumed as In Progress.",
+    });
+  }
+
   /* 3 — Complete Check (Active Work Orders -> Awaiting Verification) */
   function completeCheck(id) {
     const task = tasks.find((t) => t.id === id);
@@ -2090,6 +2136,7 @@ export default function MaintenanceTasks() {
           task={selectedTask}
           onClose={() => setSelectedId(null)}
           onCompleteCheck={completeCheck}
+          onToggleForFunding={toggleForFunding}
           onCloseTask={closeTask}
           onUpdateInspectionPhotos={updateInspectionPhotos}
           onUpdateRepairPhotos={updateRepairPhotos}

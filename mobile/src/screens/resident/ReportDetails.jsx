@@ -1,12 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Image, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
-import { usePreventRemove } from '@react-navigation/native';
+import { ActivityIndicator, Alert, Image, Keyboard, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
+import { useNavigation, usePreventRemove } from '@react-navigation/native';
 import { CheckCircle2, Clock, Wrench } from 'lucide-react-native';
 import tw from 'twrnc';
 import { useAuth } from '../../context/AuthContext';
-import { getReportAttachments, getReportDetails, updateReportDetails } from '../../services/residentService';
-import ReportMedia, { ReportAction } from '../../components/resident/ReportMedia';
-import { canEditReport, canUploadReport, editPayload, formatReportTime } from '../../utils/residentReport';
+import { discardReport, getReportDetails, updateReportDetails } from '../../services/residentService';
+import { ReportAction } from '../../components/resident/ReportMedia';
+import api from '../../services/api';
+import { canEditReport, editPayload, formatReportTime } from '../../utils/residentReport';
+
+function resolvePhotoUri(path) {
+  if (!path) return null;
+  if (/^https?:\/\//i.test(path)) return path;
+  const origin = String(api.defaults.baseURL || '').replace(/\/api\/?$/, '').replace(/\/$/, '');
+  return `${origin}${path.startsWith('/') ? '' : '/'}${path}`;
+}
 
 export default function ReportDetails({ route }) {
   const publicId = route?.params?.publicId;
@@ -16,11 +24,10 @@ export default function ReportDetails({ route }) {
 }
 
 function Details({ publicId, user }) {
+  const navigation = useNavigation();
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(Boolean(publicId));
   const [error, setError] = useState(publicId ? '' : 'Report unavailable. Return to My Reports and select a report.');
-  const [mediaLoading, setMediaLoading] = useState(false);
-  const [uploadBusy, setUploadBusy] = useState(false);
   const [editing, setEditing] = useState(false);
   const [description, setDescription] = useState('');
   const [address, setAddress] = useState('');
@@ -28,19 +35,17 @@ function Details({ publicId, user }) {
   const [editError, setEditError] = useState('');
   const [notice, setNotice] = useState('');
   const request = useRef(null);
-  const mediaRequest = useRef(null);
   const saveLock = useRef(false);
   const alive = useRef(true);
   const editable = canEditReport(report);
 
-  usePreventRemove(saving || uploadBusy, () => {
-    Alert.alert('Please wait', 'Finish the current save or media operation before leaving this report.');
+  usePreventRemove(saving, () => {
+    Alert.alert('Please wait', 'Finish the current save operation before leaving this report.');
   });
 
   const loadReport = useCallback(() => {
     if (!publicId) return;
     request.current?.abort();
-    mediaRequest.current?.abort();
     const controller = new AbortController();
     request.current = controller;
     return getReportDetails(publicId, { signal: controller.signal }).then(({ data }) => {
@@ -63,23 +68,8 @@ function Details({ publicId, user }) {
   useEffect(() => {
     alive.current = true;
     loadReport();
-    return () => { alive.current = false; request.current?.abort(); mediaRequest.current?.abort(); };
+    return () => { alive.current = false; request.current?.abort(); };
   }, [loadReport]);
-
-  async function reloadMedia() {
-    if (mediaRequest.current || loading || saveLock.current || uploadBusy) return;
-    const controller = new AbortController();
-    mediaRequest.current = controller; setMediaLoading(true);
-    try {
-      const { data } = await getReportAttachments(publicId, { signal: controller.signal });
-      if (!controller.signal.aborted) setReport(previous => ({ ...previous, attachments: data.attachments, attachments_error: null }));
-    } catch {
-      if (!controller.signal.aborted) setReport(previous => ({ ...previous, attachments_error: 'Photos and videos could not load. Retry media to renew their links.' }));
-    } finally {
-      if (mediaRequest.current === controller) mediaRequest.current = null;
-      if (!controller.signal.aborted && alive.current) setMediaLoading(false);
-    }
-  }
 
   function startEditing() {
     setDescription(report.description || ''); setAddress(report.address || '');
@@ -87,7 +77,7 @@ function Details({ publicId, user }) {
   }
 
   async function save() {
-    if (!editable || saveLock.current || loading || mediaLoading || uploadBusy) return;
+    if (!editable || saveLock.current || loading) return;
     let payload;
     try { payload = editPayload(description, address); } catch (failure) { setEditError(failure.message); return; }
     saveLock.current = true; setSaving(true); setEditError('');
@@ -110,9 +100,48 @@ function Details({ publicId, user }) {
     }
   }
 
-  const busy = loading || mediaLoading || saving || uploadBusy;
-  return <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={tw`p-4 pb-8`}
-    refreshControl={<RefreshControl refreshing={loading} enabled={!editing && !saving && !mediaLoading && !uploadBusy} onRefresh={() => { if (!editing && !busy) refresh(); }} tintColor="#1F7A4D" colors={['#1F7A4D']} />}>
+  const isRejected = Number(report?.status_id) === 11 || String(report?.status_label || '').toLowerCase().includes('reject');
+
+  function confirmDiscard() {
+    Alert.alert(
+      'Discard Draft Report?',
+      'This will permanently remove your rejected draft report. Are you sure?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Discard Report',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setSaving(true);
+              await discardReport(publicId);
+              if (navigation.canGoBack()) navigation.goBack();
+            } catch (err) {
+              setEditError(err?.message || 'Unable to discard report.');
+            } finally {
+              setSaving(false);
+            }
+          },
+        },
+      ],
+    );
+  }
+
+  const busy = loading || saving;
+  const reporterPhotoUrls = (
+    Array.isArray(report?.reporter_photo_urls) && report.reporter_photo_urls.length > 0
+      ? report.reporter_photo_urls
+      : report?.photo_url
+        ? [report.photo_url]
+        : []
+  ).map(resolvePhotoUri).filter(Boolean);
+  const responderPhotos = (Array.isArray(report?.responder_photos) ? report.responder_photos : [])
+    .map((p) => ({ ...p, uri: resolvePhotoUri(p.url) }))
+    .filter((p) => Boolean(p.uri));
+
+  return <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={tw`p-4 pb-8`}
+    refreshControl={<RefreshControl refreshing={loading} enabled={!editing && !saving} onRefresh={() => { if (!editing && !busy) refresh(); }} tintColor="#1F7A4D" colors={['#1F7A4D']} />}>
+    <Pressable onPress={Keyboard.dismiss}>
     {loading && !report && <View style={tw`items-center py-8`}><ActivityIndicator color="#1F7A4D" /><Text style={tw`mt-3 text-slate-600`}>Loading report...</Text></View>}
     {!!error && <View style={tw`rounded-xl bg-red-50 p-4`}><Text accessibilityRole="alert" style={tw`text-red-800`}>{error}</Text>
       {!!publicId && <ReportAction label="Retry report" onPress={refresh} disabled={busy || editing} />}</View>}
@@ -127,6 +156,32 @@ function Details({ publicId, user }) {
         <Field label="Official reference" value={report.reference_number || report.public_id} />
         <Field label="Submitted" value={formatReportTime(report.created_at)} />
       </View>
+      {isRejected && !editing && (
+        <View style={tw`mt-3 rounded-2xl border border-red-200 bg-red-50 p-4`}>
+          <Text style={tw`text-sm font-extrabold text-red-800`}>
+            Submitted Report Rejected
+          </Text>
+          <Text style={tw`mt-1 text-xs leading-5 text-red-700`}>
+            Your report was rejected. You can modify the details to resubmit it, or discard this draft report.
+          </Text>
+          <View style={tw`mt-3 flex-row gap-2.5`}>
+            <Pressable
+              onPress={startEditing}
+              disabled={busy}
+              style={tw`flex-1 items-center rounded-xl bg-[#1F7A4D] py-2.5`}
+            >
+              <Text style={tw`text-xs font-bold text-white`}>Modify &amp; Resubmit</Text>
+            </Pressable>
+            <Pressable
+              onPress={confirmDiscard}
+              disabled={busy}
+              style={tw`flex-1 items-center rounded-xl border border-red-300 bg-white py-2.5`}
+            >
+              <Text style={tw`text-xs font-bold text-red-700`}>Discard Draft</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
       {!!notice && <Text accessibilityLiveRegion="polite" style={tw`mt-3 rounded-xl bg-green-50 p-3 text-green-800`}>{notice}</Text>}
       {editable && !editing && <ReportAction label="Edit Details" onPress={startEditing} disabled={busy} />}
       {!editable && <Text style={tw`mt-3 text-slate-600`}>Details can only be edited before verification or dispatch. Assigned priority is read-only.</Text>}
@@ -139,10 +194,48 @@ function Details({ publicId, user }) {
         <ReportAction label={saving ? 'Saving...' : 'Save Changes'} onPress={save} disabled={busy || !editable} />
         <ReportAction label="Cancel" onPress={() => { setEditing(false); setEditError(''); }} disabled={saving} />
       </View>}
-      <ReportMedia reportId={publicId} attachments={report.attachments || []} mediaError={report.attachments_error}
-        canUpload={canUploadReport(report, user)} disabled={loading || saving || editing || mediaLoading} onBusy={setUploadBusy} onReload={reloadMedia}
-        onResult={(attachments, attachments_error) => setReport(previous => ({ ...previous, attachments, attachments_error }))} />
-      {mediaLoading && <ActivityIndicator style={tw`mt-3`} color="#1F7A4D" />}
+      {reporterPhotoUrls.length > 0 && (
+        <View style={tw`mt-5 rounded-2xl border border-slate-200 bg-white p-4`}>
+          <Text style={tw`text-xs font-extrabold uppercase text-[#1F7A4D]`}>
+            Reporter&apos;s Photo(s) ({reporterPhotoUrls.length})
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mt-2.5`}>
+            <View style={tw`flex-row gap-2.5`}>
+              {reporterPhotoUrls.map((uri, idx) => (
+                <Image
+                  key={`rep-photo-${idx}`}
+                  source={{ uri }}
+                  style={tw`h-36 w-48 rounded-xl bg-slate-100`}
+                  resizeMode="cover"
+                />
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+      )}
+      {report.report_type !== 'infrastructure' && responderPhotos.length > 0 && (
+        <View style={tw`mt-4 rounded-2xl border border-green-200 bg-white p-4`}>
+          <Text style={tw`text-xs font-extrabold uppercase text-[#1F7A4D]`}>
+            Responder Proof of Completion Photo(s) ({responderPhotos.length})
+          </Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mt-2.5`}>
+            <View style={tw`flex-row gap-2.5`}>
+              {responderPhotos.map((p, idx) => (
+                <View key={p.id || `resp-photo-${idx}`} style={tw`w-48 overflow-hidden rounded-xl border border-slate-200 bg-slate-50`}>
+                  <Image
+                    source={{ uri: p.uri }}
+                    style={tw`h-36 w-48 bg-slate-100`}
+                    resizeMode="cover"
+                  />
+                  <Text style={tw`px-2 py-1.5 text-[10px] font-bold text-slate-700`} numberOfLines={1}>
+                    {p.label}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+      )}
       {report.report_type === 'infrastructure' && (
         <MaintenanceProgressSection progress={report.maintenance_progress} reportStatusId={report.status_id} />
       )}
@@ -156,6 +249,7 @@ function Details({ publicId, user }) {
         </View>)}
       </View> : <Text style={tw`text-slate-600`}>No status history available yet.</Text>}
     </>}
+    </Pressable>
   </ScrollView>;
 }
 
@@ -167,6 +261,7 @@ function MaintenanceProgressSection({ progress, reportStatusId }) {
   const isVerifiedFixed = Boolean(progress?.verified_fixed) || Number(reportStatusId) === 10;
   const isAssigned = Boolean(progress?.assigned_tanod) || Number(reportStatusId) >= 6;
   const isInspected = Boolean(progress?.inspection_done) || isVerifiedFixed;
+  const isForFunding = Boolean(progress?.for_funding) && !isVerifiedFixed && !progress?.repair_done;
   const isRepaired = Boolean(progress?.repair_done) || isVerifiedFixed;
 
   const steps = [
@@ -189,6 +284,18 @@ function MaintenanceProgressSection({ progress, reportStatusId }) {
           ? 'Site inspected & arrival photos uploaded'
           : 'Awaiting on-site inspection by Tanod',
     },
+    ...(isForFunding
+      ? [
+        {
+          key: 'for_funding',
+          label: 'For Funding',
+          done: true,
+          detail: progress?.for_funding_note
+            ? `Admin note: "${progress.for_funding_note}"`
+            : 'Marked For Funding by Admin while materials/budget are arranged',
+        },
+      ]
+      : []),
     {
       key: 'repaired',
       label: 'Proof of Repair Submitted',
@@ -197,7 +304,9 @@ function MaintenanceProgressSection({ progress, reportStatusId }) {
         ? `Repair note: "${progress.repair_note}"`
         : isRepaired
           ? 'Final repair proof uploaded for Admin verification'
-          : 'Repair work in progress',
+          : isForFunding
+            ? 'Pending funding approval & materials'
+            : 'Repair work in progress',
     },
     {
       key: 'verified',

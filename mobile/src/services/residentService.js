@@ -82,10 +82,20 @@ export function normalizeReport(record) {
     longitude: Number.isFinite(record.longitude) ? record.longitude : null,
     urgency, status: group, status_id: statusId,
     status_code: record.status_code ?? code,
-    status_label: record.status_label ?? label,
+    status_label: (record.for_funding || record.maintenance_progress?.for_funding) && statusId !== 10
+      ? "For Funding"
+      : (record.status_label ?? label),
     reported_by_user_id: record.reported_by_user_id ?? null,
     is_terminal: record.is_terminal === 1 || record.is_terminal === true || [10, 11, 12].includes(statusId),
     photo_url: resolveMediaUrl(rawPhotoUrl),
+    reporter_photo_urls: Array.isArray(record.reporter_photo_urls)
+      ? record.reporter_photo_urls.map(resolveMediaUrl).filter(Boolean)
+      : [],
+    responder_photos: Array.isArray(record.responder_photos)
+      ? record.responder_photos
+          .map((p) => ({ ...p, url: resolveMediaUrl(p.url) }))
+          .filter((p) => Boolean(p.url))
+      : [],
     maintenance_progress: maint,
     dispatched_units: Array.isArray(record.dispatched_units) ? record.dispatched_units : [],
     attachments: record.attachments ?? [],
@@ -279,4 +289,8 @@ export function markNotificationRead(id) {
 
 export function markAllNotificationsRead() {
   return patchRead('/notifications/read-all');
+}
+
+export async function discardReport(publicId, { signal } = {}) {
+  return api.delete(`/reports/${encodeURIComponent(publicId)}`, { signal });
 }

@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { requireAuth, requireRole } from "../middleware/auth";
 import type { AppEnv } from "../types/env";
 import { resolveLegacyReportAddresses } from "../services/report.service";
+import { stripSelectedDetails } from "../utils/stripSelectedDetails";
 
 type MaintenanceNotesMeta = {
   type: "MAINTENANCE";
@@ -14,6 +15,9 @@ type MaintenanceNotesMeta = {
   inspection_at?: string | null;
   inspection_note: string;
   inspection_photo_ids: string[];
+  for_funding?: boolean;
+  for_funding_at?: string | null;
+  for_funding_note?: string;
   admin_check_approved?: boolean;
   repair_done: boolean;
   repair_at?: string | null;
@@ -36,6 +40,9 @@ export function parseMaintenanceMeta(raw: string | null | undefined): Maintenanc
         inspection_at: parsed.inspection_at || null,
         inspection_note: String(parsed.inspection_note || ""),
         inspection_photo_ids: Array.isArray(parsed.inspection_photo_ids) ? parsed.inspection_photo_ids : [],
+        for_funding: Boolean(parsed.for_funding),
+        for_funding_at: parsed.for_funding_at || null,
+        for_funding_note: String(parsed.for_funding_note || ""),
         admin_check_approved: Boolean(parsed.admin_check_approved),
         repair_done: Boolean(parsed.repair_done),
         repair_at: parsed.repair_at || null,
@@ -321,7 +328,9 @@ route.get("/tasks", async (c) => {
       ? "Verified Fixed"
       : meta.admin_check_approved
         ? "Awaiting Verification"
-        : "In Progress";
+        : meta.for_funding
+          ? "For Funding"
+          : "In Progress";
 
     const allPhotoIds = photosByIncident.get(String(row.incident_id)) ?? [];
     const reporterPhotoIds = allPhotoIds.filter(
@@ -346,11 +355,14 @@ route.get("/tasks", async (c) => {
         name: String(row.reporter_name || "Reporter"),
         type: String(row.reporter_type || "guest"),
       },
-      narration: String(row.description_sanitized || row.description_original || ""),
+      narration: stripSelectedDetails(row.description_sanitized || row.description_original || ""),
       team: String(row.assigned_team || row.resource_name || "Assigned Tanod"),
       priority: meta.urgency,
       deadline: meta.deadline,
       status,
+      for_funding: Boolean(meta.for_funding),
+      for_funding_at: meta.for_funding_at || null,
+      for_funding_note: meta.for_funding_note || "",
       admin_notes: meta.admin_notes,
       reporter_photo_ids: reporterPhotoIds,
       inspection_done: meta.inspection_done,
@@ -376,6 +388,8 @@ route.patch("/tasks/:assignmentId", async (c) => {
   const body = (await c.req.json().catch(() => null)) as {
     admin_notes?: string;
     admin_check_approved?: boolean;
+    for_funding?: boolean;
+    for_funding_note?: string;
     verified_fixed?: boolean;
     inspection_photo_ids?: string[];
     repair_photo_ids?: string[];
@@ -410,9 +424,22 @@ route.patch("/tasks/:assignmentId", async (c) => {
 
   const newlyAwaiting = !meta.admin_check_approved && body?.admin_check_approved === true && !body?.verified_fixed;
   if (typeof body?.admin_notes === "string") meta.admin_notes = body.admin_notes;
+  if (typeof body?.for_funding === "boolean") {
+    meta.for_funding = body.for_funding;
+    meta.for_funding_at = body.for_funding ? new Date().toISOString() : null;
+    if (typeof body.for_funding_note === "string") {
+      meta.for_funding_note = body.for_funding_note.trim();
+    }
+  }
   if (typeof body?.admin_check_approved === "boolean") {
     meta.admin_check_approved = body.admin_check_approved;
-    if (body.admin_check_approved) meta.inspection_done = true;
+    if (body.admin_check_approved) {
+      meta.inspection_done = true;
+      meta.for_funding = false;
+    }
+  }
+  if (body?.verified_fixed) {
+    meta.for_funding = false;
   }
   if (Array.isArray(body?.inspection_photo_ids)) meta.inspection_photo_ids = body.inspection_photo_ids;
   if (Array.isArray(body?.repair_photo_ids)) meta.repair_photo_ids = body.repair_photo_ids;
@@ -451,6 +478,13 @@ route.patch("/tasks/:assignmentId", async (c) => {
       existing.incident_id,
       "Maintenance Report Verified Fixed",
       "Your maintenance report has been repaired and verified fixed by Admin. Thank you for reporting!",
+    );
+  } else if (body?.for_funding === true) {
+    await notifyResidentOfMaintenanceMove(
+      db,
+      existing.incident_id,
+      "Maintenance Report Marked For Funding",
+      `Admin reviewed the Tanod's inspection photo and set your maintenance report status to For Funding while materials/budget are being arranged${meta.for_funding_note ? `: "${meta.for_funding_note}"` : "."}`,
     );
   } else if (body?.admin_check_approved) {
     await notifyResidentOfMaintenanceMove(

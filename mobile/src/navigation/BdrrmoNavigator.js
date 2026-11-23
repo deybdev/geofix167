@@ -1,6 +1,9 @@
+import { useState } from 'react';
+import { View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
-import ResponderLayout from '../layouts/ResponderLayout';
+import ResponderLayout, { ResponderNavBar } from '../layouts/ResponderLayout';
 import DispatchScreen from '../screens/bdrrmo/Dispatch';
 import HomeScreen from '../screens/bdrrmo/Home';
 import CallScreen from '../screens/bdrrmo/Call';
@@ -36,18 +39,36 @@ const HistoryDetailsWithLayout = withLayout(HistoryDetailsScreen);
 const ProfileWithLayout = withLayout(ProfileScreen);
 
 export default function BdrrmoNavigator() {
+  const navigation = useNavigation();
+  const [currentRoute, setCurrentRoute] = useState('Home');
+
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="Home" component={HomeWithLayout} />
-      <Stack.Screen name="Dispatch" component={DispatchWithLayout} />
-      <Stack.Screen name="IncidentDetails" component={IncidentDetailsWithLayout} />
-      <Stack.Screen name="Map" component={MapWithLayout} />
-      <Stack.Screen name="Navigation" component={NavigationWithLayout} />
-      <Stack.Screen name="Messages" component={MessagesWithLayout} />
-      <Stack.Screen name="Call" component={CallWithLayout} />
-      <Stack.Screen name="History" component={HistoryWithLayout} />
-      <Stack.Screen name="HistoryDetails" component={HistoryDetailsWithLayout} />
-      <Stack.Screen name="Profile" component={ProfileWithLayout} />
-    </Stack.Navigator>
+    <View style={{ flex: 1 }}>
+      <Stack.Navigator
+        screenOptions={{ headerShown: false, animation: 'none' }}
+        screenListeners={{
+          state: (e) => {
+            const state = e.data?.state;
+            const active = state?.routes?.[state.index]?.name;
+            if (active) setCurrentRoute(active);
+          },
+        }}
+      >
+        <Stack.Screen name="Home" component={HomeWithLayout} />
+        <Stack.Screen name="Dispatch" component={DispatchWithLayout} />
+        <Stack.Screen name="IncidentDetails" component={IncidentDetailsWithLayout} />
+        <Stack.Screen name="Map" component={MapWithLayout} />
+        <Stack.Screen name="Navigation" component={NavigationWithLayout} />
+        <Stack.Screen name="Messages" component={MessagesWithLayout} />
+        <Stack.Screen name="Call" component={CallWithLayout} />
+        <Stack.Screen name="History" component={HistoryWithLayout} />
+        <Stack.Screen name="HistoryDetails" component={HistoryDetailsWithLayout} />
+        <Stack.Screen name="Profile" component={ProfileWithLayout} />
+      </Stack.Navigator>
+      <ResponderNavBar
+        currentRoute={currentRoute}
+        onNavigate={(routeName) => navigation.navigate(routeName)}
+      />
+    </View>
   );
 }
