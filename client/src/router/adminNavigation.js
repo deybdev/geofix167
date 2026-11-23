@@ -1,6 +1,8 @@
 import {
+  Award,
   BarChart3,
   BookOpen,
+  ClipboardCheck,
   Grid2X2,
   Megaphone,
   Settings,
@@ -38,11 +40,13 @@ export const ADMIN_NAVIGATION = [
       {
         key: "barangay-accomplishments",
         label: "Barangay Accomplishments",
+        icon: Award,
         path: PATHS.adminAccomplishmentLog,
       },
       {
         key: "bdrrmo-completed-tasks",
         label: "BDRRMO Completed Tasks",
+        icon: ClipboardCheck,
         path: PATHS.adminBdrrmoAccomplishments,
       },
     ],

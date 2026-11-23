@@ -60,8 +60,18 @@ export default function LandingHeader({ onReportClick }) {
   }, [servicesMenuOpen]);
 
   const servicesSubLinks = [
-    { label: "Barangay Services", href: PATHS.services, icon: Wrench },
-    { label: "Barangay Announcements", href: PATHS.announcements, icon: Megaphone },
+    {
+      label: "Barangay Services",
+      description: "Community assistance & public requests",
+      href: PATHS.services,
+      icon: Wrench,
+    },
+    {
+      label: "Barangay Announcements",
+      description: "Official advisories, schedules & notices",
+      href: PATHS.announcements,
+      icon: Megaphone,
+    },
   ];
 
   const isServicesGroupActive =
@@ -123,16 +133,23 @@ export default function LandingHeader({ onReportClick }) {
                         }`}
                       />
                     </button>
-                    {servicesMenuOpen && (
-                      <div
-                        role="menu"
-                        aria-label="Barangay Services and Announcements"
-                        className="absolute left-0 top-full z-50 mt-2.5 w-56 rounded-xl border border-(--gf-border) bg-white p-1.5 shadow-[0_14px_34px_-10px_rgb(15_23_42/0.16)]"
-                      >
-                        <span
-                          aria-hidden="true"
-                          className="pointer-events-none absolute -top-1.5 left-6 h-3 w-3 rotate-45 border-l border-t border-(--gf-border) bg-white"
-                        />
+                    <div
+                      role="menu"
+                      aria-label="Barangay Services and Announcements"
+                      aria-hidden={!servicesMenuOpen}
+                      inert={!servicesMenuOpen ? "" : undefined}
+                      className={`absolute left-1/2 top-full z-50 mt-3 w-76 -translate-x-1/2 overflow-hidden rounded-xl border border-(--gf-border) bg-white shadow-[0_16px_38px_-12px_rgb(15_23_42/0.2)] transition-[opacity,transform,visibility] duration-150 ease-out motion-reduce:transition-none ${
+                        servicesMenuOpen
+                          ? "visible translate-y-0 opacity-100"
+                          : "invisible -translate-y-1.5 opacity-0 pointer-events-none"
+                      }`}
+                    >
+                      <div className="border-b border-(--gf-line) bg-(--gf-surface) px-3.5 py-2">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-(--gf-slate)">
+                          Barangay 167 Directory
+                        </p>
+                      </div>
+                      <div className="space-y-1 p-2">
                         {link.children.map((sub) => {
                           const SubIcon = sub.icon;
                           const subActive =
@@ -148,28 +165,50 @@ export default function LandingHeader({ onReportClick }) {
                                 setServicesMenuOpen(false);
                                 setMobileMenuOpen(false);
                               }}
-                              className={`flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-xs font-semibold transition-colors ${
+                              className={`group/item flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors ${
                                 subActive
-                                  ? "bg-(--gf-green-tint) text-(--gf-green-dark)"
-                                  : "text-(--gf-ink) hover:bg-(--gf-green-soft) hover:text-(--gf-green-dark)"
+                                  ? "bg-(--gf-green-soft) ring-1 ring-inset ring-(--gf-green-border)"
+                                  : "hover:bg-slate-50"
                               }`}
                             >
                               <span
                                 aria-hidden="true"
-                                className={`grid h-7 w-7 shrink-0 place-items-center rounded-md ${
+                                className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg transition-colors ${
                                   subActive
-                                    ? "bg-(--gf-green) text-white"
-                                    : "bg-slate-100 text-(--gf-slate)"
+                                    ? "bg-(--public-action) text-white"
+                                    : "bg-(--gf-green-soft) text-(--public-action) group-hover/item:bg-(--public-action) group-hover/item:text-white"
                                 }`}
                               >
-                                <SubIcon size={14} />
+                                <SubIcon size={16} strokeWidth={2} />
                               </span>
-                              <span>{sub.label}</span>
+                              <span className="min-w-0 flex-1">
+                                <span
+                                  className={`block whitespace-nowrap text-[13px] font-bold leading-snug ${
+                                    subActive
+                                      ? "text-(--public-action)"
+                                      : "text-(--gf-ink) group-hover/item:text-(--public-action)"
+                                  }`}
+                                >
+                                  {sub.label}
+                                </span>
+                                <span className="mt-0.5 block truncate text-[11px] font-medium text-(--gf-slate)">
+                                  {sub.description}
+                                </span>
+                              </span>
+                              <ChevronRight
+                                size={14}
+                                aria-hidden="true"
+                                className={`shrink-0 transition-transform duration-150 motion-reduce:transition-none ${
+                                  subActive
+                                    ? "text-(--public-action)"
+                                    : "text-slate-300 group-hover/item:translate-x-0.5 group-hover/item:text-(--public-action)"
+                                }`}
+                              />
                             </Link>
                           );
                         })}
                       </div>
-                    )}
+                    </div>
                   </div>
                 );
               }
