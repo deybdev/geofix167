@@ -802,11 +802,11 @@ export default function GuestReportForm({
                 </div>
               </div>)}
             </div>}
-            {photos.length === 0 && <p role={validationErrors.photos ? "alert" : undefined} className={`mt-2 text-[10px] font-semibold ${validationErrors.photos ? "text-red-700" : "text-slate-500"}`}>{validationErrors.photos || "Add at least one photo before submitting this report."}</p>}
+            {photos.length === 0 && <p role={validationErrors.photos ? "alert" : undefined} className={`mt-2 text-[10px] font-semibold ${validationErrors.photos ? "text-red-700" : "text-slate-500"}`}>{validationErrors.photos || (isSuddenIncident ? "Add at least one photo before submitting this report." : "Photos are optional for maintenance reports.")}</p>}
           </section>
           <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row">
             <button type="button" disabled={cameraBusy || isSubmitting} onClick={() => { setCameraConsentOpen(false); stopCamera(); setFormStep(1); }} className="min-h-10 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50">Back</button>
-            <button type="submit" disabled={isSubmitting || cameraOpen || cameraBusy || photos.length === 0 || (!pin && !locationNote.trim()) || (needsAccuracyConfirmation && !confirmPoorAccuracy)} className="flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-[#2E8B57] py-2.5 text-xs font-bold text-white shadow-md transition hover:bg-[#247447] active:scale-[0.99] disabled:opacity-50">
+            <button type="submit" disabled={isSubmitting || cameraOpen || cameraBusy || (isSuddenIncident && photos.length === 0) || (!pin && !locationNote.trim()) || (needsAccuracyConfirmation && !confirmPoorAccuracy)} className="flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-[#2E8B57] py-2.5 text-xs font-bold text-white shadow-md transition hover:bg-[#247447] active:scale-[0.99] disabled:opacity-50">
               <Send size={15} />{isSubmitting ? "Submitting report..." : "Submit Incident Report"}
             </button>
           </div>
