@@ -70,7 +70,7 @@ Then run:
 
 ```powershell
 npx.cmd wrangler types
-npx.cmd wrangler d1 migrations apply geofix167_db --local
+npm.cmd run db:migrate
 npm.cmd run dev
 ```
 
