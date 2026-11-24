@@ -1,4 +1,93 @@
-import { Bell, CheckCheck, CircleAlert, Handshake, Radio, RefreshCw, ShieldCheck, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import NotificationCenter from "./NotificationCenter";
 import { useBdrrmoDemo } from "../../features/bdrrmo/BdrrmoDemoContext";
-const icon={INCIDENT_REVIEW:ShieldCheck,ASSIGNMENT:Radio,SUPPORT_REQUEST:CircleAlert,HANDOVER:Handshake,CLOSURE_REVIEW:Bell};
-export default function BdrrmoNotifications({open,onClose,onOpenIncident}){const {notifications,unreadCount,markRead,markAllRead,refresh,sync}=useBdrrmoDemo();if(!open)return null;return <><button className="fixed inset-0 z-30" aria-label="Close notifications" onClick={onClose}/><aside className="fixed right-4 top-16 z-40 w-[min(390px,calc(100vw-2rem))] overflow-hidden rounded-xl border bg-white shadow-2xl" role="dialog" aria-label="Operational notifications"><header className="flex items-center justify-between border-b p-4"><div><h2 className="text-sm font-bold">Operational notifications</h2><p className="text-[10px] text-slate-500">{unreadCount} unread · migration-backed event codes</p></div><button onClick={onClose} className="rounded-lg p-2 hover:bg-slate-100" aria-label="Close notifications"><X size={16}/></button></header><div className="flex items-center justify-between border-b bg-slate-50 px-4 py-2"><button onClick={markAllRead} className="flex items-center gap-1 text-[10px] font-bold text-emerald-800"><CheckCheck size={13}/>Mark all read</button><button onClick={refresh} disabled={sync.state==="syncing"} className="flex items-center gap-1 text-[10px] font-bold text-slate-600 disabled:opacity-50"><RefreshCw size={13} className={sync.state==="syncing"?"animate-spin":""}/>Refresh</button></div><ul className="max-h-[440px] overflow-y-auto">{notifications.map(n=>{const Icon=icon[n.type]||Bell;return <li key={n.id}><button onClick={()=>{markRead(n.id);onOpenIncident(n.incidentId);onClose()}} className={`flex w-full gap-3 border-b p-4 text-left hover:bg-emerald-50/50 ${n.read?"bg-white":"bg-emerald-50/40"}`}><span className="rounded-lg bg-white p-2 text-emerald-800 shadow-sm"><Icon size={15}/></span><span className="min-w-0 flex-1"><strong className="block text-xs">{n.title}</strong><span className="mt-1 block text-[11px] leading-4 text-slate-600">{n.body}</span><span className="mt-2 block text-[9px] text-slate-400">{n.incidentId} · {n.createdAt}</span></span>{!n.read&&<span className="mt-1 h-2 w-2 rounded-full bg-emerald-600"/>}</button></li>})}</ul>{notifications.length===0&&<p className="p-10 text-center text-xs text-slate-500">No operational notifications.</p>}</aside></>}
+
+function classifyElapsedGroup(elapsed, read) {
+  if (!read) return "new";
+  if (typeof elapsed !== "string") return "today";
+  const hoursMatch = elapsed.match(/(\d+)\s*h/i);
+  if (hoursMatch && Number(hoursMatch[1]) >= 24) return "earlier";
+  const daysMatch = elapsed.match(/(\d+)\s*d/i);
+  if (daysMatch && Number(daysMatch[1]) >= 1) return "earlier";
+  return "today";
+}
+
+export default function BdrrmoNotifications({ onOpenIncident }) {
+  const { notifications, unreadCount, markRead, markAllRead, refresh, sync } = useBdrrmoDemo();
+  const [open, setOpen] = useState(false);
+  const [bellRinging, setBellRinging] = useState(false);
+  const prevIdsRef = useRef(null);
+
+  useEffect(() => {
+    const currentIds = new Set(notifications.map((item) => item.id));
+    if (prevIdsRef.current) {
+      const hasNewUnread = notifications.some(
+        (item) => !item.read && !prevIdsRef.current.has(item.id),
+      );
+      if (hasNewUnread) {
+        const frame = requestAnimationFrame(() => setBellRinging(true));
+        prevIdsRef.current = currentIds;
+        return () => cancelAnimationFrame(frame);
+      }
+    }
+    prevIdsRef.current = currentIds;
+    return undefined;
+  }, [notifications]);
+
+  useEffect(() => {
+    if (!bellRinging) return undefined;
+    const timer = window.setTimeout(() => setBellRinging(false), 700);
+    return () => window.clearTimeout(timer);
+  }, [bellRinging]);
+
+  const items = useMemo(
+    () =>
+      notifications.map((item) => ({
+        id: item.id,
+        type: item.type,
+        title: item.title,
+        body: item.body,
+        isRead: Boolean(item.read),
+        timeLabel: item.createdAt,
+        group: classifyElapsedGroup(item.createdAt, item.read),
+        isEmergency:
+          item.type === "INCIDENT_REVIEW" ||
+          item.type === "SUPPORT" ||
+          item.type === "SUPPORT_REQUEST",
+        isHigh:
+          item.type === "INCIDENT_REVIEW" ||
+          item.type === "SUPPORT" ||
+          item.type === "SUPPORT_REQUEST",
+        metaTag: item.incidentId || undefined,
+        raw: item,
+      })),
+    [notifications],
+  );
+
+  function handleSelect(item) {
+    markRead(item.id);
+    if (item.incidentId) onOpenIncident?.(item.incidentId);
+    setOpen(false);
+  }
+
+  return (
+    <NotificationCenter
+      id="bdrrmo-inbox"
+      heading="Operational notifications"
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (next) refresh();
+      }}
+      items={items}
+      unreadCount={unreadCount}
+      loading={sync.state === "syncing"}
+      error={sync.state === "error" ? "Operational notifications could not be refreshed. Please retry." : ""}
+      bellRinging={bellRinging}
+      onSelect={handleSelect}
+      onMarkAllRead={markAllRead}
+      onRefresh={refresh}
+      badgeTone="danger"
+    />
+  );
+}

@@ -145,24 +145,25 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
                       navigateTo(path);
                     }
                   }}
-                  className={`group relative flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-[12px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--gf-green) ${open ? "" : "md:justify-center md:px-0"
+                  className={`group relative flex min-h-10 w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--gf-green) ${open ? "" : "md:justify-center md:px-0"
                     } ${active
                       ? "bg-(--gf-green) text-white"
-                      : "text-(--gf-ink) hover:bg-(--gf-green-soft)"
+                      : "text-slate-600 hover:bg-(--gf-green-soft) hover:text-(--gf-green-dark)"
                     }`}
                 >
-                  <Icon size={14} strokeWidth={1.8} className="shrink-0" />
+                  <Icon size={17} strokeWidth={2} className="shrink-0" />
                   <span className={`min-w-0 flex-1 truncate ${open ? "" : "md:hidden"}`}>{label}</span>
                   {hasChildren && open && (
                     <ChevronDown
-                      size={14}
+                      size={15}
+                      strokeWidth={2.2}
                       aria-hidden="true"
-                      className={`shrink-0 transition-transform duration-150 motion-reduce:transition-none ${active ? "text-white/90" : "text-(--gf-slate)"
+                      className={`shrink-0 transition-transform duration-150 motion-reduce:transition-none ${active ? "text-white/90" : "text-slate-500"
                         } ${expanded ? "rotate-180" : ""}`}
                     />
                   )}
                   {!open && (
-                    <span className="pointer-events-none absolute left-[calc(100%+10px)] z-50 hidden whitespace-nowrap rounded-md bg-slate-900 px-2.5 py-1.5 text-[12px] text-white shadow-lg group-hover:md:block">
+                    <span className="pointer-events-none absolute left-[calc(100%+10px)] z-50 hidden whitespace-nowrap rounded-md bg-slate-900 px-2.5 py-1.5 text-[12px] font-semibold text-white shadow-lg group-hover:md:block">
                       {label}
                     </span>
                   )}
@@ -181,8 +182,8 @@ export default function AdminSidebar({ open = false, onClose, onToggle }) {
                           onClick={() => navigateTo(child.path)}
                           aria-current={childActive ? "page" : undefined}
                           className={`relative block w-full rounded-md px-2 py-1.5 text-left text-[10px] leading-snug transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--gf-green) ${childActive
-                              ? "font-semibold text-(--gf-green-dark) before:absolute before:-left-[13px] before:inset-y-1 before:w-[2px] before:rounded-full before:bg-(--gf-green)"
-                              : "font-medium text-(--gf-slate) hover:bg-(--gf-green-soft) hover:text-(--gf-ink)"
+                              ? "font-bold text-(--gf-green-dark) before:absolute before:-left-[13px] before:inset-y-1 before:w-[2px] before:rounded-full before:bg-(--gf-green)"
+                              : "font-semibold text-slate-600 hover:bg-(--gf-green-soft) hover:text-(--gf-green-dark)"
                             }`}
                         >
                           <span className="block truncate">{child.label}</span>
