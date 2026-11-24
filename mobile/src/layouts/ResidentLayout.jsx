@@ -178,12 +178,18 @@ export default function ResidentLayout({ children, routeName }) {
           {/* HEADER */}
           <View
             style={[
-              tw`px-5 pb-6 overflow-hidden`,
+              tw`px-5 pb-5`,
               {
-                backgroundColor: COLORS.ink,
+                backgroundColor: "#FFFFFF",
                 paddingTop: insets.top + 12,
                 borderBottomLeftRadius: 28,
                 borderBottomRightRadius: 28,
+                zIndex: 10,
+                elevation: 8,
+                shadowColor: "#0F172A",
+                shadowOpacity: 0.12,
+                shadowRadius: 12,
+                shadowOffset: { width: 0, height: 4 },
               },
             ]}
           >
@@ -191,11 +197,11 @@ export default function ResidentLayout({ children, routeName }) {
               {isSubPage ? (
                 <>
                   <HeaderButton onPress={goBack} label="Go back">
-                    <ChevronLeft size={22} color="#fff" />
+                    <ChevronLeft size={22} color={COLORS.ink} />
                   </HeaderButton>
 
                   <Text
-                    style={tw`ml-3 flex-1 text-lg font-bold text-white`}
+                    style={[tw`ml-3 flex-1 text-lg font-bold`, { color: COLORS.ink }]}
                     numberOfLines={1}
                   >
                     {subTitle}
@@ -222,10 +228,10 @@ export default function ResidentLayout({ children, routeName }) {
                   </Pressable>
 
                   <View style={tw`ml-3 flex-1`}>
-                    <Text style={tw`text-xs text-white/60`}>{greeting()}</Text>
+                    <Text style={tw`text-xs text-slate-500`}>{greeting()}</Text>
 
                     <Text
-                      style={tw`text-lg font-bold text-white`}
+                      style={[tw`text-lg font-bold`, { color: COLORS.ink }]}
                       numberOfLines={1}
                     >
                       {firstName}
@@ -240,7 +246,7 @@ export default function ResidentLayout({ children, routeName }) {
                     onPress={() => go("Notifications")}
                     label="Notifications"
                   >
-                    <Bell size={20} color="#fff" />
+                    <Bell size={20} color={COLORS.ink} />
 
                     {unread > 0 && (
                       <View
@@ -263,26 +269,11 @@ export default function ResidentLayout({ children, routeName }) {
                     disabled={loggingOut}
                     label="Sign out"
                   >
-                    <LogOut size={19} color="#fff" />
+                    <LogOut size={19} color={COLORS.ink} />
                   </HeaderButton>
                 )}
               </View>
             </View>
-
-            {showChrome && (
-              <View style={tw`mt-5 flex-row items-center`}>
-                <View
-                  style={[
-                    tw`mr-2 h-2 w-2 rounded-full`,
-                    { backgroundColor: "#4ADE80" },
-                  ]}
-                />
-
-                <Text style={tw`text-xs font-medium text-white/70`}>
-                  GeoFix 167 · Barangay 167 Resident Portal
-                </Text>
-              </View>
-            )}
           </View>
 
           {/* SCREEN CONTENT */}
@@ -359,7 +350,10 @@ export default function ResidentLayout({ children, routeName }) {
             >
               <SosButton
                 onTriggered={() =>
-                  navigation.navigate("Report", { reportType: "emergency" })
+                  navigation.navigate("Report", {
+                    reportType: "emergency",
+                    sosTriggeredAt: Date.now(),
+                  })
                 }
               />
             </View>
@@ -381,7 +375,7 @@ function HeaderButton({ children, onPress, label, disabled }) {
       style={({ pressed }) => [
         tw`h-10 w-10 items-center justify-center rounded-2xl`,
         {
-          backgroundColor: "rgba(255,255,255,0.14)",
+          backgroundColor: COLORS.surface,
           opacity: pressed || disabled ? 0.6 : 1,
         },
       ]}

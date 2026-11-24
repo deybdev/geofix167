@@ -1,15 +1,18 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { AlertTriangle, CheckCircle2, MapPin, Wrench, X } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AlertTriangle, Check, CheckCircle2, ChevronDown, Filter, MapPin, Wrench, X } from 'lucide-react-native';
 import tw from 'twrnc';
 
 import MapViewer from '../../components/map/MapViewer';
 import { getPublicMapFeed } from '../../services/residentService';
 
 export default function MapScreen() {
+  const insets = useSafeAreaInsets();
   const [items, setItems] = useState([]);
   const [filter, setFilter] = useState('all'); // 'all' | 'emergency' | 'maintenance'
+  const [filterOpen, setFilterOpen] = useState(false);
   const [selectedPin, setSelectedPin] = useState(null);
 
   const loadFeed = useCallback(async () => {
@@ -37,13 +40,28 @@ export default function MapScreen() {
     return filter === 'all' ? items : items.filter(item => item.report_type === filter);
   }, [items, filter]);
 
+  const filterOptions = useMemo(
+    () => [
+      { key: 'all', label: `All (${counts.all})` },
+      { key: 'emergency', label: `Emergencies (${counts.emergency})` },
+      { key: 'maintenance', label: `Maintenance (${counts.maintenance})` },
+    ],
+    [counts],
+  );
+
+  const activeFilterOption =
+    filterOptions.find((option) => option.key === filter) || filterOptions[0];
+
   return (
     <View style={tw`flex-1`}>
       <MapViewer
         variant="viewer"
         incidents={filteredIncidents}
         disableIncidentSheet
-        onIncidentSelect={(pin) => setSelectedPin(pin)}
+        onIncidentSelect={(pin) => {
+          setFilterOpen(false);
+          setSelectedPin(pin);
+        }}
         selectedLocation={null}
         onLocationSelect={() => {}}
         routes={[]}
@@ -55,37 +73,85 @@ export default function MapScreen() {
         compact={false}
       />
 
-      {/* TOP FILTER CHIPS: All | Emergencies | Maintenance */}
-      <View style={tw`absolute left-4 right-4 top-4 z-30 flex-row gap-2`}>
-        {[
-          { key: 'all', label: `All (${counts.all})` },
-          { key: 'emergency', label: `Emergencies (${counts.emergency})` },
-          { key: 'maintenance', label: `Maintenance (${counts.maintenance})` },
-        ].map((tab) => {
-          const active = filter === tab.key;
-          return (
-            <Pressable
-              key={tab.key}
-              onPress={() => {
-                setFilter(tab.key);
-                setSelectedPin(null);
-              }}
-              style={tw`flex-1 items-center rounded-full border py-2 shadow-sm ${
-                active
-                  ? 'border-[#1F7A4D] bg-[#1F7A4D]'
-                  : 'border-slate-200 bg-white/95'
-              }`}
-            >
-              <Text
-                style={tw`text-xs font-extrabold ${
-                  active ? 'text-white' : 'text-slate-700'
-                }`}
-              >
-                {tab.label}
-              </Text>
-            </Pressable>
-          );
-        })}
+      {/* SINGLE FILTER BUTTON + VERTICAL MENU (beside back button) */}
+      <View
+        style={[
+          tw`absolute z-30 items-start`,
+          { top: insets.top + 12, left: 72 },
+        ]}
+      >
+        <Pressable
+          onPress={() => setFilterOpen((open) => !open)}
+          accessibilityRole="button"
+          accessibilityLabel={`Filter map pins. Currently ${activeFilterOption.label}`}
+          style={({ pressed }) => [
+            tw`flex-row items-center gap-1.5 rounded-2xl border border-slate-200 bg-white px-3.5`,
+            {
+              height: 46,
+              elevation: 8,
+              shadowColor: '#000',
+              shadowOpacity: 0.15,
+              shadowRadius: 8,
+              shadowOffset: { width: 0, height: 3 },
+              opacity: pressed ? 0.85 : 1,
+            },
+          ]}
+        >
+          <Filter size={15} color="#1F7A4D" />
+          <Text style={tw`text-xs font-extrabold text-slate-800`}>
+            {activeFilterOption.label}
+          </Text>
+          <ChevronDown
+            size={15}
+            color="#64748B"
+            style={{ transform: [{ rotate: filterOpen ? '180deg' : '0deg' }] }}
+          />
+        </Pressable>
+
+        {filterOpen && (
+          <View
+            style={[
+              tw`mt-2 w-48 overflow-hidden rounded-2xl border border-slate-200 bg-white py-1`,
+              {
+                elevation: 10,
+                shadowColor: '#000',
+                shadowOpacity: 0.16,
+                shadowRadius: 10,
+                shadowOffset: { width: 0, height: 4 },
+              },
+            ]}
+          >
+            {filterOptions.map((option) => {
+              const active = filter === option.key;
+              return (
+                <Pressable
+                  key={option.key}
+                  onPress={() => {
+                    setFilter(option.key);
+                    setSelectedPin(null);
+                    setFilterOpen(false);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  style={({ pressed }) => [
+                    tw`flex-row items-center justify-between px-3.5 py-2.5`,
+                    active && tw`bg-green-50`,
+                    pressed && tw`opacity-75`,
+                  ]}
+                >
+                  <Text
+                    style={tw`text-xs font-bold ${
+                      active ? 'text-[#1F7A4D]' : 'text-slate-700'
+                    }`}
+                  >
+                    {option.label}
+                  </Text>
+                  {active && <Check size={14} color="#1F7A4D" strokeWidth={3} />}
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
       </View>
 
       {/* PIN DETAIL CARD */}

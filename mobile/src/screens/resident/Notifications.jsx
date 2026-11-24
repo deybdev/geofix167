@@ -63,17 +63,69 @@ export default function Notifications() {
 
   return (
     <ScrollView contentContainerStyle={tw`p-4 pb-8`}>
-      {unread > 0 && <Action label="Mark all as read" disabled={saving || !current || !!current.error} onPress={() => mark(null)} />}
-      {failed && <View>
-        <Text accessibilityRole="alert">Could not update read status. Please try again.</Text>
-        <Action label="Retry" disabled={saving || !current || !!current.error} onPress={() => mark(failed.id)} />
-      </View>}
+      {unread > 0 && (
+        <View style={tw`mb-3 flex-row justify-end`}>
+          <Action
+            label="Mark all as read"
+            compact
+            disabled={saving || !current || !!current.error}
+            onPress={() => mark(null)}
+          />
+        </View>
+      )}
+      {failed && (
+        <View style={tw`mb-3 rounded-2xl border border-red-100 bg-red-50 p-4`}>
+          <Text accessibilityRole="alert" style={tw`text-xs font-semibold text-red-700`}>
+            Could not update read status. Please try again.
+          </Text>
+          <Action
+            label="Retry"
+            compact
+            style={tw`mt-2.5 self-start`}
+            disabled={saving || !current || !!current.error}
+            onPress={() => mark(failed.id)}
+          />
+        </View>
+      )}
       {visibleItems.map(item => (
-        <View key={item.id} style={tw`mb-3 rounded-2xl bg-white p-4`}>
-          <Text style={tw`text-base font-bold text-slate-900`}>{item.title || 'Notification'}</Text>
-          {item.is_read ? <Text>Read</Text> : <Action label="Mark as read" disabled={saving || !current || !!current.error} onPress={() => mark(item.id)} />}
-          {!!item.body && <Text style={tw`mt-2 text-slate-700`}>{item.body}</Text>}
-          {!!item.created_at && <Text style={tw`mt-2 text-xs text-slate-500`}>{formatDate(item.created_at)}</Text>}
+        <View
+          key={item.id}
+          style={[
+            tw`mb-3 rounded-2xl border bg-white p-4`,
+            item.is_read ? tw`border-slate-100` : tw`border-emerald-200`,
+          ]}
+        >
+          <View style={tw`flex-row items-start justify-between gap-2`}>
+            <Text style={tw`flex-1 text-base font-bold text-slate-900`}>
+              {item.title || 'Notification'}
+            </Text>
+            {!item.is_read && (
+              <View style={tw`mt-1.5 h-2.5 w-2.5 rounded-full bg-green-600`} />
+            )}
+          </View>
+
+          {!!item.body && (
+            <Text style={tw`mt-1.5 text-sm leading-5 text-slate-600`}>
+              {item.body}
+            </Text>
+          )}
+
+          <View style={tw`mt-3 flex-row items-center justify-between gap-3 border-t border-slate-100 pt-2.5`}>
+            <Text style={tw`flex-1 text-xs text-slate-400`}>
+              {item.created_at ? formatDate(item.created_at) : ''}
+            </Text>
+
+            {item.is_read ? (
+              <Text style={tw`text-xs font-semibold text-slate-400`}>Read</Text>
+            ) : (
+              <Action
+                label="Mark as read"
+                compact
+                disabled={saving || !current || !!current.error}
+                onPress={() => mark(item.id)}
+              />
+            )}
+          </View>
         </View>
       ))}
       {!current ? (
@@ -84,22 +136,34 @@ export default function Notifications() {
       ) : current.error ? (
         <View style={tw`rounded-2xl bg-white p-4`}>
           <Text accessibilityRole="alert" style={tw`text-slate-700`}>{current.error}</Text>
-          <Action label="Retry" onPress={() => setRequest(previous => ({ ...previous, attempt: previous.attempt + 1 }))} />
+          <Action label="Retry" style={tw`mt-4 self-start`} onPress={() => setRequest(previous => ({ ...previous, attempt: previous.attempt + 1 }))} />
         </View>
       ) : (
         <>
           {!items.length && <Text style={tw`py-8 text-center text-slate-600`}>No notifications yet.</Text>}
-          {!!current.nextCursor && <Action label="Load more" disabled={saving} onPress={() => setRequest({ cursor: current.nextCursor, attempt: 0 })} />}
+          {!!current.nextCursor && <Action label="Load more" style={tw`mt-2 self-center`} disabled={saving} onPress={() => setRequest({ cursor: current.nextCursor, attempt: 0 })} />}
         </>
       )}
     </ScrollView>
   );
 }
 
-function Action({ label, onPress, disabled }) {
+function Action({ label, onPress, disabled, compact = false, style }) {
   return (
-    <Pressable disabled={disabled} accessibilityRole="button" onPress={onPress} style={tw`mt-4 self-start rounded-xl bg-green-700 px-4 py-3`}>
-      <Text style={tw`font-bold text-white`}>{label}</Text>
+    <Pressable
+      disabled={disabled}
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [
+        tw`rounded-xl bg-green-700`,
+        compact ? tw`px-3 py-1.5` : tw`px-4 py-3`,
+        { opacity: disabled ? 0.5 : pressed ? 0.8 : 1 },
+        style,
+      ]}
+    >
+      <Text style={[tw`font-bold text-white`, compact ? tw`text-xs` : tw`text-sm`]}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
