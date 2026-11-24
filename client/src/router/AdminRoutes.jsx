@@ -8,7 +8,6 @@ import AdminLayout from "../layouts/AdminLayout";
 import MapPage from "../shared/components/MapPage";
 import AdminDashboard from "../features/admin/AdminDashboard";
 import Announcements from "../features/admin/Announcements";
-import IncidentReports from "../features/admin/incident-reports";
 import MaintenanceTasks from "../features/admin/MaintenanceTasks";
 import ResolutionVerification from "../features/admin/ResolutionVerification";
 import AccomplishmentLog from "../features/admin/AccomplishmentLog";
@@ -31,7 +30,7 @@ export const adminRoutes = (
     <Route path={PATHS.admin} element={<AdminLayout />}>
       <Route index element={<AdminDashboard />} />
       <Route path="announcements" element={<Announcements />} />
-      <Route path="incident-reports" element={<IncidentReports />} />
+      <Route path="incident-reports" element={<Navigate to={PATHS.adminMaintenanceTasks} replace />} />
       <Route path="incident-reports/:id/report" element={<IncidentReportPrint />} />
       <Route path="dispatch" element={<AdminDispatch />} />
       <Route path="maintenance-tasks" element={<MaintenanceTasks />} />

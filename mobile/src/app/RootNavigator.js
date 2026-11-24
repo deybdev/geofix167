@@ -3,7 +3,6 @@ import { ActivityIndicator, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 
 import AuthNavigator from '../navigation/AuthNavigator';
-import BdrrmoNavigator from '../navigation/BdrrmoNavigator';
 import ResidentNavigator from '../navigation/ResidentNavigator';
 import ResponderNavigator from '../navigation/ResponderNavigator';
 import { useAuth } from '../context/AuthContext';
@@ -21,7 +20,6 @@ function AppNavigator() {
   }
 
   if (role === 'resident') return <ResidentNavigator />;
-  if (role === 'bdrrmo') return <BdrrmoNavigator />;
   if (['responder', 'tanod', 'police', 'fire'].includes(role)) {
     return <ResponderNavigator />;
   }

@@ -420,7 +420,7 @@ export async function getReportByIdController(c: Context<AppEnv>) {
       ? `/api/reports/${encodeURIComponent(report.incident_id)}/photos/${encodeURIComponent(firstPhotoId)}`
       : null;
 
-    const isVerifiedFixed = Number(report.incident_status_id) === 10 || (maintRow && Number(maintRow.assignment_status_id) === 5 && meta?.repair_done);
+    const isVerifiedFixed = Number(report.incident_status_id) === 10 || (maintRow && Number(maintRow.assignment_status_id) === 6 && meta?.repair_done);
     const maintenanceProgress = meta
       ? {
         assignment_id: String(maintRow?.tanod_assignment_id || ""),

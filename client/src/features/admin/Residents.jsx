@@ -114,65 +114,6 @@ function DrawerShell({ title, subtitle, badges, onClose, children, footer }) {
 /* Mock data                                                                */
 /* ------------------------------------------------------------------------ */
 
-const seedResidents = [
-  { id: "RSD-0231", name: "Marvin Navarrete", mobile: "0917•••0167", address: "Blk 4, Rizal Street", zone: "Zone 1", reports: 3, status: "Verified", joined: "January 2026" },
-  { id: "RSD-0187", name: "Rain Opinion", mobile: "0918•••2210", address: "Blk 7, Quezon Avenue", zone: "Zone 2", reports: 5, status: "Verified", joined: "December 2025" },
-  { id: "RSD-0202", name: "Ellyz Gomez", mobile: "0920•••7781", address: "Blk 2, Magsaysay Boulevard", zone: "Zone 2", reports: 2, status: "Verified", joined: "February 2026" },
-  { id: "RSD-0256", name: "Rain Santiago", mobile: "0928•••1199", address: "Blk 5, Bonifacio Street", zone: "Zone 4", reports: 4, status: "Verified", joined: "November 2025" },
-  { id: "RSD-0214", name: "Efren Cahilig", mobile: "0936•••8822", address: "Blk 3, Magsaysay Boulevard", zone: "Zone 2", reports: 1, status: "Verified", joined: "March 2026" },
-  { id: "RSD-0240", name: "Liza Maranan", mobile: "0945•••3041", address: "Blk 6, Rizal Street", zone: "Zone 1", reports: 2, status: "Verified", joined: "October 2025" },
-  { id: "RSD-0163", name: "Danilo Reyes", mobile: "0919•••5566", address: "Blk 8, Bonifacio Street", zone: "Zone 4", reports: 6, status: "Suspended", joined: "September 2025" },
-  { id: "RSD-0119", name: "Demi Villanueva", mobile: "0945•••7710", address: "Blk 1, Roxas Boulevard", zone: "Zone 3", reports: 0, status: "Revoked", joined: "August 2025" },
-];
-
-const seedPending = [
-  {
-    id: "PND-001", name: "Cataluna Jhone", mobile: "0921•••5432", address: "Blk 9, Roxas Boulevard", zone: "Zone 3",
-    flag: "Unreadable ID", submitted: "Apr 21, 2026", status: "Pending",
-    submittedDetails: { fullName: "Cataluna Jhone", mobile: "0921•••5432", address: "Blk 9, Roxas Boulevard, near the covered court", idType: "Barangay ID (photo blurry — glare on hologram)" },
-    masterlist: { name: "Cataluna Jhone", mobile: "0921•••5432", address: "Blk 9, Roxas Boulevard", note: "Name and mobile matched; ID photo needs manual confirmation." },
-  },
-  {
-    id: "PND-002", name: "Joselito Ramirez", mobile: "0917•••0167", address: "Blk 4, Rizal Street", zone: "Zone 1",
-    flag: "Duplicate Mobile", submitted: "Apr 22, 2026", status: "Pending",
-    submittedDetails: { fullName: "Joselito Ramirez", mobile: "0917•••0167", address: "Blk 4, Rizal Street, 2nd unit", idType: "PhilID (clear upload)" },
-    masterlist: { name: "Marvin Navarrete (RSD-0231)", mobile: "0917•••0167", address: "Blk 4, Rizal Street", note: "Mobile already bound to RSD-0231 — possible household shared line or re-registration." },
-  },
-  {
-    id: "PND-003", name: "Ma. Corazon Bautista", mobile: "0938•••4411", address: "Blk 2, Del Pilar Road", zone: "Zone 4",
-    flag: "Name mismatch", submitted: "Apr 22, 2026", status: "Pending",
-    submittedDetails: { fullName: "Ma. Corazon D. Bautista", mobile: "0938•••4411", address: "Blk 2, Del Pilar Road", idType: "Barangay ID (clear upload)" },
-    masterlist: { name: "Corazon Bautista", mobile: "0938•••4411", address: "Blk 2, Del Pilar Road", note: "Likely the same person — masterlist stores the maiden-form name without middle initials." },
-  },
-  {
-    id: "PND-004", name: "Guest V. Reyes", mobile: "0926•••3387", address: "Covered court side lane, Del Pilar Rd", zone: "Zone 4",
-    flag: "Address not in masterlist", submitted: "Apr 23, 2026", status: "Pending",
-    submittedDetails: { fullName: "Vincent Reyes", mobile: "0926•••3387", address: "Side lane beside the covered court, Del Pilar Rd", idType: "Driver's license (clear upload)" },
-    masterlist: { name: "— no record —", mobile: "—", address: "—", note: "No matching household on the barangay masterlist; address sits between Blocks 5 and 6." },
-  },
-];
-
-const seedRecovery = [
-  {
-    id: "REC-001", name: "Ellyz Gomez", residentId: "RSD-0202", lostMobile: "0920•••7781",
-    newMobile: "0921•••9902", email: "ellyz.gomez@mail.example", requested: "Apr 22, 2026", status: "Pending",
-    proof: { type: "Valid government ID re-uploaded", detail: "PhilID upload matches the masterlist portrait; selfie liveness check passed." },
-    note: "Lost phone replaced after the April 19 incident; old number was pre-paid and non-restorable.",
-  },
-  {
-    id: "REC-002", name: "Liza Maranan", residentId: "RSD-0240", lostMobile: "0945•••3041",
-    newMobile: "0995•••1240", email: "l.maranan@mail.example", requested: "Apr 23, 2026", status: "Pending",
-    proof: { type: "Barangay certification of residency", detail: "Signed certification from the barangay secretary verifying identity in person at the hall." },
-    note: "Number was reported stolen; resident filed in person at the barangay hall.",
-  },
-  {
-    id: "REC-003", name: "Efren Cahilig", residentId: "RSD-0214", lostMobile: "0936•••8822",
-    newMobile: "0977•••6018", email: "efren.cahilig@mail.example", requested: "Apr 23, 2026", status: "Pending",
-    proof: { type: "Valid ID + telco release letter", detail: "Telco confirmed the old number recycled; ID matches the masterlist record." },
-    note: "SIM expired after 60 days of non-use while the resident worked out of town.",
-  },
-];
-
 /* ------------------------------------------------------------------------ */
 /* Tab 1 — Resident directory table                                         */
 /* ------------------------------------------------------------------------ */
@@ -574,14 +515,76 @@ const ZONE_FILTERS = ["All Zones", "Zone 1", "Zone 2", "Zone 3", "Zone 4"];
 const STATUS_FILTERS = ["All Statuses", "Verified", "Suspended", "Revoked"];
 
 export default function Residents() {
-  const [residents, setResidents] = useState(seedResidents);
-  const [pending, setPending] = useState(seedPending);
-  const [recovery, setRecovery] = useState(seedRecovery);
+  const [residents, setResidents] = useState([]);
+  const [pending, setPending] = useState([]);
+  const [recovery, setRecovery] = useState([]);
   const [tab, setTab] = useState("directory");
   const [query, setQuery] = useState("");
   const [zone, setZone] = useState("All Zones");
   const [status, setStatus] = useState("All Statuses");
   const [drawer, setDrawer] = useState(null); // { mode: "access" | "verify" | "recovery", id }
+
+  useEffect(() => {
+    let active = true;
+    const formatPh = (val) => {
+      if (!val) return "—";
+      const iso = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(String(val)) ? String(val).replace(" ", "T") + "Z" : String(val);
+      const ms = Date.parse(iso);
+      return Number.isFinite(ms)
+        ? new Date(ms).toLocaleDateString("en-PH", { timeZone: "Asia/Manila", month: "short", day: "numeric", year: "numeric" })
+        : String(val);
+    };
+    const load = async () => {
+      try {
+        const [resUsers, resReqs] = await Promise.all([
+          fetch("/api/admin/registrations/residents", { credentials: "include", cache: "no-store" }),
+          fetch("/api/admin/registrations", { credentials: "include", cache: "no-store" }),
+        ]);
+        if (active && resUsers.ok) {
+          const data = await resUsers.json();
+          const mapped = (data.residents || []).map((u) => {
+            const st = Number(u.account_status_id) === 2 ? "Suspended" : Number(u.account_status_id) === 3 ? "Revoked" : "Verified";
+            return {
+              id: u.id,
+              name: u.name || u.email || "Resident",
+              mobile: u.mobile || "—",
+              address: u.email || "Barangay 167",
+              zone: "Zone 1",
+              reports: Number(u.reports_count) || 0,
+              joined: formatPh(u.created_at),
+              status: st,
+              idType: "Barangay / Resident Account",
+              idNumber: u.id.slice(0, 12),
+              history: [{ date: formatPh(u.created_at), action: "Registered", detail: u.email || "Resident account created" }],
+            };
+          });
+          setResidents(mapped);
+        }
+        if (active && resReqs.ok) {
+          const reqData = await resReqs.json();
+          const mappedPending = (reqData.requests || [])
+            .filter((q) => ["PENDING", "NEEDS_CORRECTION"].includes(String(q.status || "")))
+            .map((q) => ({
+              id: q.request_id,
+              name: `${q.first_name || ""} ${q.last_name || ""}`.trim() || "Applicant",
+              mobile: q.mobile_number || "—",
+              address: q.email || "Barangay 167",
+              zone: "Zone 1",
+              submitted: formatPh(q.submitted_at),
+              flag: q.status === "NEEDS_CORRECTION" ? "Needs Correction" : "Pending ID Review",
+              status: "Pending",
+              notes: q.review_reason || "Submitted resident registration awaiting verification.",
+              idDoc: { type: q.document_type || "Submitted ID", number: q.request_id.slice(0, 12) },
+            }));
+          setPending(mappedPending);
+        }
+      } catch {
+        // Keep current list on transient error
+      }
+    };
+    void load();
+    return () => { active = false; };
+  }, []);
 
   const stats = useMemo(() => ({
     verified: residents.filter((r) => r.status === "Verified").length,
@@ -618,37 +621,77 @@ export default function Residents() {
   };
 
   /* — access management (tab 1) — */
-  function manageAccess(id, action, reason) {
+  async function manageAccess(id, action, reason) {
     const statusMap = { Suspend: "Suspended", Revoke: "Revoked", Restore: "Verified" };
     const resident = residents.find((r) => r.id === id);
-    setResidents((cur) => cur.map((r) => r.id === id ? { ...r, status: statusMap[action] } : r));
-    toast.add({
-      type: action === "Restore" ? "success" : "info",
-      title: `${resident.name} — ${action.toLowerCase()}d`,
-      description: action === "Revoke"
-        ? `Masterlist binding released. Reason: ${reason}`
-        : action === "Suspend"
-          ? "Report filing blocked until restored."
-          : "Account restored to full verified access.",
-    });
+    try {
+      const res = await fetch(`/api/admin/registrations/residents/${encodeURIComponent(id)}/status`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, reason }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Could not update resident access.");
+      }
+      setResidents((cur) => cur.map((r) => r.id === id ? { ...r, status: statusMap[action] } : r));
+      toast.add({
+        type: action === "Restore" ? "success" : "info",
+        title: `${resident?.name || "Resident"} — ${action.toLowerCase()}d`,
+        description: action === "Revoke"
+          ? `Account access revoked. Reason: ${reason}`
+          : action === "Suspend"
+            ? "Account suspended and sessions revoked until restored."
+            : "Account restored to full verified access.",
+      });
+      setDrawer(null);
+    } catch (err) {
+      toast.add({ type: "error", title: "Update failed", description: err.message });
+    }
   }
 
   /* — verification review (tab 2) — */
-  function approveVerification(id) {
+  async function approveVerification(id) {
     const entry = pending.find((p) => p.id === id);
-    setPending((cur) => cur.map((p) => p.id === id ? { ...p, status: "Approved" } : p));
-    setResidents((cur) => [{
-      id: `RSD-${String(260 + residents.length).padStart(4, "0")}`,
-      name: entry.name, mobile: entry.mobile, address: entry.address, zone: entry.zone,
-      reports: 0, status: "Verified", joined: "April 2026",
-    }, ...cur]);
-    toast.add({ type: "success", title: "Account approved", description: `${entry.name} linked to the masterlist and added to the directory.` });
+    try {
+      const res = await fetch(`/api/admin/registrations/${encodeURIComponent(id)}/review`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision: "APPROVED", reason: "" }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Could not approve registration.");
+      }
+      setPending((cur) => cur.map((p) => p.id === id ? { ...p, status: "Approved" } : p));
+      toast.add({ type: "success", title: "Account approved", description: `${entry?.name || "Resident"} verified and activated.` });
+      setDrawer(null);
+    } catch (err) {
+      toast.add({ type: "error", title: "Approval failed", description: err.message });
+    }
   }
 
-  function rejectVerification(id, reason) {
+  async function rejectVerification(id, reason) {
     const entry = pending.find((p) => p.id === id);
-    setPending((cur) => cur.map((p) => p.id === id ? { ...p, status: "Rejected" } : p));
-    toast.add({ type: "info", title: "Verification rejected", description: `${entry.name} notified — reason: ${reason}` });
+    try {
+      const res = await fetch(`/api/admin/registrations/${encodeURIComponent(id)}/review`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision: "REJECTED", reason: reason || "Verification rejected by Admin." }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Could not reject registration.");
+      }
+      setPending((cur) => cur.map((p) => p.id === id ? { ...p, status: "Rejected" } : p));
+      toast.add({ type: "info", title: "Verification rejected", description: `${entry?.name || "Applicant"} notified — reason: ${reason}` });
+      setDrawer(null);
+    } catch (err) {
+      toast.add({ type: "error", title: "Rejection failed", description: err.message });
+    }
   }
 
   /* — recovery review (tab 3) — */

@@ -164,10 +164,22 @@ route.post("/ingest", async (c) => {
     return c.json({ error: "incident_id is required." }, 400);
   }
 
-  const report = await db.prepare("SELECT is_emergency FROM incident_reports WHERE incident_id = ?")
-    .bind(body.incident_id).first<{ is_emergency: number }>();
+  const report = await db.prepare("SELECT is_emergency, incident_status_id FROM incident_reports WHERE incident_id = ?")
+    .bind(body.incident_id).first<{ is_emergency: number; incident_status_id: number }>();
   if (!report) return c.json({ error: "Report not found." }, 404);
   if (report.is_emergency) return c.json({ error: "Sudden incidents cannot be assigned as Tanod maintenance tasks." }, 409);
+  if ([10, 11, 12].includes(Number(report.incident_status_id))) {
+    return c.json({ error: "Closed or rejected reports cannot be assigned." }, 409);
+  }
+
+  const existingAssignment = await db.prepare(`
+    SELECT tanod_assignment_id FROM tanod_assignments
+    WHERE incident_id = ? AND assignment_status_id NOT IN (3, 6, 7)
+    LIMIT 1
+  `).bind(body.incident_id).first<{ tanod_assignment_id: string }>();
+  if (existingAssignment) {
+    return c.json({ error: "This maintenance report is already assigned to a Tanod." }, 409);
+  }
 
   let resource = body.unit_id
     ? await db.prepare(`
@@ -192,12 +204,14 @@ route.post("/ingest", async (c) => {
     const fallbackUser = await db.prepare(`
       SELECT u.user_id
       FROM users u
-      JOIN user_roles ur ON ur.user_id = u.user_id
-      JOIN roles ro ON ro.role_id = ur.role_id
+      JOIN roles ro ON ro.role_id = u.role_id
       WHERE lower(ro.code) = 'tanod'
       LIMIT 1
     `).first<{ user_id: string }>();
-    tanodUserId = fallbackUser?.user_id ?? c.get("user").id;
+    tanodUserId = fallbackUser?.user_id ?? null;
+  }
+  if (!tanodUserId) {
+    return c.json({ error: "No Tanod account is available for maintenance assignment." }, 409);
   }
 
   const assignmentId = crypto.randomUUID();
@@ -323,7 +337,7 @@ route.get("/tasks", async (c) => {
       repair_note: "",
       repair_photo_ids: [],
     };
-    const isResolved = Number(row.incident_status_id) === 10 || Number(row.assignment_status_id) === 5;
+    const isResolved = Number(row.incident_status_id) === 10 || Number(row.assignment_status_id) === 6;
     const status = isResolved
       ? "Verified Fixed"
       : meta.admin_check_approved
@@ -447,7 +461,7 @@ route.patch("/tasks/:assignmentId", async (c) => {
   await db.batch([db.prepare(`
     UPDATE tanod_assignments
     SET notes = ?,
-        assignment_status_id = CASE WHEN ? = 1 THEN 5 ELSE assignment_status_id END,
+        assignment_status_id = CASE WHEN ? = 1 THEN 6 ELSE assignment_status_id END,
         completed_at = CASE WHEN ? = 1 THEN COALESCE(completed_at, datetime('now')) ELSE completed_at END
     WHERE tanod_assignment_id = ?
   `).bind(
@@ -496,6 +510,68 @@ route.patch("/tasks/:assignmentId", async (c) => {
   }
 
   return c.json({ ok: true, meta });
+});
+
+route.get("/false-reports", async (c) => {
+  const db = c.env.geofix167_db;
+  const rows = await db.prepare(`
+    SELECT r.incident_id,
+      COALESCE(printf('GF-%03d', ref.reference_sequence), r.incident_id) AS reference_number,
+      r.title, r.category, r.is_emergency, r.location_description,
+      r.description_sanitized, r.description_original,
+      r.submitted_at, r.closed_at, r.reported_by_user_id,
+      u.account_status_id AS reporter_account_status_id,
+      COALESCE(NULLIF(trim(u.first_name || ' ' || u.last_name), ''), gs.display_name, 'Guest') AS reporter_name,
+      COALESCE(NULLIF(trim(u.mobile_number), ''), NULLIF(trim(r.callback_mobile_number), ''), gs.contact_mobile_number, '') AS reporter_phone,
+      COALESCE(u.email, '') AS reporter_email,
+      CASE WHEN r.guest_session_id IS NOT NULL THEN 'guest' ELSE 'resident' END AS reporter_type,
+      (
+        SELECT e.note FROM incident_status_events e
+        WHERE e.incident_id = r.incident_id AND e.to_incident_status_id = 11
+        ORDER BY e.created_at DESC LIMIT 1
+      ) AS rejection_note,
+      (
+        SELECT trim(cu.first_name || ' ' || cu.last_name) FROM users cu
+        WHERE cu.user_id = r.closed_by_user_id
+      ) AS rejected_by_name
+    FROM incident_reports r
+    LEFT JOIN incident_report_references ref ON ref.incident_id = r.incident_id
+    LEFT JOIN users u ON u.user_id = r.reported_by_user_id
+    LEFT JOIN guest_sessions gs ON gs.guest_session_id = r.guest_session_id
+    WHERE r.incident_status_id = 11
+    ORDER BY COALESCE(r.closed_at, r.updated_at, r.submitted_at) DESC
+    LIMIT 200
+  `).all<Record<string, unknown>>();
+
+  const reports = (rows.results ?? []).map((row) => {
+    const rawNote = String(row.rejection_note || "").trim();
+    const isFalseFlag = /^\[FALSE REPORT\]/i.test(rawNote);
+    const reason = rawNote.replace(/^\[(FALSE REPORT|REJECTED)\]\s*/i, "").trim() || "Rejected during review.";
+    return {
+      incident_id: String(row.incident_id),
+      reference_number: String(row.reference_number || row.incident_id),
+      title: String(row.title || row.category || "Report"),
+      category: String(row.category || "General"),
+      report_type: Number(row.is_emergency) === 1 ? "Emergency" : "Maintenance",
+      location: String(row.location_description || "Barangay 167"),
+      description: stripSelectedDetails(row.description_sanitized || row.description_original || ""),
+      submitted_at: String(row.submitted_at || ""),
+      rejected_at: String(row.closed_at || row.submitted_at || ""),
+      is_false_report: isFalseFlag,
+      reason,
+      rejected_by: String(row.rejected_by_name || "Staff"),
+      reporter: {
+        user_id: row.reported_by_user_id ? String(row.reported_by_user_id) : null,
+        name: String(row.reporter_name || "Guest"),
+        phone: String(row.reporter_phone || ""),
+        email: String(row.reporter_email || ""),
+        type: String(row.reporter_type || "guest"),
+        account_status_id: row.reporter_account_status_id == null ? null : Number(row.reporter_account_status_id),
+      },
+    };
+  });
+
+  return c.json({ reports });
 });
 
 export default route;

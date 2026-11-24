@@ -120,6 +120,28 @@ route.post("/reports/:reportId/verify", async (c) => {
   }
   const result = await db.batch(statements);
   if (!result[1]?.meta.changes) return c.json({ error: "This report is no longer pending verification." }, 409);
+
+  if (statusCode === "REJECTED") {
+    try {
+      const rep = await db.prepare("SELECT reported_by_user_id FROM incident_reports WHERE incident_id = ?")
+        .bind(id.data).first<{ reported_by_user_id: string | null }>();
+      if (rep?.reported_by_user_id) {
+        await db.prepare(`
+          INSERT INTO resident_notifications
+            (notification_id, recipient_user_id, incident_id, type, title, body, created_at)
+          VALUES (?, ?, ?, 'report_update', ?, ?, ?)
+        `).bind(
+          crypto.randomUUID().replace(/-/g, ""),
+          rep.reported_by_user_id,
+          id.data,
+          "Submitted Report Rejected",
+          `Your submitted report was rejected by Admin${body.data.reason ? `: "${body.data.reason}"` : "."} Open the report to modify and resubmit or discard it.`,
+          new Date().toISOString(),
+        ).run();
+      }
+    } catch { /* non-fatal notification error */ }
+  }
+
   return c.json({ ok: true, status: statusCode });
 });
 

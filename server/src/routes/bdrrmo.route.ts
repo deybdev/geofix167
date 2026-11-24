@@ -23,7 +23,7 @@ route.get("/overview", async (c) => {
     db.prepare(`
       SELECT r.incident_id, COALESCE(printf('GF-%03d', rr.reference_sequence), r.incident_id) AS reference_number,
         r.title, r.category, r.description_sanitized, r.description_original,
-        r.latitude, r.longitude, r.location_description, r.submitted_at, r.priority_code,
+        r.latitude, r.longitude, r.location_description, r.submitted_at, r.closed_at, r.priority_code,
         r.is_emergency, r.incident_status_id, s.code AS status_code, s.display_name AS status_label,
         COALESCE(NULLIF(trim(u.first_name || ' ' || u.last_name), ''), gs.display_name, 'Guest') AS reporter_name,
         COALESCE(r.callback_mobile_number, gs.contact_mobile_number, '') AS reporter_phone,
@@ -94,10 +94,13 @@ route.get("/overview", async (c) => {
     `).all<Record<string, unknown>>().catch(() => ({ results: [] })),
 
     db.prepare(`
-      SELECT qh.qr_handover_id AS id, qh.incident_id, qs.code AS qr_status_code,
+      SELECT qh.qr_handover_id AS id, qh.incident_id,
+        COALESCE(printf('GF-%03d', rr.reference_sequence), qh.incident_id) AS reference_number,
+        qs.code AS qr_status_code,
         qh.receiving_officer_name, qh.receiving_remarks, qh.created_at, qh.accepted_at, qh.expires_at
       FROM qr_handovers qh
       JOIN qr_statuses qs ON qs.qr_status_id = qh.qr_status_id
+      LEFT JOIN incident_report_references rr ON rr.incident_id = qh.incident_id
       ORDER BY qh.created_at DESC
       LIMIT 100
     `).all<Record<string, unknown>>().catch(() => ({ results: [] })),
@@ -139,7 +142,7 @@ route.get("/overview", async (c) => {
     list.push({
       id: String(m.id),
       filename: fname,
-      by_staff: /^(fire|police|tanod)-/i.test(fname),
+      by_staff: /^(fire|police|tanod|transport-proof|maintenance)/i.test(fname),
       created_at: String(m.created_at),
     });
     photosByIncident.set(key, list);
@@ -175,6 +178,8 @@ route.get("/overview", async (c) => {
       status: String(ta.status_code),
       vehicle_name: ta.unit_name || null,
       dispatched_at: ta.assigned_at,
+      accepted_at: ta.accepted_at || null,
+      completed_at: ta.completed_at || null,
       location: loc ? { lat: Number(loc.lat), lng: Number(loc.lng), heading: loc.heading, updated_at: loc.updated_at } : null,
     });
     unitsByIncident.set(key, list);
@@ -195,6 +200,11 @@ route.get("/overview", async (c) => {
       ? "FORWARDED_TO_BDRRMO"
       : rawStatus;
 
+    const latestCompletionEvent = agencyReports[0]?.created_at
+      || events.find((e) => e.note.startsWith("Hospital QR handover generated"))?.created_at
+      || null;
+    const completedAt = latestCompletionEvent || (row.closed_at ? String(row.closed_at) : null);
+
     return {
       id: String(row.reference_number || incId),
       incidentId: incId,
@@ -208,6 +218,8 @@ route.get("/overview", async (c) => {
       incidentStatusCode: mappedStatus,
       reviewType: String(row.review_type || "VERIFIED_EMERGENCY"),
       submittedAt: String(row.submitted_at || ""),
+      closedAt: row.closed_at ? String(row.closed_at) : null,
+      completedAt,
       reporterName: String(row.reporter_name || "Guest"),
       reporterPhone: String(row.reporter_phone || ""),
       description: stripSelectedDetails(row.description_sanitized || row.description_original) || "No description provided.",
@@ -228,11 +240,12 @@ route.get("/overview", async (c) => {
   const roleUserRows = await db.prepare(`
     SELECT lower(ro.code) AS role_code, COUNT(DISTINCT u.user_id) AS total
     FROM users u
-    JOIN user_roles ur ON ur.user_id = u.user_id
-    JOIN roles ro ON ro.role_id = ur.role_id
+    JOIN roles ro ON ro.role_id = u.role_id
+    LEFT JOIN responder_resources rr ON rr.responder_user_id = u.user_id
     WHERE lower(ro.code) IN ('fire', 'police', 'tanod')
+      AND COALESCE(rr.availability_status, 'AVAILABLE') = 'AVAILABLE'
     GROUP BY lower(ro.code)
-  `).all<{ role_code: string; total: number }>().catch(() => ({ results: [] }));
+  `).all<{ role_code: string; total: number }>();
 
   const roleTotals: Record<string, number> = { fire: 0, police: 0, tanod: 0 };
   for (const r of roleUserRows.results ?? []) {
@@ -255,8 +268,8 @@ route.get("/overview", async (c) => {
     responders: allResponders,
     handovers: handoverRows.results ?? [],
     departmentCounts: {
-      fire: Math.max(0, (roleTotals.fire || 1) - activeFireCount),
-      police: Math.max(0, (roleTotals.police || 1) - activePoliceCount),
+      fire: Math.max(0, (roleTotals.fire ?? 0) - activeFireCount),
+      police: Math.max(0, (roleTotals.police ?? 0) - activePoliceCount),
       tanod: availableTanods,
     },
   });
@@ -273,7 +286,8 @@ route.post("/incidents/:incidentId/dispatch", requireRole("bdrrmo"), async (c) =
   } | null;
 
   const incident = await db.prepare(`
-    SELECT incident_id, title, category, location_description, latitude, longitude, priority_code
+    SELECT incident_id, title, category, location_description, latitude, longitude, priority_code,
+      is_emergency, incident_status_id
     FROM incident_reports
     WHERE incident_id = ?
   `).bind(incidentId).first<{
@@ -284,9 +298,17 @@ route.post("/incidents/:incidentId/dispatch", requireRole("bdrrmo"), async (c) =
     latitude: number | null;
     longitude: number | null;
     priority_code: string | null;
+    is_emergency: number;
+    incident_status_id: number;
   }>();
 
   if (!incident) return c.json({ error: "Incident not found." }, 404);
+  if (incident.is_emergency !== 1) {
+    return c.json({ error: "Only emergency incidents can be dispatched by BDRRMO." }, 409);
+  }
+  if ([10, 11, 12].includes(Number(incident.incident_status_id))) {
+    return c.json({ error: "Closed or rejected incidents cannot be dispatched." }, 409);
+  }
 
   const selectedDepts = new Set<string>(
     (body?.departments ?? []).filter((d) => d === "police" || d === "fire" || d === "tanod"),
@@ -296,12 +318,29 @@ route.post("/incidents/:incidentId/dispatch", requireRole("bdrrmo"), async (c) =
     return c.json({ error: "Select at least one department (BFP, Police, or Tanod)." }, 400);
   }
 
+  const [existingAgencyRows, existingTanodRow] = await Promise.all([
+    db.prepare(`
+      SELECT lower(target_role) AS role
+      FROM responder_dispatches
+      WHERE incident_id = ? AND status NOT IN ('COMPLETED', 'DECLINED', 'CANCELLED')
+    `).bind(incident.incident_id).all<{ role: string }>(),
+    db.prepare(`
+      SELECT tanod_assignment_id
+      FROM tanod_assignments
+      WHERE incident_id = ? AND assignment_status_id NOT IN (3, 6, 7)
+      LIMIT 1
+    `).bind(incident.incident_id).first<{ tanod_assignment_id: string }>(),
+  ]);
+  const activeAgencyRoles = new Set((existingAgencyRows.results ?? []).map((r) => r.role));
+
   const currentUser = c.get("user");
   const urgencyLabel = body?.urgency || (incident.priority_code === "P1" ? "Critical" : "High");
   const statements = [];
+  const dispatchedDepts: string[] = [];
 
   for (const role of selectedDepts) {
-    if (role === "tanod") continue;
+    if (role === "tanod" || activeAgencyRoles.has(role)) continue;
+    dispatchedDepts.push(role);
     const assignmentId = crypto.randomUUID();
     statements.push(
       db.prepare(`
@@ -324,17 +363,18 @@ route.post("/incidents/:incidentId/dispatch", requireRole("bdrrmo"), async (c) =
         role === "fire" ? "BFP Fire Unit" : "PNP Patrol Unit",
       ),
       notify(db, { type: "team_dispatched", actorId: currentUser.id, eventId: assignmentId, assignmentId,
-        reportId: incidentId, body: role.toUpperCase() + " dispatched to " + incident.title }),
+        reportId: incidentId, recipientRole: "responder", body: role.toUpperCase() + " dispatched to " + incident.title }),
     );
   }
 
   let tanodDispatched = false;
-  if (body?.tanod_unit_id || selectedDepts.has("tanod")) {
+  if ((body?.tanod_unit_id || selectedDepts.has("tanod")) && !existingTanodRow) {
     const resource = body?.tanod_unit_id
       ? await db.prepare(`
           SELECT responder_resource_id, responder_user_id, display_name
           FROM responder_resources
           WHERE responder_resource_id = ? AND responder_user_id IS NOT NULL
+            AND availability_status = 'AVAILABLE'
         `).bind(body.tanod_unit_id).first<{
           responder_resource_id: string;
           responder_user_id: string;
@@ -344,7 +384,8 @@ route.post("/incidents/:incidentId/dispatch", requireRole("bdrrmo"), async (c) =
           SELECT responder_resource_id, responder_user_id, display_name
           FROM responder_resources
           WHERE resource_type = 'TANOD' AND responder_user_id IS NOT NULL
-          ORDER BY CASE WHEN availability_status = 'AVAILABLE' THEN 0 ELSE 1 END, updated_at ASC
+            AND availability_status = 'AVAILABLE'
+          ORDER BY updated_at ASC
           LIMIT 1
         `).first<{
           responder_resource_id: string;
@@ -373,16 +414,25 @@ route.post("/incidents/:incidentId/dispatch", requireRole("bdrrmo"), async (c) =
           WHERE responder_resource_id = ?
         `).bind(resource.responder_resource_id),
         notify(db, { type: "team_dispatched", actorId: currentUser.id, eventId: assignmentId,
-          assignmentId, reportId: incidentId, body: resource.display_name + " dispatched to " + incident.title }),
+          assignmentId, reportId: incidentId, recipientRole: "responder", recipientUserId: resource.responder_user_id,
+          body: resource.display_name + " dispatched to " + incident.title }),
       );
     }
+  }
+
+  if (dispatchedDepts.length === 0 && !tanodDispatched) {
+    return c.json({
+      error: activeAgencyRoles.size > 0 || existingTanodRow
+        ? "Selected department(s) are already dispatched to this incident."
+        : "No available responder units to dispatch.",
+    }, 409);
   }
 
   statements.push(
     db.prepare(`
       UPDATE incident_reports
       SET incident_status_id = 6, updated_at = datetime('now')
-      WHERE incident_id = ?
+      WHERE incident_id = ? AND incident_status_id NOT IN (7, 8, 9, 10, 11, 12)
     `).bind(incident.incident_id),
   );
 
@@ -391,10 +441,11 @@ route.post("/incidents/:incidentId/dispatch", requireRole("bdrrmo"), async (c) =
       db.prepare(`
         INSERT INTO incident_status_events
           (incident_status_event_id, incident_id, from_incident_status_id, to_incident_status_id, changed_by_user_id, note)
-        VALUES (?, ?, 5, 6, ?, ?)
+        VALUES (?, ?, ?, 6, ?, ?)
       `).bind(
         crypto.randomUUID(),
         incident.incident_id,
+        incident.incident_status_id,
         currentUser.id,
         `[BDRRMO NOTE] ${body.tactical_note.trim()}`,
       ),
@@ -404,7 +455,7 @@ route.post("/incidents/:incidentId/dispatch", requireRole("bdrrmo"), async (c) =
   await db.batch(statements);
   return c.json({
     ok: true,
-    dispatched_departments: [...selectedDepts].filter((d) => d !== "tanod"),
+    dispatched_departments: dispatchedDepts,
     tanod_dispatched: tanodDispatched,
   }, 201);
 });
@@ -435,6 +486,35 @@ route.post("/incidents/:incidentId/reject", async (c) => {
         (incident_status_event_id, incident_id, from_incident_status_id, to_incident_status_id, changed_by_user_id, note)
       VALUES (?, ?, 5, 11, ?, ?)
     `).bind(crypto.randomUUID(), incidentId, currentUser.id, note),
+    db.prepare(`
+      UPDATE responder_dispatches
+      SET status = 'CANCELLED'
+      WHERE incident_id = ? AND status NOT IN ('COMPLETED', 'DECLINED', 'CANCELLED')
+    `).bind(incidentId),
+    db.prepare(`
+      UPDATE tanod_assignments
+      SET assignment_status_id = 7, completed_at = COALESCE(completed_at, datetime('now'))
+      WHERE incident_id = ? AND assignment_status_id NOT IN (3, 6, 7)
+    `).bind(incidentId),
+    db.prepare(`
+      UPDATE responder_resources
+      SET availability_status = 'AVAILABLE', updated_at = datetime('now')
+      WHERE responder_resource_id IN (
+        SELECT responder_resource_id FROM tanod_assignments WHERE incident_id = ?
+      )
+    `).bind(incidentId),
+    db.prepare(`
+      UPDATE tracking_links
+      SET expires_at = datetime('now'), revoked_at = COALESCE(revoked_at, datetime('now'))
+      WHERE report_id = ?
+    `).bind(incidentId),
+    db.prepare(`
+      DELETE FROM responder_locations
+      WHERE assignment_id IN (
+        SELECT tanod_assignment_id FROM tanod_assignments WHERE incident_id = ?
+        UNION SELECT responder_dispatch_id FROM responder_dispatches WHERE incident_id = ?
+      )
+    `).bind(incidentId, incidentId),
   ]);
 
   try {
@@ -558,30 +638,6 @@ route.post("/incidents/:incidentId/note", async (c) => {
   return c.json({ ok: true }, 201);
 });
 
-route.post("/incidents/:incidentId/verify-closure", async (c) => {
-  const db = c.env.geofix167_db;
-  const incidentId = c.req.param("incidentId");
-  const currentUser = c.get("user");
-  const body = (await c.req.json().catch(() => null)) as { note?: string } | null;
-  const verifyNote = `[BDRRMO VERIFIED] ${body?.note?.trim() || "Field resolution & proof photos verified by BDRRMO — forwarded to Admin for final closure."}`;
-
-  await db.batch([
-    db.prepare(`
-      UPDATE incident_reports
-      SET incident_status_id = 9, updated_at = datetime('now')
-      WHERE incident_id = ? AND incident_status_id NOT IN (10, 11)
-    `).bind(incidentId),
-    db.prepare(`
-      INSERT INTO incident_status_events
-        (incident_status_event_id, incident_id, from_incident_status_id, to_incident_status_id, changed_by_user_id, note)
-      VALUES (?, ?, 9, 9, ?, ?)
-    `).bind(crypto.randomUUID(), incidentId, currentUser.id, verifyNote),
-    notify(db, { type: "resolution_ready", actorId: currentUser.id, eventId: incidentId, reportId: incidentId }),
-  ]);
-
-  return c.json({ ok: true, status: "FOR_CLOSURE_REVIEW", bdrrmo_verified: true });
-});
-
 route.post("/incidents/:incidentId/close", async (c) => {
   const db = c.env.geofix167_db;
   const incidentId = c.req.param("incidentId");
@@ -634,12 +690,179 @@ route.post("/incidents/:incidentId/close", async (c) => {
         (incident_status_event_id, incident_id, from_incident_status_id, to_incident_status_id, changed_by_user_id, note)
       VALUES (?, ?, 9, 10, ?, 'BDRRMO verified completion and authorized closure')
     `).bind(crypto.randomUUID(), incidentId, currentUser.id),
+    db.prepare(`
+      UPDATE tracking_links
+      SET expires_at = datetime('now'), revoked_at = COALESCE(revoked_at, datetime('now'))
+      WHERE report_id = ?
+    `).bind(incidentId),
+    db.prepare(`
+      DELETE FROM responder_locations
+      WHERE assignment_id IN (
+        SELECT tanod_assignment_id FROM tanod_assignments WHERE incident_id = ?
+        UNION SELECT responder_dispatch_id FROM responder_dispatches WHERE incident_id = ?
+      )
+    `).bind(incidentId, incidentId),
   ]);
+
+  try {
+    const rep = await db.prepare(`SELECT reported_by_user_id, title FROM incident_reports WHERE incident_id = ?`)
+      .bind(incidentId).first<{ reported_by_user_id: string | null; title: string | null }>();
+    if (rep?.reported_by_user_id) {
+      await db.prepare(`
+        INSERT INTO resident_notifications
+          (notification_id, recipient_user_id, incident_id, type, title, body, created_at)
+        VALUES (?, ?, ?, 'report_update', ?, ?, ?)
+      `).bind(
+        crypto.randomUUID().replace(/-/g, ""),
+        rep.reported_by_user_id,
+        incidentId,
+        "Emergency Incident Resolved",
+        `Your emergency report${rep.title ? ` ("${rep.title}")` : ""} has been verified and closed by BDRRMO.`,
+        new Date().toISOString(),
+      ).run();
+    }
+  } catch { /* ignore notification error */ }
 
   // Generate summarized completion report snapshot so Admin receives only the summary once closed
   await ensureIncidentReportSnapshot(db, incidentId, currentUser.id, "BDRRMO verified completion and authorized closure").catch(() => null);
 
   return c.json({ ok: true, status: "CLOSED" });
+});
+
+route.get("/completed-tasks", async (c) => {
+  const db = c.env.geofix167_db;
+  const toIso = (val: unknown) => {
+    const text = String(val || "").trim();
+    if (!text) return null;
+    return /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(text) ? text.replace(" ", "T") + "Z" : text;
+  };
+
+  const [reports, dispatches, tanods, events, mediaRows] = await Promise.all([
+    db.prepare(`
+      SELECT r.incident_id, COALESCE(printf('GF-%03d', rr.reference_sequence), r.incident_id) AS reference_number,
+        r.title, r.category, r.categories, r.location_description, r.assigned_team,
+        r.submitted_at, r.closed_at, r.updated_at
+      FROM incident_reports r
+      LEFT JOIN incident_report_references rr ON rr.incident_id = r.incident_id
+      WHERE r.is_emergency = 1 AND (r.incident_status_id = 10 OR r.closed_at IS NOT NULL)
+      ORDER BY COALESCE(r.closed_at, r.updated_at) DESC
+      LIMIT 200
+    `).all<Record<string, unknown>>(),
+    db.prepare(`
+      SELECT incident_id, target_role, dispatched_at
+      FROM responder_dispatches
+      WHERE status != 'DECLINED'
+      ORDER BY dispatched_at ASC
+    `).all<{ incident_id: string; target_role: string; dispatched_at: string }>(),
+    db.prepare(`
+      SELECT incident_id, assigned_at
+      FROM tanod_assignments
+      WHERE assignment_status_id != 3
+      ORDER BY assigned_at ASC
+    `).all<{ incident_id: string; assigned_at: string }>(),
+    db.prepare(`
+      SELECT incident_id, to_incident_status_id, note, created_at
+      FROM incident_status_events
+      ORDER BY created_at ASC
+    `).all<{ incident_id: string; to_incident_status_id: number; note: string | null; created_at: string }>(),
+    db.prepare(`
+      SELECT incident_id, incident_media_id AS id, COALESCE(original_filename, 'photo.jpg') AS filename
+      FROM incident_media
+      WHERE media_type = 'PHOTO'
+      ORDER BY created_at ASC
+    `).all<{ incident_id: string; id: string; filename: string }>().catch(() => ({ results: [] })),
+  ]);
+
+  const photosByInc = new Map<string, Array<{ id: string; url: string; label: string }>>();
+  for (const m of mediaRows.results ?? []) {
+    const list = photosByInc.get(m.incident_id) ?? [];
+    const label = /^fire-/i.test(m.filename)
+      ? "BFP Completion Proof"
+      : /^police-/i.test(m.filename)
+        ? "Police Completion Proof"
+        : /^transport-proof/i.test(m.filename)
+          ? "Tanod Transport Proof"
+          : /^tanod-/i.test(m.filename)
+            ? "Tanod Completion Proof"
+            : "Incident Scene Photo";
+    list.push({
+      id: m.id,
+      url: `/api/reports/${encodeURIComponent(m.incident_id)}/photos/${encodeURIComponent(m.id)}`,
+      label,
+    });
+    photosByInc.set(m.incident_id, list);
+  }
+
+  const teamsByInc = new Map<string, Set<string>>();
+  const dispatchedAtByInc = new Map<string, string>();
+  for (const d of dispatches.results ?? []) {
+    const set = teamsByInc.get(d.incident_id) ?? new Set<string>();
+    set.add(d.target_role === "fire" ? "BFP (Fire)" : d.target_role === "police" ? "Police (PNP)" : d.target_role.toUpperCase());
+    teamsByInc.set(d.incident_id, set);
+    if (!dispatchedAtByInc.has(d.incident_id) && d.dispatched_at) dispatchedAtByInc.set(d.incident_id, d.dispatched_at);
+  }
+  for (const t of tanods.results ?? []) {
+    const set = teamsByInc.get(t.incident_id) ?? new Set<string>();
+    set.add("Barangay Tanod");
+    teamsByInc.set(t.incident_id, set);
+    if (!dispatchedAtByInc.has(t.incident_id) && t.assigned_at) dispatchedAtByInc.set(t.incident_id, t.assigned_at);
+  }
+
+  const arrivedAtByInc = new Map<string, string>();
+  const outcomeByInc = new Map<string, string>();
+  for (const ev of events.results ?? []) {
+    if (Number(ev.to_incident_status_id) === 8 && !arrivedAtByInc.has(ev.incident_id)) {
+      arrivedAtByInc.set(ev.incident_id, ev.created_at);
+    }
+    const note = String(ev.note || "").trim();
+    if (note.startsWith("[AGENCY REPORT]")) {
+      outcomeByInc.set(ev.incident_id, stripSelectedDetails(note.replace(/^\[AGENCY REPORT\]\s*/, "")));
+    } else if (Number(ev.to_incident_status_id) === 10 && note && !outcomeByInc.has(ev.incident_id)) {
+      outcomeByInc.set(ev.incident_id, note);
+    }
+  }
+
+  const tasks = (reports.results ?? []).map((row) => {
+    const incId = String(row.incident_id);
+    let categories: string[] = [];
+    if (typeof row.categories === "string" && row.categories.trim().startsWith("[")) {
+      try {
+        const parsed = JSON.parse(row.categories);
+        if (Array.isArray(parsed)) categories = parsed.map(String).filter(Boolean);
+      } catch { /* fallback below */ }
+    }
+    if (!categories.length) {
+      categories = [String(row.category || row.title || "Emergency")];
+    }
+
+    const reported = toIso(row.submitted_at) || new Date().toISOString();
+    const resolved = toIso(row.closed_at || row.updated_at) || reported;
+    const dispatched = toIso(dispatchedAtByInc.get(incId)) || reported;
+    const arrived = toIso(arrivedAtByInc.get(incId)) || resolved;
+    const startMs = Date.parse(reported);
+    const arriveMs = Date.parse(arrived);
+    const responseMinutes = Number.isFinite(startMs) && Number.isFinite(arriveMs)
+      ? Math.max(0, Math.round((arriveMs - startMs) / 60000))
+      : 0;
+    const teamList = teamsByInc.get(incId);
+
+    return {
+      id: String(row.reference_number || incId),
+      incidentId: incId,
+      categories,
+      location: String(row.location_description || "Barangay 167"),
+      team: teamList && teamList.size > 0 ? [...teamList].join(", ") : String(row.assigned_team || "BDRRMO Response"),
+      reported,
+      dispatched,
+      arrived,
+      resolved,
+      responseMinutes,
+      outcome: outcomeByInc.get(incId) || "Verified and closed by BDRRMO.",
+      photos: photosByInc.get(incId) ?? [],
+    };
+  });
+
+  return c.json({ tasks });
 });
 
 export default route;

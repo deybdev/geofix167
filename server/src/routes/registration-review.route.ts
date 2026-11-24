@@ -19,6 +19,49 @@ route.get("/", async c => {
     ORDER BY CASE WHEN v.status IN ('PENDING', 'NEEDS_CORRECTION') THEN 0 ELSE 1 END, v.submitted_at DESC LIMIT 200`).all();
   return c.json({ requests: result.results });
 });
+
+route.get("/residents", async c => {
+  const result = await c.env.geofix167_db.prepare(`
+    SELECT u.user_id AS id,
+      trim(COALESCE(u.first_name, '') || ' ' || COALESCE(u.last_name, '')) AS name,
+      COALESCE(u.mobile_number, '') AS mobile,
+      COALESCE(u.email, '') AS email,
+      u.account_status_id,
+      u.created_at,
+      (SELECT COUNT(*) FROM incident_reports r WHERE r.reported_by_user_id = u.user_id) AS reports_count
+    FROM users u
+    JOIN roles ro ON ro.role_id = u.role_id
+    WHERE lower(ro.code) = 'resident'
+    ORDER BY u.created_at DESC
+    LIMIT 300
+  `).all<Record<string, unknown>>();
+  return c.json({ residents: result.results ?? [] });
+});
+
+route.patch("/residents/:userId/status", async c => {
+  const userId = c.req.param("userId")?.trim();
+  const parsed = z.object({
+    action: z.enum(["Suspend", "Revoke", "Restore"]),
+    reason: z.string().trim().max(500).optional(),
+  }).safeParse(await c.req.json().catch(() => null));
+  if (!userId || !parsed.success) {
+    return c.json({ error: "A valid resident ID and action are required." }, 400);
+  }
+  const statusId = parsed.data.action === "Restore" ? 1 : parsed.data.action === "Suspend" ? 2 : 3;
+  const now = new Date().toISOString();
+  const db = c.env.geofix167_db;
+  const statements = [
+    db.prepare(`UPDATE users SET account_status_id = ?, updated_at = ? WHERE user_id = ?`).bind(statusId, now, userId),
+  ];
+  if (statusId !== 1) {
+    statements.push(
+      db.prepare(`DELETE FROM sessions WHERE user_id = ?`).bind(userId),
+      db.prepare(`UPDATE user_sessions_and_devices SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL`).bind(now, userId),
+    );
+  }
+  await db.batch(statements);
+  return c.json({ ok: true, account_status_id: statusId });
+});
 route.get("/:id/document", async c => {
   const request = await c.env.geofix167_db.prepare("SELECT document_key, document_type FROM registration_requests WHERE request_id = ?").bind(c.req.param("id")).first<{ document_key: string; document_type: string }>();
   if (!request?.document_key) return c.json({ error: "Document not available." }, 404);

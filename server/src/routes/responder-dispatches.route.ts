@@ -5,37 +5,41 @@ import { z } from "zod";
 import { requireAuth, requireRole } from "../middleware/auth";
 import type { AppEnv, UserRole } from "../types/env";
 import { parseMaintenanceMeta } from "./admin-maintenance.route";
-import { ensureIncidentReportSnapshot } from "../services/incidentReportSnapshot.service";
 import { stripSelectedDetails } from "../utils/stripSelectedDetails";
 
 const route = new Hono<AppEnv>();
 const responderRoles: UserRole[] = ["bdrrmo", "police", "fire", "tanod"];
-const roleSchema = z.enum(["bdrrmo", "police", "fire", "tanod"]);
-const dispatchSchema = z.object({
-  incident_id: z.string().trim().min(1).max(100),
-  incident_title: z.string().trim().min(1).max(200),
-  incident_category: z.string().trim().min(1).max(50),
-  incident_location: z.string().trim().max(300).optional(),
-  incident_latitude: z.number().min(-90).max(90).optional(),
-  incident_longitude: z.number().min(-180).max(180).optional(),
-  target_roles: z.array(roleSchema).min(1),
-  urgency: z.enum(["Critical", "High", "Medium", "Low"]),
-  vehicle_name: z.string().trim().max(100).optional(),
-});
 const statusSchema = z.enum(["ACCEPTED", "DECLINED", "EN_ROUTE", "ON_SCENE", "COMPLETED"]);
 
+async function findOwnedDispatch(
+  db: AppEnv["Bindings"]["geofix167_db"],
+  dispatchId: string,
+  user: AppEnv["Variables"]["user"],
+): Promise<{ kind: "tanod" | "agency"; incident_id: string } | null> {
+  if (user.role === "tanod") {
+    const row = await db.prepare(
+      `SELECT incident_id FROM tanod_assignments WHERE tanod_assignment_id = ? AND tanod_user_id = ? LIMIT 1`,
+    ).bind(dispatchId, user.id).first<{ incident_id: string }>();
+    return row ? { kind: "tanod", incident_id: row.incident_id } : null;
+  }
+  const row = await db.prepare(
+    `SELECT incident_id FROM responder_dispatches WHERE responder_dispatch_id = ? AND (lower(target_role) = ? OR ? = 'bdrrmo') LIMIT 1`,
+  ).bind(dispatchId, user.role, user.role).first<{ incident_id: string }>();
+  return row ? { kind: "agency", incident_id: row.incident_id } : null;
+}
+
 async function recordTrackingStatus(db: AppEnv["Bindings"]["geofix167_db"], assignmentId: string, userId: string,
-  status: "ACCEPTED" | "DECLINED" | "EN_ROUTE" | "ON_SCENE" | "COMPLETED") {
+  status: "ACCEPTED" | "DECLINED" | "EN_ROUTE" | "ON_SCENE") {
   const assignment = await db.prepare('SELECT incident_id FROM tanod_assignments WHERE tanod_assignment_id = ? UNION SELECT incident_id FROM responder_dispatches WHERE responder_dispatch_id = ?')
     .bind(assignmentId, assignmentId).first<{ incident_id: string }>();
-  const notice = assignment && status !== "COMPLETED" ? notify(db, { type: status, actorId: userId,
-    eventId: assignmentId, assignmentId, reportId: assignment.incident_id }) : null;
+  const notice = assignment ? notify(db, { type: status, actorId: userId,
+    eventId: assignmentId, assignmentId, reportId: assignment.incident_id, recipientRole: "bdrrmo" }) : null;
   if (status === "DECLINED") {
     await db.batch([db.prepare("DELETE FROM responder_locations WHERE assignment_id = ? AND responder_id = ?")
       .bind(assignmentId, userId), ...(notice ? [notice] : [])]);
     return;
   }
-  const incidentStatusId = { ACCEPTED: 6, EN_ROUTE: 7, ON_SCENE: 8, COMPLETED: 10 }[status];
+  const incidentStatusId = { ACCEPTED: 6, EN_ROUTE: 7, ON_SCENE: 8 }[status];
   await db.batch([
     db.prepare(`INSERT INTO incident_status_events
       (incident_status_event_id, incident_id, from_incident_status_id, to_incident_status_id, changed_by_user_id, note)
@@ -45,33 +49,13 @@ async function recordTrackingStatus(db: AppEnv["Bindings"]["geofix167_db"], assi
         UNION SELECT incident_id FROM responder_dispatches WHERE responder_dispatch_id = ?)
         AND r.incident_status_id IN (5, 6, 7, 8, 13)`)
       .bind(crypto.randomUUID(), incidentStatusId, userId, "Responder " + status.toLowerCase().replaceAll("_", " "), assignmentId, assignmentId),
-    db.prepare(`UPDATE incident_reports SET incident_status_id = ?, updated_at = datetime('now'),
-      closed_at = CASE WHEN ? = 10 THEN datetime('now') ELSE closed_at END,
-      closed_by_user_id = CASE WHEN ? = 10 THEN ? ELSE closed_by_user_id END
+    db.prepare(`UPDATE incident_reports SET incident_status_id = ?, updated_at = datetime('now')
       WHERE incident_id = (SELECT incident_id FROM tanod_assignments WHERE tanod_assignment_id = ?
         UNION SELECT incident_id FROM responder_dispatches WHERE responder_dispatch_id = ?)
         AND incident_status_id IN (5, 6, 7, 8, 13) AND changes() = 1`)
-      .bind(incidentStatusId, incidentStatusId, incidentStatusId, userId, assignmentId, assignmentId),
+      .bind(incidentStatusId, assignmentId, assignmentId),
     ...(notice ? [notice] : []),
   ]);
-  if (status === "COMPLETED") {
-    const incident = await db.prepare(`SELECT incident_id FROM tanod_assignments WHERE tanod_assignment_id = ?
-      UNION SELECT incident_id FROM responder_dispatches WHERE responder_dispatch_id = ? LIMIT 1`)
-      .bind(assignmentId, assignmentId).first<{ incident_id: string }>();
-    if (incident) await ensureIncidentReportSnapshot(db, incident.incident_id, userId, "Responder marked incident completed.");
-    await db.batch([
-      db.prepare(`UPDATE tracking_links SET expires_at = datetime('now'), revoked_at = COALESCE(revoked_at, datetime('now'))
-        WHERE report_id = (SELECT incident_id FROM tanod_assignments WHERE tanod_assignment_id = ?
-          UNION SELECT incident_id FROM responder_dispatches WHERE responder_dispatch_id = ?)`)
-        .bind(assignmentId, assignmentId),
-      db.prepare(`DELETE FROM responder_locations WHERE assignment_id IN (
-        SELECT tanod_assignment_id FROM tanod_assignments WHERE incident_id = (SELECT incident_id FROM tanod_assignments WHERE tanod_assignment_id = ?
-          UNION SELECT incident_id FROM responder_dispatches WHERE responder_dispatch_id = ?)
-        UNION SELECT responder_dispatch_id FROM responder_dispatches WHERE incident_id = (SELECT incident_id FROM tanod_assignments WHERE tanod_assignment_id = ?
-          UNION SELECT incident_id FROM responder_dispatches WHERE responder_dispatch_id = ?)
-      )`).bind(assignmentId, assignmentId, assignmentId, assignmentId),
-    ]);
-  }
 }
 
 route.use("*", requireAuth, requireRole(...responderRoles));
@@ -169,7 +153,8 @@ async function ensureResponderResource(
   if (existing) return existing;
 
   const role = String(user.role || "tanod").toLowerCase();
-  const resourceType = role === "police" ? "POLICE" : role === "fire" ? "FIRE" : "TANOD";
+  // responder_resources.resource_type only permits TANOD, VEHICLE, EQUIPMENT (0007_dispatch_support.sql).
+  const resourceType = role === "tanod" ? "TANOD" : "VEHICLE";
   const displayName =
     user.full_name?.trim() ||
     (role === "police" ? "PNP Patrol Unit" : role === "fire" ? "BFP Fire Unit" : "Barangay Tanod");
@@ -178,7 +163,7 @@ async function ensureResponderResource(
     INSERT INTO responder_resources
       (responder_resource_id, responder_user_id, resource_type, display_name, availability_status, updated_at)
     VALUES (?, ?, ?, ?, 'AVAILABLE', datetime('now'))
-  `).bind(crypto.randomUUID(), user.id, resourceType, displayName).run().catch(() => {});
+  `).bind(crypto.randomUUID(), user.id, resourceType, displayName).run();
 
   return { availability_status: "AVAILABLE" };
 }
@@ -208,7 +193,7 @@ route.patch("/duty-status", async (c) => {
       db.prepare("SELECT availability_status FROM responder_resources WHERE responder_user_id = ?").bind(owner),
     ]);
     const row = read?.results[0] as { availability_status: string } | undefined;
-    if (!row) return c.json(dutyResponse(requested ? "AVAILABLE" : "UNAVAILABLE"));
+    if (!row) return c.json({ error: "Responder resource record missing." }, 500);
     const result = dutyResponse(row.availability_status);
     if (result.on_duty !== requested) {
       return c.json({ error: row.availability_status === "BUSY"
@@ -226,12 +211,6 @@ route.get("/", async (c) => {
   const requestedStatus = c.req.query("status");
   const status = requestedStatus ? statusSchema.safeParse(requestedStatus) : null;
   if (status && !status.success) return c.json({ error: "Invalid dispatch status." }, 400);
-
-  // Clean up any legacy 'wdad' mock/test rows in local D1
-  await c.env.geofix167_db.batch([
-    c.env.geofix167_db.prepare(`DELETE FROM responder_dispatches WHERE LOWER(TRIM(incident_title)) = 'wdad'`),
-    c.env.geofix167_db.prepare(`DELETE FROM incident_reports WHERE LOWER(TRIM(title)) = 'wdad' OR LOWER(TRIM(description_original)) = 'wdad'`),
-  ]).catch(() => { });
 
   const statusClause = status
     ? status.data === "COMPLETED"
@@ -472,8 +451,8 @@ route.patch("/:dispatchId/status", async (c) => {
   if (!status.success || !dispatchId) {
     return c.json({ error: "A valid dispatch status is required." }, 400);
   }
-  if (c.get("user").role === "tanod" && status.data === "COMPLETED") {
-    return c.json({ error: "Tanods cannot mark tasks as Completed. Submit proof for Admin verification." }, 403);
+  if (status.data === "COMPLETED") {
+    return c.json({ error: "Submit your completion report or handover form to mark a dispatch completed." }, 403);
   }
 
   const result = await c.env.geofix167_db.prepare(`
@@ -513,127 +492,28 @@ route.patch("/:dispatchId/status", async (c) => {
   return c.json({ ok: true, status: status.data });
 });
 
-route.post("/", async (c) => {
-  if (c.get("user").role !== "bdrrmo") {
-    return c.json({ error: "Only BDRRMO can create dispatches." }, 403);
-  }
-
-  const body = dispatchSchema.safeParse(await c.req.json().catch(() => null));
-  if (!body.success) {
-    return c.json({ error: "Invalid dispatch request.", details: body.error.flatten() }, 400);
-  }
-
-  const db = c.env.geofix167_db;
-  const incidentId = body.data.incident_id;
-  const targetRoles = [...new Set(body.data.target_roles)];
-  const report = await db.prepare(`
-    SELECT r.incident_id, r.title, r.category, r.location_description,
-      r.latitude, r.longitude, r.is_emergency, r.incident_status_id, s.code AS status_code
-    FROM incident_reports r
-    JOIN incident_statuses s ON s.incident_status_id = r.incident_status_id
-    WHERE r.incident_id = ?
-    LIMIT 1
-  `).bind(incidentId).first<{
-    incident_id: string;
-    title: string;
-    category: string;
-    location_description: string | null;
-    latitude: number | null;
-    longitude: number | null;
-    is_emergency: number;
-    incident_status_id: number;
-    status_code: string;
-  }>();
-
-  if (!report) {
-    return c.json({ error: "Incident report not found." }, 404);
-  }
-
-  const existingDispatch = await db.prepare(`
-    SELECT responder_dispatch_id
-    FROM responder_dispatches
-    WHERE incident_id = ?
-    LIMIT 1
-  `).bind(incidentId).first<{ responder_dispatch_id: string }>();
-
-  if (existingDispatch || report.status_code === "DISPATCHED") {
-    return c.json({ error: "This incident has already been dispatched." }, 409);
-  }
-
-  if (report.is_emergency !== 1 || report.status_code !== "FORWARDED_TO_BDRRMO") {
-    return c.json({ error: "Only emergency reports forwarded to BDRRMO can be dispatched." }, 409);
-  }
-
-  const statusEventId = crypto.randomUUID();
-  const title = report.title?.trim() || body.data.incident_title;
-  const category = report.category?.trim() || body.data.incident_category;
-  const location = report.location_description?.trim() || body.data.incident_location || null;
-  const latitude = report.latitude ?? body.data.incident_latitude ?? null;
-  const longitude = report.longitude ?? body.data.incident_longitude ?? null;
-
-  const statements = [
-    db.prepare(`
-      UPDATE incident_reports
-      SET incident_status_id = 13, updated_at = datetime('now')
-      WHERE incident_id = ? AND is_emergency = 1 AND incident_status_id = 5
-        AND NOT EXISTS (SELECT 1 FROM responder_dispatches WHERE incident_id = ?)
-    `).bind(incidentId, incidentId),
-    db.prepare(`
-      INSERT INTO incident_status_events
-        (incident_status_event_id, incident_id, from_incident_status_id, to_incident_status_id, changed_by_user_id, note)
-      SELECT ?, ?, 5, 13, ?, 'Emergency dispatched by BDRRMO'
-      WHERE changes() = 1
-    `).bind(statusEventId, incidentId, c.get("user").id),
-    ...targetRoles.flatMap((targetRole) => {
-      const assignmentId = crypto.randomUUID();
-      return [db.prepare(`
-      INSERT INTO responder_dispatches
-        (responder_dispatch_id, incident_id, incident_title, incident_category,
-         incident_location, incident_latitude, incident_longitude,
-         dispatched_by_user_id, target_role, urgency, vehicle_name)
-      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-      WHERE EXISTS (SELECT 1 FROM incident_status_events WHERE incident_status_event_id = ?)
-    `).bind(
-      assignmentId,
-      incidentId,
-      title,
-      category,
-      location,
-      latitude,
-      longitude,
-      c.get("user").id,
-      targetRole,
-      body.data.urgency,
-      body.data.vehicle_name || null,
-      statusEventId,
-    ), notify(db, { type: "team_dispatched", actorId: c.get("user").id, eventId: assignmentId,
-      reportId: incidentId, assignmentId, afterChange: true })];
-    }),
-  ];
-
-  const results = await db.batch(statements);
-  if (!results[0]?.meta.changes) {
-    return c.json({ error: "This incident has already been dispatched." }, 409);
-  }
-
-  return c.json({ ok: true, incident_id: incidentId, status: "DISPATCHED" }, 201);
-});
-
 route.post("/:dispatchId/qr-handover", async (c) => {
   const dispatchId = c.req.param("dispatchId");
   const body = (await c.req.json().catch(() => null)) as {
     incident_id?: string;
-    hospital_name?: string;
+    hospital_name?: string | null;
+    report_type?: string;
     further_info?: string;
     proof_photo_base64?: string;
     proof_photo_mime?: string;
     patients?: Array<{ full_name?: string; contact?: string; age?: string; sex?: string; condition?: string; notes?: string }>;
   } | null;
-  if (!dispatchId || !body?.incident_id) {
-    return c.json({ error: "dispatchId and incident_id are required." }, 400);
+  if (!dispatchId) {
+    return c.json({ error: "dispatchId is required." }, 400);
   }
 
   const currentUser = c.get("user");
+  const db = c.env.geofix167_db;
+  const owned = await findOwnedDispatch(db, dispatchId, currentUser);
+  if (!owned) {
+    return c.json({ error: "Dispatch assignment not found." }, 404);
+  }
+  const incidentId = owned.incident_id;
   const handoverId = crypto.randomUUID();
   const rawToken = crypto.randomUUID();
   const hashBuffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(rawToken));
@@ -642,7 +522,7 @@ route.post("/:dispatchId/qr-handover", async (c) => {
     .join("");
 
   let mediaId: string | null = null;
-  if (body.proof_photo_base64) {
+  if (body?.proof_photo_base64) {
     try {
       const cleanBase64 = body.proof_photo_base64.replace(/^data:image\/\w+;base64,/, "");
       const binaryStr = atob(cleanBase64);
@@ -653,7 +533,7 @@ route.post("/:dispatchId/qr-handover", async (c) => {
       const mime = body.proof_photo_mime === "image/png" ? "image/png" : "image/jpeg";
       const ext = mime === "image/png" ? "png" : "jpg";
       mediaId = crypto.randomUUID();
-      const storageKey = `reports/${body.incident_id}/${mediaId}.${ext}`;
+      const storageKey = `reports/${incidentId}/${mediaId}.${ext}`;
       const shaBuf = await crypto.subtle.digest("SHA-256", bytes.buffer);
       const shaHex = Array.from(new Uint8Array(shaBuf))
         .map((b) => b.toString(16).padStart(2, "0"))
@@ -662,18 +542,18 @@ route.post("/:dispatchId/qr-handover", async (c) => {
       if (c.env.geofix167_uploads) {
         await c.env.geofix167_uploads.put(storageKey, bytes.buffer, {
           httpMetadata: { contentType: mime },
-          customMetadata: { incidentId: body.incident_id },
+          customMetadata: { incidentId },
         });
       }
 
-      await c.env.geofix167_db.prepare(`
+      await db.prepare(`
         INSERT INTO incident_media
           (incident_media_id, incident_id, uploaded_by_user_id, media_type, storage_key,
            content_type, byte_size, original_filename, upload_key, content_sha256, media_url, created_at)
         VALUES (?, ?, ?, 'PHOTO', ?, ?, ?, ?, ?, ?, ?, datetime('now'))
       `).bind(
         mediaId,
-        body.incident_id,
+        incidentId,
         currentUser.id,
         storageKey,
         mime,
@@ -689,62 +569,66 @@ route.post("/:dispatchId/qr-handover", async (c) => {
   }
 
   const remarksPayload = JSON.stringify({
-    hospital_name: body.hospital_name || null,
-    further_info: body.further_info || null,
+    hospital_name: body?.hospital_name || null,
+    report_type: body?.report_type || (body?.hospital_name ? "Hospital Handover Summary" : "Incident Handover Summary (BFP / Police Record)"),
+    further_info: body?.further_info || null,
     proof_media_id: mediaId,
-    patients: Array.isArray(body.patients) ? body.patients : [],
+    patients: Array.isArray(body?.patients) ? body.patients : [],
   });
 
-  await c.env.geofix167_db.batch([c.env.geofix167_db.prepare(`
-    INSERT INTO qr_handovers
-      (qr_handover_id, incident_id, qr_status_id, created_by_tanod_user_id, token_hash, receiving_remarks, expires_at)
-    VALUES (?, ?, 2, ?, ?, ?, datetime('now', '+2 hours'))
-  `).bind(handoverId, body.incident_id, currentUser.id, tokenHash, remarksPayload),
-    notify(c.env.geofix167_db, { type: "handover_submitted", actorId: currentUser.id, eventId: handoverId,
-      assignmentId: dispatchId, reportId: body.incident_id }),
-  ]);
-
-  await c.env.geofix167_db.prepare(`
-    UPDATE responder_dispatches
-    SET status = 'ON_SCENE'
-    WHERE responder_dispatch_id = ?
-  `).bind(dispatchId).run();
-
-  if (currentUser.role === "tanod") {
-    await c.env.geofix167_db.prepare(`
-      UPDATE tanod_assignments
-      SET assignment_status_id = 6, completed_at = datetime('now')
-      WHERE tanod_assignment_id = ? AND tanod_user_id = ?
-    `).bind(dispatchId, currentUser.id).run();
-
-    await c.env.geofix167_db.prepare(`
+  await db.batch([
+    db.prepare(`
+      INSERT INTO qr_handovers
+        (qr_handover_id, incident_id, qr_status_id, created_by_tanod_user_id, token_hash, receiving_remarks, expires_at)
+      VALUES (?, ?, 2, ?, ?, ?, datetime('now', '+2 hours'))
+    `).bind(handoverId, incidentId, currentUser.id, tokenHash, remarksPayload),
+    notify(db, { type: "handover_submitted", actorId: currentUser.id, eventId: handoverId,
+      assignmentId: dispatchId, reportId: incidentId, recipientRole: "bdrrmo" }),
+    ...(owned.kind === "tanod"
+      ? [
+        db.prepare(`
+          UPDATE tanod_assignments
+          SET assignment_status_id = 6, completed_at = datetime('now')
+          WHERE tanod_assignment_id = ? AND tanod_user_id = ?
+        `).bind(dispatchId, currentUser.id),
+      ]
+      : [
+        db.prepare(`
+          UPDATE responder_dispatches
+          SET status = 'COMPLETED'
+          WHERE responder_dispatch_id = ?
+        `).bind(dispatchId),
+      ]),
+    db.prepare(`
       UPDATE responder_resources
       SET availability_status = 'AVAILABLE', updated_at = datetime('now')
       WHERE responder_user_id = ?
-    `).bind(currentUser.id).run().catch(() => { });
-  }
+    `).bind(currentUser.id),
+  ]);
 
   const [remAgencyQr, remTanodQr] = await Promise.all([
-    c.env.geofix167_db.prepare(`SELECT COUNT(*) AS cnt FROM responder_dispatches WHERE incident_id = ? AND status NOT IN ('COMPLETED', 'DECLINED')`).bind(body.incident_id).first<{ cnt: number }>(),
-    c.env.geofix167_db.prepare(`SELECT COUNT(*) AS cnt FROM tanod_assignments WHERE incident_id = ? AND assignment_status_id NOT IN (3, 6)`).bind(body.incident_id).first<{ cnt: number }>(),
+    db.prepare(`SELECT COUNT(*) AS cnt FROM responder_dispatches WHERE incident_id = ? AND status NOT IN ('COMPLETED', 'DECLINED')`).bind(incidentId).first<{ cnt: number }>(),
+    db.prepare(`SELECT COUNT(*) AS cnt FROM tanod_assignments WHERE incident_id = ? AND assignment_status_id NOT IN (3, 6)`).bind(incidentId).first<{ cnt: number }>(),
   ]);
-  if (Number(remAgencyQr?.cnt || 0) === 0 && Number(remTanodQr?.cnt || 0) === 0) {
-    await c.env.geofix167_db.prepare(`
+  const allDone = Number(remAgencyQr?.cnt || 0) === 0 && Number(remTanodQr?.cnt || 0) === 0;
+  if (allDone) {
+    await db.prepare(`
       UPDATE incident_reports
       SET incident_status_id = 9, updated_at = datetime('now')
       WHERE incident_id = ? AND incident_status_id NOT IN (10, 11)
-    `).bind(body.incident_id).run();
+    `).bind(incidentId).run();
   }
 
-  await c.env.geofix167_db.prepare(`
+  await db.prepare(`
     INSERT INTO incident_status_events
       (incident_status_event_id, incident_id, from_incident_status_id, to_incident_status_id, changed_by_user_id, note)
-    VALUES (?, ?, 8, 9, ?, ?)
+    VALUES (?, ?, 8, ?, ?, ?)
   `).bind(
     crypto.randomUUID(),
-    body.incident_id,
+    incidentId,
+    allDone ? 9 : 8,
     currentUser.id,
-    `Hospital QR handover generated (${body.hospital_name || "Hospital"}). ${body.further_info || ""}`.trim(),
+    `Hospital QR handover generated (${body?.hospital_name || "Hospital"}). ${body?.further_info || ""}`.trim(),
   ).run().catch(() => { });
 
   return c.json({
@@ -752,9 +636,9 @@ route.post("/:dispatchId/qr-handover", async (c) => {
     handover_id: handoverId,
     token: rawToken,
     qr_url: `/handover?token=${rawToken}`,
-    summary_pdf_url: `/api/reports/${encodeURIComponent(body.incident_id)}/handover-summary`,
+    summary_pdf_url: `/api/reports/${encodeURIComponent(incidentId)}/handover-summary?token=${encodeURIComponent(rawToken)}`,
     proof_media_id: mediaId,
-    patient_count: Array.isArray(body.patients) ? body.patients.length : 0,
+    patient_count: Array.isArray(body?.patients) ? body.patients.length : 0,
   }, 201);
 });
 
@@ -824,24 +708,26 @@ route.post("/:dispatchId/maintenance-inspection", async (c) => {
     photo_mime?: string;
   } | null;
 
-  if (!dispatchId || !body?.incident_id) {
-    return c.json({ error: "dispatchId and incident_id are required." }, 400);
+  if (!dispatchId) {
+    return c.json({ error: "dispatchId is required." }, 400);
   }
 
   const currentUser = c.get("user");
   const db = c.env.geofix167_db;
   const existing = await db.prepare(`
-    SELECT tanod_assignment_id, notes FROM tanod_assignments WHERE tanod_assignment_id = ?
-  `).bind(dispatchId).first<{ tanod_assignment_id: string; notes: string | null }>();
+    SELECT tanod_assignment_id, incident_id, notes FROM tanod_assignments
+    WHERE tanod_assignment_id = ? AND tanod_user_id = ?
+  `).bind(dispatchId, currentUser.id).first<{ tanod_assignment_id: string; incident_id: string; notes: string | null }>();
 
   if (!existing) return c.json({ error: "Maintenance assignment not found." }, 404);
+  const incidentId = existing.incident_id;
 
   const mediaId = await storeBase64IncidentPhoto(
     c,
-    body.incident_id,
+    incidentId,
     currentUser.id,
-    body.photo_base64,
-    body.photo_mime,
+    body?.photo_base64,
+    body?.photo_mime,
     "tanod-inspection",
   );
 
@@ -861,7 +747,7 @@ route.post("/:dispatchId/maintenance-inspection", async (c) => {
 
   meta.inspection_done = true;
   meta.inspection_at = new Date().toISOString();
-  meta.inspection_note = String(body.note || "").trim();
+  meta.inspection_note = String(body?.note || "").trim();
   if (mediaId) {
     meta.inspection_photo_ids = [...meta.inspection_photo_ids, mediaId];
   }
@@ -869,12 +755,12 @@ route.post("/:dispatchId/maintenance-inspection", async (c) => {
   await db.prepare(`
     UPDATE tanod_assignments
     SET assignment_status_id = 4, notes = ?
-    WHERE tanod_assignment_id = ?
-  `).bind(JSON.stringify(meta), dispatchId).run();
+    WHERE tanod_assignment_id = ? AND tanod_user_id = ?
+  `).bind(JSON.stringify(meta), dispatchId, currentUser.id).run();
 
   try {
     const rep = await db.prepare(`SELECT reported_by_user_id FROM incident_reports WHERE incident_id = ?`)
-      .bind(body.incident_id).first<{ reported_by_user_id: string | null }>();
+      .bind(incidentId).first<{ reported_by_user_id: string | null }>();
     if (rep?.reported_by_user_id) {
       await db.prepare(`
         INSERT INTO resident_notifications
@@ -883,7 +769,7 @@ route.post("/:dispatchId/maintenance-inspection", async (c) => {
       `).bind(
         crypto.randomUUID().replace(/-/g, ""),
         rep.reported_by_user_id,
-        body.incident_id,
+        incidentId,
         "On-Site Inspection Completed",
         `Tanod completed the on-site inspection and uploaded inspection photo proof${meta.inspection_note ? `: "${meta.inspection_note}"` : "."}`,
         new Date().toISOString(),
@@ -1004,18 +890,24 @@ route.post("/:dispatchId/complete-agency", async (c) => {
     }>;
   } | null;
 
-  if (!dispatchId || !body?.incident_id) {
-    return c.json({ error: "dispatchId and incident_id are required." }, 400);
+  if (!dispatchId) {
+    return c.json({ error: "dispatchId is required." }, 400);
   }
 
   const currentUser = c.get("user");
   const db = c.env.geofix167_db;
+  const owned = await findOwnedDispatch(db, dispatchId, currentUser);
+  if (!owned) {
+    return c.json({ error: "Dispatch assignment not found." }, 404);
+  }
+  const incidentId = owned.incident_id;
+
   const mediaId = await storeBase64IncidentPhoto(
     c,
-    body.incident_id,
+    incidentId,
     currentUser.id,
-    body.proof_photo_base64,
-    body.proof_photo_mime,
+    body?.proof_photo_base64,
+    body?.proof_photo_mime,
     `${currentUser.role}-resolution`,
   );
 
@@ -1024,23 +916,23 @@ route.post("/:dispatchId/complete-agency", async (c) => {
     : currentUser.role === "fire"
       ? "BFP Fire Scene Report"
       : "Tanod Scene Completion Report";
-  const personsList = Array.isArray(body.persons) ? body.persons : [];
+  const personsList = Array.isArray(body?.persons) ? body.persons : [];
   const personsSummary = personsList
     .filter((p) => p?.full_name?.trim())
     .map((p) => `${p.full_name?.trim()}${p.role_in_incident ? ` (${p.role_in_incident})` : ""}${p.contact ? ` [${p.contact}]` : ""}`)
     .join(", ");
   const personsSuffix = personsSummary ? ` | Involved Persons: ${personsSummary}` : "";
-  const summaryText = String(body.summary || "Scene resolved and proof photo attached.").trim();
+  const summaryText = String(body?.summary || "Scene resolved and proof photo attached.").trim();
   const payloadNote = `[AGENCY REPORT] ${reportType} by ${currentUser.role.toUpperCase()} (${personsList.length} person(s)). ${summaryText}${personsSuffix}`;
 
   await db.batch([
-    ...(currentUser.role === "tanod"
+    ...(owned.kind === "tanod"
       ? [
         db.prepare(`
           UPDATE tanod_assignments
           SET assignment_status_id = 6, completed_at = datetime('now')
-          WHERE tanod_assignment_id = ?
-        `).bind(dispatchId),
+          WHERE tanod_assignment_id = ? AND tanod_user_id = ?
+        `).bind(dispatchId, currentUser.id),
       ]
       : [
         db.prepare(`
@@ -1053,7 +945,7 @@ route.post("/:dispatchId/complete-agency", async (c) => {
       INSERT INTO incident_status_events
         (incident_status_event_id, incident_id, from_incident_status_id, to_incident_status_id, changed_by_user_id, note)
       VALUES (?, ?, 8, 9, ?, ?)
-    `).bind(crypto.randomUUID(), body.incident_id, currentUser.id, payloadNote),
+    `).bind(crypto.randomUUID(), incidentId, currentUser.id, payloadNote),
     db.prepare(`
       UPDATE responder_resources
       SET availability_status = 'AVAILABLE', updated_at = datetime('now')
@@ -1062,21 +954,23 @@ route.post("/:dispatchId/complete-agency", async (c) => {
   ]);
 
   const [remAgency, remTanod] = await Promise.all([
-    db.prepare(`SELECT COUNT(*) AS cnt FROM responder_dispatches WHERE incident_id = ? AND status NOT IN ('COMPLETED', 'DECLINED')`).bind(body.incident_id).first<{ cnt: number }>(),
-    db.prepare(`SELECT COUNT(*) AS cnt FROM tanod_assignments WHERE incident_id = ? AND assignment_status_id NOT IN (3, 6)`).bind(body.incident_id).first<{ cnt: number }>(),
+    db.prepare(`SELECT COUNT(*) AS cnt FROM responder_dispatches WHERE incident_id = ? AND status NOT IN ('COMPLETED', 'DECLINED')`).bind(incidentId).first<{ cnt: number }>(),
+    db.prepare(`SELECT COUNT(*) AS cnt FROM tanod_assignments WHERE incident_id = ? AND assignment_status_id NOT IN (3, 6)`).bind(incidentId).first<{ cnt: number }>(),
   ]);
   if (Number(remAgency?.cnt || 0) === 0 && Number(remTanod?.cnt || 0) === 0) {
     await db.prepare(`
       UPDATE incident_reports
       SET incident_status_id = 9, updated_at = datetime('now')
       WHERE incident_id = ? AND incident_status_id NOT IN (10, 11)
-    `).bind(body.incident_id).run();
+    `).bind(incidentId).run();
     await notify(db, {
       type: "resolution_ready",
       actorId: currentUser.id,
-      eventId: `${body.incident_id}:${dispatchId}`,
+      eventId: `${incidentId}:${dispatchId}`,
       assignmentId: dispatchId,
-      reportId: body.incident_id,
+      reportId: incidentId,
+      recipientRole: "bdrrmo",
+      linkPath: "/bdrrmo/incidents",
       afterChange: false,
     }).run().catch(() => {});
   }
@@ -1084,7 +978,7 @@ route.post("/:dispatchId/complete-agency", async (c) => {
   return c.json({
     ok: true,
     status: "COMPLETED",
-    summary_pdf_url: `/api/reports/${encodeURIComponent(body.incident_id)}/handover-summary`,
+    summary_pdf_url: `/api/reports/${encodeURIComponent(incidentId)}/handover-summary`,
     proof_media_id: mediaId,
   }, 201);
 });
@@ -1097,20 +991,26 @@ route.post("/:dispatchId/request-backup", async (c) => {
     reason?: string;
   } | null;
 
-  if (!dispatchId || !body?.incident_id) {
-    return c.json({ error: "dispatchId and incident_id are required." }, 400);
+  if (!dispatchId) {
+    return c.json({ error: "dispatchId is required." }, 400);
   }
 
   const currentUser = c.get("user");
-  await c.env.geofix167_db.prepare(`
+  const db = c.env.geofix167_db;
+  const owned = await findOwnedDispatch(db, dispatchId, currentUser);
+  if (!owned) {
+    return c.json({ error: "Dispatch assignment not found." }, 404);
+  }
+
+  await db.prepare(`
     INSERT INTO incident_status_events
       (incident_status_event_id, incident_id, from_incident_status_id, to_incident_status_id, changed_by_user_id, note)
     VALUES (?, ?, 8, 8, ?, ?)
   `).bind(
     crypto.randomUUID(),
-    body.incident_id,
+    owned.incident_id,
     currentUser.id,
-    `[BACKUP REQUEST] ${currentUser.role.toUpperCase()} requested ${body.requested_support || "Tanod Emergency Transport"}: ${body.reason || "Field support needed on scene"}`,
+    `[BACKUP REQUEST] ${currentUser.role.toUpperCase()} requested ${body?.requested_support || "Tanod Emergency Transport"}: ${body?.reason || "Field support needed on scene"}`,
   ).run();
 
   return c.json({ ok: true }, 201);
@@ -1118,9 +1018,6 @@ route.post("/:dispatchId/request-backup", async (c) => {
 
 route.post("/:dispatchId/arrive", async (c) => {
   const dispatchId = c.req.param("dispatchId");
-  const body = (await c.req.json().catch(() => null)) as {
-    incident_id?: string;
-  } | null;
 
   if (!dispatchId) {
     return c.json({ error: "dispatchId is required." }, 400);
@@ -1128,34 +1025,24 @@ route.post("/:dispatchId/arrive", async (c) => {
 
   const currentUser = c.get("user");
   const db = c.env.geofix167_db;
-
-  const tanodRow = await db.prepare(`
-    SELECT tanod_assignment_id, incident_id FROM tanod_assignments WHERE tanod_assignment_id = ?
-  `).bind(dispatchId).first<{ tanod_assignment_id: string; incident_id: string }>();
-
-  const agencyRow = !tanodRow
-    ? await db.prepare(`
-        SELECT responder_dispatch_id, incident_id FROM responder_dispatches WHERE responder_dispatch_id = ?
-      `).bind(dispatchId).first<{ responder_dispatch_id: string; incident_id: string }>()
-    : null;
-
-  const incidentId = body?.incident_id || tanodRow?.incident_id || agencyRow?.incident_id;
-  if (!incidentId) {
+  const owned = await findOwnedDispatch(db, dispatchId, currentUser);
+  if (!owned) {
     return c.json({ error: "Dispatch assignment not found." }, 404);
   }
+  const incidentId = owned.incident_id;
 
   const nowIso = new Date().toISOString();
   const statements = [];
 
-  if (tanodRow) {
+  if (owned.kind === "tanod") {
     statements.push(
       db.prepare(`
         UPDATE tanod_assignments
         SET assignment_status_id = 5
-        WHERE tanod_assignment_id = ?
-      `).bind(dispatchId),
+        WHERE tanod_assignment_id = ? AND tanod_user_id = ?
+      `).bind(dispatchId, currentUser.id),
     );
-  } else if (agencyRow) {
+  } else {
     statements.push(
       db.prepare(`
         UPDATE responder_dispatches
@@ -1184,7 +1071,7 @@ route.post("/:dispatchId/arrive", async (c) => {
   );
 
   statements.push(notify(db, { type: "ON_SCENE", actorId: currentUser.id, eventId: dispatchId,
-    assignmentId: dispatchId, reportId: incidentId }));
+    assignmentId: dispatchId, reportId: incidentId, recipientRole: "bdrrmo" }));
   await db.batch(statements);
 
   return c.json({ ok: true, status: "ON_SCENE", arrived_at: nowIso });

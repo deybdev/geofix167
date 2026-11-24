@@ -72,8 +72,8 @@ export default function IncidentReportPrint() {
 
       <div className="mx-auto max-w-5xl">
         <div className="incident-print-hide mb-4 flex items-center justify-between gap-3">
-          <Link to="/admin/incident-reports" className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-emerald-300 hover:text-emerald-800">
-            <ArrowLeft size={14} /> Back to incident reports
+          <Link to="/admin/accomplishments/bdrrmo" className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:border-emerald-300 hover:text-emerald-800">
+            <ArrowLeft size={14} /> Back to completed emergencies
           </Link>
           {!loading && snapshot && (
             <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-800">

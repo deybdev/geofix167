@@ -2,7 +2,7 @@ import type { AppEnv } from "../types/env";
 
 type Database = AppEnv["Bindings"]["geofix167_db"];
 type RecipientRole = "admin" | "responder" | "resident" | "bdrrmo";
-const monitor = "/admin/incident-reports?queue=dispatch-tracking";
+const monitor = "/bdrrmo/incidents";
 const maintenance = "/admin/maintenance-tasks";
 const messages = {
   emergency_forwarded: ["High · Emergency forwarded to BDRRMO", "An emergency is awaiting BDRRMO dispatch.", monitor],
@@ -12,9 +12,9 @@ const messages = {
   DECLINED: ["Responder declined", "This assignment needs attention.", monitor],
   EN_ROUTE: ["Responder en route", "The responder is on the way.", monitor],
   ON_SCENE: ["Responder on scene", "The responder reached the incident.", monitor],
-  handover_submitted: ["Handover submitted", "A responder submitted a handover.", monitor],
-  resolution_ready: ["Resolution ready for verification", "Field evidence is ready for closure review.", "/admin/incident-reports?queue=resolved"],
-  support_requested: ["DRRMO support requested", "A maintenance report needs additional support.", "/admin/incident-reports?queue=infrastructure"],
+  handover_submitted: ["Handover submitted", "A responder submitted a handover.", "/bdrrmo/handover-completion"],
+  resolution_ready: ["Resolution ready for verification", "Field evidence is ready for closure review.", monitor],
+  support_requested: ["DRRMO support requested", "A maintenance report needs additional support.", maintenance],
   registration_pending: ["Registration awaiting review", "A resident submitted identification for review.", "/admin/registrations"],
   maintenance_verification: ["Work order awaiting verification", "Repair evidence is ready for admin review.", maintenance],
 } as const;

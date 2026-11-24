@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Keyboard, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Keyboard, KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useNavigation, usePreventRemove } from '@react-navigation/native';
 import { CheckCircle2, Clock, Wrench } from 'lucide-react-native';
 import tw from 'twrnc';
@@ -139,7 +139,15 @@ function Details({ publicId, user }) {
     .map((p) => ({ ...p, uri: resolvePhotoUri(p.url) }))
     .filter((p) => Boolean(p.uri));
 
-  return <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={tw`p-4 pb-8`}
+  const rejectionEvent = [...(report?.status_events ?? [])]
+    .reverse()
+    .find((ev) => Number(ev.to_status_id) === 11 || /^\[(REJECTED|FALSE REPORT)\]/i.test(String(ev.note || '')));
+  const rejectionReason = String(rejectionEvent?.note || '')
+    .replace(/^\[(REJECTED|FALSE REPORT)\]\s*/i, '')
+    .trim();
+
+  return <KeyboardAvoidingView style={tw`flex-1`} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
+    <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={tw`p-4 pb-12`}
     refreshControl={<RefreshControl refreshing={loading} enabled={!editing && !saving} onRefresh={() => { if (!editing && !busy) refresh(); }} tintColor="#1F7A4D" colors={['#1F7A4D']} />}>
     <Pressable onPress={Keyboard.dismiss}>
     {loading && !report && <View style={tw`items-center py-8`}><ActivityIndicator color="#1F7A4D" /><Text style={tw`mt-3 text-slate-600`}>Loading report...</Text></View>}
@@ -148,7 +156,9 @@ function Details({ publicId, user }) {
     {report && <>
       <View style={tw`rounded-2xl bg-white p-4`}>
         <Text style={tw`text-xl font-bold text-slate-900`}>{report.title || report.category || 'Incident report'}</Text>
-        <View style={tw`mt-3 self-start rounded-xl bg-green-100 px-3 py-2`}><Text style={tw`font-bold text-green-900`}>{report.status_label || 'Status unavailable'}</Text></View>
+        <View style={tw`mt-3 self-start rounded-xl px-3 py-2 ${isRejected ? 'bg-red-100' : 'bg-green-100'}`}>
+          <Text style={tw`font-bold ${isRejected ? 'text-red-800' : 'text-green-900'}`}>{report.status_label || 'Status unavailable'}</Text>
+        </View>
         <Field label="Description" value={report.description || 'No description provided.'} />
         <Field label="Location / landmark" value={report.address || 'Location not provided'} />
         {Number.isFinite(report.latitude) && Number.isFinite(report.longitude) && <Field label="Coordinates" value={`${report.latitude.toFixed(6)}, ${report.longitude.toFixed(6)}`} />}
@@ -161,8 +171,14 @@ function Details({ publicId, user }) {
           <Text style={tw`text-sm font-extrabold text-red-800`}>
             Submitted Report Rejected
           </Text>
-          <Text style={tw`mt-1 text-xs leading-5 text-red-700`}>
-            Your report was rejected. You can modify the details to resubmit it, or discard this draft report.
+          {rejectionReason ? (
+            <View style={tw`mt-2 rounded-xl border border-red-200 bg-white px-3 py-2`}>
+              <Text style={tw`text-[10px] font-bold uppercase text-red-500`}>Rejection Reason</Text>
+              <Text style={tw`mt-0.5 text-xs leading-5 text-slate-800`}>{rejectionReason}</Text>
+            </View>
+          ) : null}
+          <Text style={tw`mt-2 text-xs leading-5 text-red-700`}>
+            You can modify the report details to resubmit it for review, or permanently discard this draft.
           </Text>
           <View style={tw`mt-3 flex-row gap-2.5`}>
             <Pressable
@@ -183,16 +199,35 @@ function Details({ publicId, user }) {
         </View>
       )}
       {!!notice && <Text accessibilityLiveRegion="polite" style={tw`mt-3 rounded-xl bg-green-50 p-3 text-green-800`}>{notice}</Text>}
-      {editable && !editing && <ReportAction label="Edit Details" onPress={startEditing} disabled={busy} />}
+      {editable && !editing && !isRejected && <ReportAction label="Edit Details" onPress={startEditing} disabled={busy} />}
       {!editable && <Text style={tw`mt-3 text-slate-600`}>Details can only be edited before verification or dispatch. Assigned priority is read-only.</Text>}
-      {editing && <View style={tw`mt-4 rounded-2xl bg-white p-4`}>
-        <Text style={tw`font-bold text-slate-800`}>Description</Text>
-        <TextInput accessibilityLabel="Description" value={description} onChangeText={setDescription} multiline maxLength={10000} editable={!saving && editable} textAlignVertical="top" style={tw`mt-2 min-h-28 rounded-xl border border-slate-300 p-3 text-base text-slate-900`} />
-        <Text style={tw`mt-4 font-bold text-slate-800`}>Location / landmark</Text>
-        <TextInput accessibilityLabel="Location / landmark" value={address} onChangeText={setAddress} multiline maxLength={4000} editable={!saving && editable} textAlignVertical="top" style={tw`mt-2 min-h-20 rounded-xl border border-slate-300 p-3 text-base text-slate-900`} />
-        {!!editError && <Text accessibilityRole="alert" style={tw`mt-3 text-red-700`}>{editError}</Text>}
-        <ReportAction label={saving ? 'Saving...' : 'Save Changes'} onPress={save} disabled={busy || !editable} />
-        <ReportAction label="Cancel" onPress={() => { setEditing(false); setEditError(''); }} disabled={saving} />
+      {editing && <View style={tw`mt-4 rounded-2xl border border-slate-200 bg-white p-4`}>
+        <Text style={tw`text-base font-extrabold text-slate-900`}>
+          {isRejected ? 'Modify & Resubmit Report' : 'Edit Report Details'}
+        </Text>
+        <Text style={tw`mt-3 text-xs font-bold uppercase text-slate-600`}>Description</Text>
+        <TextInput accessibilityLabel="Description" value={description} onChangeText={setDescription} multiline maxLength={10000} editable={!saving && editable} textAlignVertical="top" style={tw`mt-1.5 min-h-28 rounded-xl border border-slate-300 bg-slate-50 p-3 text-sm text-slate-900`} />
+        <Text style={tw`mt-4 text-xs font-bold uppercase text-slate-600`}>Location / landmark</Text>
+        <TextInput accessibilityLabel="Location / landmark" value={address} onChangeText={setAddress} multiline maxLength={4000} editable={!saving && editable} textAlignVertical="top" style={tw`mt-1.5 min-h-20 rounded-xl border border-slate-300 bg-slate-50 p-3 text-sm text-slate-900`} />
+        {!!editError && <Text accessibilityRole="alert" style={tw`mt-3 text-xs font-semibold text-red-700`}>{editError}</Text>}
+        <View style={tw`mt-4 flex-row gap-2.5`}>
+          <Pressable
+            onPress={() => { setEditing(false); setEditError(''); }}
+            disabled={saving}
+            style={tw`flex-1 items-center rounded-xl border border-slate-300 bg-white py-3`}
+          >
+            <Text style={tw`text-xs font-bold text-slate-700`}>Cancel</Text>
+          </Pressable>
+          <Pressable
+            onPress={save}
+            disabled={busy || !editable}
+            style={tw`flex-1 items-center rounded-xl bg-[#1F7A4D] py-3 ${busy || !editable ? 'opacity-50' : ''}`}
+          >
+            <Text style={tw`text-xs font-bold text-white`}>
+              {saving ? 'Saving...' : isRejected ? 'Save & Resubmit' : 'Save Changes'}
+            </Text>
+          </Pressable>
+        </View>
       </View>}
       {reporterPhotoUrls.length > 0 && (
         <View style={tw`mt-5 rounded-2xl border border-slate-200 bg-white p-4`}>
@@ -250,7 +285,8 @@ function Details({ publicId, user }) {
       </View> : <Text style={tw`text-slate-600`}>No status history available yet.</Text>}
     </>}
     </Pressable>
-  </ScrollView>;
+  </ScrollView>
+  </KeyboardAvoidingView>;
 }
 
 function Field({ label, value }) {

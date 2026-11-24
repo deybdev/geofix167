@@ -9,34 +9,6 @@ import { toast } from "../../shared/components/ui/toast";
 
 const api = axios.create({ baseURL: "/api/admin/registrations", withCredentials: true });
 
-const seedRequests = [
-  {
-    request_id: "REG-MOCK-001", first_name: "Cataluna", last_name: "Jhone",
-    email: "cataluna.jhone@example.com", mobile_number: "0921 543 2100",
-    date_of_birth: "1998-05-14", status: "PENDING", document_uploaded_at: "2026-04-21T09:12:00Z",
-    submitted_at: "2026-04-21T09:12:00Z", email_status: "DELIVERED", review_reason: "",
-  },
-  {
-    request_id: "REG-MOCK-002", first_name: "Joselito", last_name: "Ramirez",
-    email: "joselito.ramirez@example.com", mobile_number: "0917 016 2210",
-    date_of_birth: "1995-02-09", status: "NEEDS_CORRECTION", document_uploaded_at: "2026-04-22T08:30:00Z",
-    submitted_at: "2026-04-22T08:30:00Z", email_status: "DELIVERED",
-    review_reason: "Please upload a clearer residency document.",
-  },
-  {
-    request_id: "REG-MOCK-003", first_name: "Ma. Corazon", last_name: "Bautista",
-    email: "corazon.bautista@example.com", mobile_number: "0938 441 1100",
-    date_of_birth: "1979-11-23", status: "APPROVED", document_uploaded_at: "2026-04-22T11:05:00Z",
-    submitted_at: "2026-04-22T11:05:00Z", email_status: "DELIVERED", review_reason: "",
-  },
-  {
-    request_id: "REG-MOCK-004", first_name: "Vincent", last_name: "Reyes",
-    email: "vincent.reyes@example.com", mobile_number: "0926 338 8700",
-    date_of_birth: "2001-08-18", status: "PENDING", document_uploaded_at: null,
-    submitted_at: "2026-04-23T07:40:00Z", email_status: "PENDING", review_reason: "",
-  },
-];
-
 const statusMeta = {
   PENDING: { label: "Pending review", chip: "bg-amber-50 text-amber-700 border-amber-200", icon: AlertTriangle },
   NEEDS_CORRECTION: { label: "Needs correction", chip: "bg-orange-50 text-orange-700 border-orange-200", icon: RotateCcw },
@@ -250,11 +222,10 @@ export default function RegistrationReview() {
     setError("");
     try {
       const { data } = await api.get("/");
-      const liveRequests = normalizeRequests(data.requests);
-      setRequests(liveRequests.length ? liveRequests : seedRequests);
+      setRequests(normalizeRequests(data.requests));
     } catch (loadError) {
-      setRequests(seedRequests);
-      setError(loadError.response?.data?.error || "Live registration data is unavailable. Showing the sample review queue.");
+      setRequests([]);
+      setError(loadError.response?.data?.error || "Unable to load registration requests.");
     } finally {
       setLoading(false);
     }
@@ -264,13 +235,12 @@ export default function RegistrationReview() {
     let active = true;
     api.get("/").then(({ data }) => {
       if (active) {
-        const liveRequests = normalizeRequests(data.requests);
-        setRequests(liveRequests.length ? liveRequests : seedRequests);
+        setRequests(normalizeRequests(data.requests));
       }
-    }).catch(() => {
+    }).catch((loadError) => {
       if (active) {
-        setRequests(seedRequests);
-        setError("Live registration data is unavailable. Showing the sample review queue.");
+        setRequests([]);
+        setError(loadError?.response?.data?.error || "Unable to load registration requests.");
       }
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };

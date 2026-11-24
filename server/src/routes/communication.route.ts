@@ -1,9 +1,11 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../types/env";
+import { requireAuth, requireRole } from "../middleware/auth";
 import { sendEmail } from "../services/email.service";
 import { sendSms } from "../services/sms.service";
 
 const communicationRoutes = new Hono<AppEnv>();
+communicationRoutes.use("*", requireAuth, requireRole("admin"));
 
 communicationRoutes.post("/email", async (c) => {
   const { to } = await c.req.json<{ to: string }>();

@@ -8,8 +8,129 @@ import {
 import { toast } from "../../shared/components/ui/toast";
 import MapViewer from "../../shared/components/MapViewer";
 import { ModalShell, SelectFilter, stamp } from "../../shared/components/GovernanceUi";
-import ResolutionVerification from "./ResolutionVerification";
 import reportCatalog from "../../../../server/src/shared/reportCatalog.json";
+
+function formatPhTimestamp(value) {
+  if (!value) return "—";
+  const text = String(value).trim();
+  const iso = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(text) ? text.replace(" ", "T") + "Z" : text;
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms)
+    ? new Date(ms).toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" })
+    : text;
+}
+
+function FalseReportsPanel({ reports, loading, onUpdateAccount }) {
+  const [busyId, setBusyId] = useState("");
+
+  async function toggleSuspend(report) {
+    const userId = report.reporter?.user_id;
+    if (!userId || busyId) return;
+    const isSuspended = Number(report.reporter?.account_status_id) === 2;
+    const action = isSuspended ? "Restore" : "Suspend";
+    setBusyId(report.incident_id);
+    try {
+      await onUpdateAccount(userId, action, `False report control (${report.reference_number})`);
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  if (loading) {
+    return <p className="py-10 text-center text-xs text-slate-500">Loading rejected &amp; false reports…</p>;
+  }
+  if (!reports.length) {
+    return (
+      <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 py-12 text-center">
+        <ShieldCheck size={28} className="mx-auto text-slate-300" />
+        <p className="mt-2 text-sm font-bold text-slate-700">No rejected or false reports</p>
+        <p className="mt-1 text-xs text-slate-500">
+          Reports rejected or flagged as false by Admin or BDRRMO will appear here automatically.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-[#e2e8eb]">
+      <table className="w-full min-w-[820px] border-collapse text-left text-xs">
+        <thead className="border-b border-[#e2e8eb] bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+          <tr>
+            {["Reference", "Report & Description", "Reporter", "Flag / Reason", "Rejected (PH)", "Action"].map((h) => (
+              <th key={h} className="px-4 py-3">{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100 bg-white">
+          {reports.map((r) => {
+            const isSuspended = Number(r.reporter?.account_status_id) === 2;
+            const isRevoked = Number(r.reporter?.account_status_id) === 3;
+            return (
+              <tr key={r.incident_id} className="hover:bg-slate-50/80">
+                <td className="px-4 py-3 align-top">
+                  <span className="inline-block rounded bg-slate-100 px-2 py-0.5 font-extrabold text-slate-800">
+                    {r.reference_number}
+                  </span>
+                  <span className="mt-1 block text-[10px] font-semibold text-slate-500">{r.report_type}</span>
+                </td>
+                <td className="max-w-[240px] px-4 py-3 align-top">
+                  <p className="font-bold text-slate-900">{r.title}</p>
+                  <p className="mt-0.5 text-[11px] text-slate-500">{r.location}</p>
+                  {r.description ? (
+                    <p className="mt-1 line-clamp-2 text-[11px] text-slate-600">{r.description}</p>
+                  ) : null}
+                </td>
+                <td className="px-4 py-3 align-top">
+                  <p className="font-bold text-slate-800">{r.reporter?.name || "Guest"}</p>
+                  <p className="text-[11px] text-slate-500">
+                    {r.reporter?.phone || r.reporter?.email || (r.reporter?.type === "guest" ? "Guest reporter" : "—")}
+                  </p>
+                  {r.reporter?.user_id ? (
+                    <span className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${isRevoked ? "bg-rose-100 text-rose-700" : isSuspended ? "bg-amber-100 text-amber-800" : "bg-emerald-50 text-emerald-700"}`}>
+                      {isRevoked ? "Revoked" : isSuspended ? "Suspended" : "Active Account"}
+                    </span>
+                  ) : (
+                    <span className="mt-1 inline-block rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                      Guest
+                    </span>
+                  )}
+                </td>
+                <td className="max-w-[220px] px-4 py-3 align-top">
+                  <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${r.is_false_report ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-800"}`}>
+                    {r.is_false_report ? "False Report" : "Rejected"}
+                  </span>
+                  <p className="mt-1 text-[11px] text-slate-700">{r.reason}</p>
+                  <p className="mt-0.5 text-[10px] text-slate-400">By {r.rejected_by}</p>
+                </td>
+                <td className="whitespace-nowrap px-4 py-3 align-top text-[11px] text-slate-500">
+                  {formatPhTimestamp(r.rejected_at)}
+                </td>
+                <td className="px-4 py-3 align-top">
+                  {r.reporter?.user_id && !isRevoked ? (
+                    <button
+                      type="button"
+                      disabled={busyId === r.incident_id}
+                      onClick={() => void toggleSuspend(r)}
+                      className={`rounded-lg border px-3 py-1.5 text-[11px] font-bold transition disabled:opacity-50 ${
+                        isSuspended
+                          ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                          : "border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100"
+                      }`}
+                    >
+                      {busyId === r.incident_id ? "Saving…" : isSuspended ? "Restore Account" : "Suspend Reporter"}
+                    </button>
+                  ) : (
+                    <span className="text-[10px] text-slate-400">No account action</span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 /* ----------------------------------------------------------------------- */
 /* Constants                                                               */
@@ -1447,6 +1568,56 @@ export default function MaintenanceTasks() {
   const [selectedId, setSelectedId] = useState(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [audit, setAudit] = useState({ open: false, taskId: "All tasks" });
+  const [falseReports, setFalseReports] = useState([]);
+  const [falseReportsLoading, setFalseReportsLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    const loadFalseReports = async () => {
+      try {
+        const res = await fetch("/api/admin/maintenance/false-reports", { credentials: "include", cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (active && Array.isArray(data.reports)) {
+          setFalseReports(data.reports);
+        }
+      } catch {
+        // Keep current list on transient error
+      } finally {
+        if (active) setFalseReportsLoading(false);
+      }
+    };
+    void loadFalseReports();
+    const timer = window.setInterval(loadFalseReports, 15000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, []);
+
+  async function handleFalseReportAccountAction(userId, action, reason) {
+    try {
+      const res = await fetch(`/api/admin/registrations/residents/${encodeURIComponent(userId)}/status`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, reason }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Could not update reporter account.");
+      setFalseReports((prev) =>
+        prev.map((r) =>
+          r.reporter?.user_id === userId
+            ? { ...r, reporter: { ...r.reporter, account_status_id: data.account_status_id } }
+            : r,
+        ),
+      );
+      toast.add({
+        type: action === "Restore" ? "success" : "warning",
+        title: action === "Restore" ? "Reporter restored" : "Reporter suspended",
+        description: reason,
+      });
+    } catch (err) {
+      toast.add({ type: "error", title: "Account action failed", description: err.message });
+    }
+  }
   const [auditLog, setAuditLog] = useState([]);
   const [nowTs] = useState(() => NOW());
 
@@ -1886,7 +2057,7 @@ export default function MaintenanceTasks() {
     active: stats.active,
     verify: stats.verifying,
     resolved: tasks.filter((t) => t.status === "Verified Fixed").length,
-    integrity: 3,
+    integrity: falseReports.length,
   };
 
   const actionLabel = tab === "verify" ? "Review" : "Manage";
@@ -1899,7 +2070,7 @@ export default function MaintenanceTasks() {
         <StatCard label="Active Tasks" value={stats.active} icon={Wrench} hint="ongoing repairs in the field" onClick={() => setTab("active")} />
         <StatCard label="Awaiting Verification" value={stats.verifying} icon={ShieldCheck} hint="crew done — needs admin proof-review" onClick={() => setTab("verify")} />
         <StatCard label="Overdue Tasks" value={stats.overdue} icon={Clock} hint="past deadline — escalate now" alert onClick={() => setTab("active")} />
-        <StatCard label="False-Report Controls" value={3} icon={ShieldCheck} hint="review flagged resident reports" onClick={() => setTab("integrity")} />
+        <StatCard label="False-Report Controls" value={falseReports.length} icon={ShieldCheck} hint="review rejected &amp; flagged reports" onClick={() => setTab("integrity")} />
       </section>
 
       {/* 2 — Tabbed workspaces */}
@@ -1932,7 +2103,11 @@ export default function MaintenanceTasks() {
 
         <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="p-5">
           {tab === "integrity" ? (
-            <ResolutionVerification embedded />
+            <FalseReportsPanel
+              reports={falseReports}
+              loading={falseReportsLoading}
+              onUpdateAccount={handleFalseReportAccountAction}
+            />
           ) : tab === "intake" ? (
             queue.length ? (
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">

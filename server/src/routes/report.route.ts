@@ -17,6 +17,7 @@ import {
 import { getIncidentReportDetails, ReportError } from "../services/report.service";
 import { stripSelectedDetails } from "../utils/stripSelectedDetails";
 
+// shortcut: per-isolate Map only broadcasts within one Worker isolate; move to a Cloudflare Durable Object before multi-isolate production scale.
 const incidentChatRooms = new Map<string, Set<WebSocket>>();
 
 function joinIncidentRoom(incidentId: string, ws: WebSocket) {
@@ -70,7 +71,7 @@ reportRoutes.get("/public", async (c) => {
   ).all();
   return c.json({ reports: result.results, count: result.results.length });
 });
-reportRoutes.get("/map-feed", async (c) => {
+reportRoutes.get("/map-feed", requireAuth, async (c) => {
   const db = c.env.geofix167_db;
   const rows = await db.prepare(`
     SELECT r.incident_id, COALESCE(printf('GF-%03d', rr.reference_sequence), r.incident_id) AS reference_number,
@@ -79,7 +80,11 @@ reportRoutes.get("/map-feed", async (c) => {
       r.submitted_at, ta.notes AS maint_notes, ta.assignment_status_id
     FROM incident_reports r
     LEFT JOIN incident_report_references rr ON rr.incident_id = r.incident_id
-    LEFT JOIN tanod_assignments ta ON ta.incident_id = r.incident_id
+    LEFT JOIN tanod_assignments ta ON ta.tanod_assignment_id = (
+      SELECT ta2.tanod_assignment_id FROM tanod_assignments ta2
+      WHERE ta2.incident_id = r.incident_id
+      ORDER BY ta2.assigned_at DESC LIMIT 1
+    )
     WHERE r.latitude IS NOT NULL AND r.longitude IS NOT NULL
       AND r.incident_status_id NOT IN (11, 12)
     ORDER BY r.submitted_at DESC
@@ -98,7 +103,7 @@ reportRoutes.get("/map-feed", async (c) => {
         if (meta?.type === "MAINTENANCE") {
           inspectionDone = Boolean(meta.inspection_done);
           repairDone = Boolean(meta.repair_done);
-          stage = statusId === 10 || Number(row.assignment_status_id) === 5
+          stage = statusId === 10 || Number(row.assignment_status_id) === 6
             ? "Verified Fixed"
             : meta.repair_done
               ? "Proof of Repair Submitted"
@@ -189,6 +194,35 @@ reportRoutes.get("/:id/handover-summary", async (c) => {
   if (!report) return c.text("Incident report not found.", 404);
   const incidentId = String(report.incident_id);
 
+  const currentUser = c.get("user");
+  const rawToken = c.req.query("token")?.trim();
+  let authorized = false;
+
+  if (currentUser) {
+    try {
+      await resolveIncidentForChat(db, incidentId, currentUser);
+      authorized = true;
+    } catch {
+      authorized = false;
+    }
+  }
+
+  if (!authorized && rawToken) {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(rawToken));
+    const tokenHash = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+    const validHandover = await db.prepare(`
+      SELECT qr_handover_id FROM qr_handovers
+      WHERE incident_id = ? AND token_hash = ?
+        AND (expires_at IS NULL OR datetime(expires_at) > datetime('now'))
+      LIMIT 1
+    `).bind(incidentId, tokenHash).first<{ qr_handover_id: string }>();
+    authorized = Boolean(validHandover);
+  }
+
+  if (!authorized) {
+    return c.text("Authentication or a valid handover token is required.", 401);
+  }
+
   const [handoverRow, agencyEvents, photoRows] = await Promise.all([
     db.prepare(`
       SELECT qr_handover_id, receiving_remarks, created_at
@@ -250,20 +284,24 @@ reportRoutes.get("/:id/handover-summary", async (c) => {
     `).join("")
     : `<tr><td colspan="7" style="text-align:center;color:#64748b;">No additional patient/person records attached.</td></tr>`;
 
+  const formatPhTime = (val: unknown) => {
+    const text = String(val || "").trim();
+    if (!text) return "—";
+    const iso = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(text) ? text.replace(" ", "T") + "Z" : text;
+    const ms = Date.parse(iso);
+    return Number.isFinite(ms)
+      ? new Date(ms).toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" })
+      : text;
+  };
+
   const photosHtml = (photoRows.results ?? []).length > 0
     ? `<div class="photo-grid">${(photoRows.results ?? []).map((p, idx) => `
       <figure class="photo-card">
         <img src="/api/reports/${encodeURIComponent(incidentId)}/photos/${encodeURIComponent(p.id)}" alt="${esc(p.filename)}" />
-        <figcaption><strong>${esc(photoContext(p.filename, idx))}</strong><span>${esc(p.created_at || "")}</span></figcaption>
+        <figcaption><strong>${esc(photoContext(p.filename, idx))}</strong><span>${esc(formatPhTime(p.created_at))}</span></figcaption>
       </figure>
     `).join("")}</div>`
     : `<p class="muted">No photographic evidence attached.</p>`;
-
-  const agencyHtml = (agencyEvents.results ?? []).length > 0
-    ? `<section class="card"><h2>Responder Resolution Log</h2><ul>${(agencyEvents.results ?? [])
-      .map((ev) => `<li><strong>${esc(ev.created_at)}:</strong> ${esc(stripSelectedDetails(ev.note.replace(/^\[AGENCY REPORT\]\s*/, "")))}</li>`)
-      .join("")}</ul></section>`
-    : "";
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -293,7 +331,6 @@ reportRoutes.get("/:id/handover-summary", async (c) => {
   .photo-card figcaption { padding: 8px 10px; font-size: 11px; color: #334155; display: flex; justify-content: space-between; gap: 8px; }
   .photo-card figcaption span { color: #64748b; font-size: 10px; }
   .muted { color: #64748b; font-size: 12px; }
-  ul { margin: 0; padding-left: 18px; font-size: 12px; line-height: 1.5; }
   @media print {
     body { background: #fff; padding: 0; }
     .sheet { border: 0; box-shadow: none; padding: 0; max-width: none; }
@@ -307,18 +344,16 @@ reportRoutes.get("/:id/handover-summary", async (c) => {
       <div>
         <div class="brand">GeoFix 167 • Barangay 167, Caloocan City</div>
         <h1>${esc(reportType)}</h1>
-        <div class="sub">Reference: <strong>${esc(report.reference_number)}</strong> • Generated ${esc(new Date().toLocaleString("en-PH"))}</div>
+        <div class="sub">Reference: <strong>${esc(report.reference_number)}</strong> • Generated ${esc(new Date().toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" }))}</div>
       </div>
       <button class="btn-print" onclick="window.print()">Print / Save PDF</button>
     </header>
 
     <section class="meta">
       <div><strong>Incident Title</strong>${esc(report.title || "Emergency Incident")}</div>
-      <div><strong>Category &amp; Priority</strong>${esc(report.category || "Emergency")} (${esc(report.priority_code || "P1")})</div>
+      <div><strong>Category</strong>${esc(report.category || "Emergency")}</div>
       <div><strong>Status</strong>${esc(report.status_name || "Active")}</div>
-      <div><strong>Reported At</strong>${esc(report.submitted_at || "—")}</div>
-      <div><strong>Location</strong>${esc(report.location_description || "Barangay 167")}</div>
-      <div><strong>Coordinates</strong>${report.latitude != null && report.longitude != null ? `${esc(report.latitude)}, ${esc(report.longitude)}` : "—"}</div>
+      <div><strong>Reported At</strong>${esc(formatPhTime(report.submitted_at))}</div>
       <div><strong>Reporter</strong>${esc(report.reporter_name)}${report.reporter_phone ? ` (${esc(report.reporter_phone)})` : ""}</div>
       ${hospitalName ? `<div><strong>Receiving Hospital</strong>${esc(hospitalName)}</div>` : ""}
     </section>
@@ -337,8 +372,6 @@ reportRoutes.get("/:id/handover-summary", async (c) => {
         <tbody>${personsHtml}</tbody>
       </table>
     </section>
-
-    ${agencyHtml}
 
     <section class="card">
       <h2>Attached Photographic Evidence</h2>
@@ -454,34 +487,7 @@ reportRoutes.get("/:id/report-snapshot", requireAuth, requireRole("admin"), asyn
   return c.json({ snapshot });
 });
 
-async function ensureIncidentChatTables(db: AppEnv["Bindings"]["geofix167_db"]) {
-  await db.batch([
-    db.prepare(`
-      CREATE TABLE IF NOT EXISTS incident_chat_threads (
-        incident_chat_thread_id TEXT PRIMARY KEY,
-        incident_id TEXT NOT NULL REFERENCES incident_reports(incident_id) ON DELETE CASCADE,
-        thread_type TEXT NOT NULL CHECK (thread_type IN ('INCIDENT_GROUP', 'DIRECT_SUPPORT')),
-        created_by_user_id TEXT REFERENCES users(user_id),
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        archived_at TEXT
-      )
-    `),
-    db.prepare(`
-      CREATE TABLE IF NOT EXISTS incident_chat_messages (
-        incident_chat_message_id TEXT PRIMARY KEY,
-        incident_chat_thread_id TEXT NOT NULL REFERENCES incident_chat_threads(incident_chat_thread_id) ON DELETE CASCADE,
-        sender_user_id TEXT NOT NULL REFERENCES users(user_id),
-        body TEXT NOT NULL,
-        sent_at TEXT NOT NULL DEFAULT (datetime('now')),
-        edited_at TEXT,
-        deleted_at TEXT
-      )
-    `),
-  ]).catch(() => {});
-}
-
 async function ensureIncidentChatThread(db: AppEnv["Bindings"]["geofix167_db"], incidentId: string, userId: string) {
-  await ensureIncidentChatTables(db);
   const existing = await db.prepare(`
     SELECT incident_chat_thread_id AS id
     FROM incident_chat_threads
@@ -553,6 +559,30 @@ async function resolveIncidentForChat(
   };
 }
 
+async function isIncidentChatWritable(
+  db: AppEnv["Bindings"]["geofix167_db"],
+  incidentId: string,
+  currentUser: AppEnv["Variables"]["user"],
+): Promise<boolean> {
+  const statusRow = await db.prepare(
+    `SELECT incident_status_id FROM incident_reports WHERE incident_id = ? LIMIT 1`,
+  ).bind(incidentId).first<{ incident_status_id: number }>();
+  if (!statusRow || [10, 11, 12].includes(Number(statusRow.incident_status_id))) {
+    return false;
+  }
+  if (["police", "fire"].includes(currentUser.role)) {
+    const dispatch = await db.prepare(`
+      SELECT status FROM responder_dispatches
+      WHERE incident_id = ? AND target_role = ?
+      ORDER BY dispatched_at DESC LIMIT 1
+    `).bind(incidentId, currentUser.role).first<{ status: string }>();
+    if (dispatch && ["COMPLETED", "DECLINED"].includes(dispatch.status)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 reportRoutes.get("/:id/messages/ws", requireAuth, async (c) => {
   if (c.req.header("Upgrade")?.toLowerCase() !== "websocket") {
     return c.json({ error: "Expected WebSocket upgrade." }, 426);
@@ -563,7 +593,6 @@ reportRoutes.get("/:id/messages/ws", requireAuth, async (c) => {
   const db = c.env.geofix167_db;
 
   try {
-    await ensureIncidentChatTables(db);
     const report = await resolveIncidentForChat(db, id, currentUser);
     const pair = new WebSocketPair();
     const client = pair[0];
@@ -586,6 +615,10 @@ reportRoutes.get("/:id/messages/ws", requireAuth, async (c) => {
         }
         const text = String(parsed.body || "").trim();
         if (!text || text.length > 2000) return;
+        if (!(await isIncidentChatWritable(db, report.incident_id, currentUser))) {
+          server.send(JSON.stringify({ type: "error", error: "This incident is completed. Messaging is read-only." }));
+          return;
+        }
         const threadId = await ensureIncidentChatThread(db, report.incident_id, currentUser.id);
         const messageId = crypto.randomUUID();
         const sentAt = new Date().toISOString();
@@ -622,7 +655,6 @@ reportRoutes.get("/:id/messages", requireAuth, async (c) => {
   const db = c.env.geofix167_db;
 
   try {
-    await ensureIncidentChatTables(db);
     const report = await resolveIncidentForChat(db, id, currentUser);
     const thread = await db.prepare(`
       SELECT incident_chat_thread_id AS id
@@ -663,20 +695,9 @@ reportRoutes.post("/:id/messages", requireAuth, async (c) => {
   const currentUser = c.get("user");
   const db = c.env.geofix167_db;
   try {
-    await ensureIncidentChatTables(db);
     const report = await resolveIncidentForChat(db, id, currentUser);
-    if (report.is_closed) {
+    if (!(await isIncidentChatWritable(db, report.incident_id, currentUser))) {
       return c.json({ error: "This incident is completed. Messaging is read-only." }, 409);
-    }
-    if (["police", "fire"].includes(currentUser.role)) {
-      const dispatch = await db.prepare(`
-        SELECT status FROM responder_dispatches
-        WHERE incident_id = ? AND target_role = ?
-        ORDER BY dispatched_at DESC LIMIT 1
-      `).bind(report.incident_id, currentUser.role).first<{ status: string }>();
-      if (dispatch && ["COMPLETED", "DECLINED"].includes(dispatch.status)) {
-        return c.json({ error: "This incident is completed. Messaging is read-only." }, 409);
-      }
     }
     const threadId = await ensureIncidentChatThread(db, report.incident_id, currentUser.id);
     const messageId = crypto.randomUUID();

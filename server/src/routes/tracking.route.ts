@@ -99,70 +99,90 @@ route.get("/:token/status", async (c) => {
     FROM incident_status_events e JOIN incident_statuses s ON s.incident_status_id = e.to_incident_status_id
     WHERE e.incident_id = ? ORDER BY e.created_at ASC`).bind(reportId)
     .all<{ code: string; created_at: string }>();
-  const assignment = await db.prepare(`SELECT ta.tanod_assignment_id AS assignment_id,
+  const [assignment, dispatches] = await Promise.all([
+    db.prepare(`SELECT ta.tanod_assignment_id AS assignment_id,
       ta.tanod_user_id AS responder_id, u.first_name, rr.display_name AS unit_name,
       ast.code AS assignment_status, ta.assigned_at, ta.accepted_at, ta.completed_at
     FROM tanod_assignments ta
     JOIN assignment_statuses ast ON ast.assignment_status_id = ta.assignment_status_id
     LEFT JOIN users u ON u.user_id = ta.tanod_user_id
     LEFT JOIN responder_resources rr ON rr.responder_resource_id = ta.responder_resource_id
-    WHERE ta.incident_id = ? ORDER BY ta.assigned_at DESC LIMIT 1`).bind(reportId)
-    .first<{
-      assignment_id: string; responder_id: string; first_name: string | null; unit_name: string | null;
-      assignment_status: string; assigned_at: string; accepted_at: string | null; completed_at: string | null;
-    }>();
-  const dispatch = assignment ? null : await db.prepare(`SELECT rd.responder_dispatch_id AS assignment_id,
+    WHERE ta.incident_id = ? AND ast.code != 'DECLINED' ORDER BY ta.assigned_at DESC LIMIT 1`).bind(reportId)
+      .first<{
+        assignment_id: string; responder_id: string; first_name: string | null; unit_name: string | null;
+        assignment_status: string; assigned_at: string; accepted_at: string | null; completed_at: string | null;
+      }>(),
+    db.prepare(`SELECT rd.responder_dispatch_id AS assignment_id,
       rd.target_role, rd.vehicle_name, rd.status, rd.dispatched_at,
       u.first_name AS live_first_name, loc.responder_id, loc.lat, loc.lng, loc.accuracy, loc.heading, loc.updated_at
     FROM responder_dispatches rd
     LEFT JOIN responder_locations loc ON loc.assignment_id = rd.responder_dispatch_id
     LEFT JOIN users u ON u.user_id = loc.responder_id
-    WHERE rd.incident_id = ? ORDER BY rd.dispatched_at DESC LIMIT 1`).bind(reportId)
-    .first<{
-      assignment_id: string; target_role: string; vehicle_name: string | null; status: string;
-      dispatched_at: string; live_first_name: string | null; responder_id: string | null;
-      lat: number | null; lng: number | null; accuracy: number | null; heading: number | null; updated_at: string | null;
-    }>();
+    WHERE rd.incident_id = ? AND rd.status NOT IN ('DECLINED', 'CANCELLED') ORDER BY rd.dispatched_at DESC`).bind(reportId)
+      .all<{
+        assignment_id: string; target_role: string; vehicle_name: string | null; status: string;
+        dispatched_at: string; live_first_name: string | null; responder_id: string | null;
+        lat: number | null; lng: number | null; accuracy: number | null; heading: number | null; updated_at: string | null;
+      }>(),
+  ]);
 
   const assignmentEvents = assignment ? await db.prepare(`SELECT ast.code, e.created_at
     FROM tanod_assignment_events e JOIN assignment_statuses ast ON ast.assignment_status_id = e.assignment_status_id
     WHERE e.tanod_assignment_id = ? ORDER BY e.created_at ASC`).bind(assignment.assignment_id)
     .all<{ code: string; created_at: string }>() : { results: [] };
 
-  let responderLocation: { lat: number; lng: number; accuracy: number | null; heading: number | null; updated_at: string } | null = null;
-  let responder: { first_name: string; unit_name: string } | null = null;
-  let assignmentStatus = "";
-  let assignedAt: string | null = null;
-  let acceptedAt: string | null = null;
-  let completedAt: string | null = null;
+  type ResponderUnitTrack = {
+    role: string;
+    first_name: string;
+    unit_name: string;
+    status: string;
+    dispatched_at: string;
+    location: { lat: number; lng: number; accuracy: number | null; heading: number | null; updated_at: string } | null;
+  };
+  const trackedUnits: ResponderUnitTrack[] = [];
+
   if (assignment) {
-    assignmentStatus = assignment.assignment_status;
-    assignedAt = assignment.assigned_at;
-    acceptedAt = assignment.accepted_at;
-    completedAt = assignment.completed_at;
-    responder = {
-      first_name: (assignment.first_name ?? "Responder").split(/\s+/).at(0) ?? "Responder",
-      unit_name: assignment.unit_name || "Barangay response unit",
-    };
     const location = await db.prepare(`SELECT lat, lng, accuracy, heading, updated_at
       FROM responder_locations WHERE assignment_id = ? AND responder_id = ? LIMIT 1`)
       .bind(assignment.assignment_id, assignment.responder_id).first<{
         lat: number; lng: number; accuracy: number | null; heading: number | null; updated_at: string;
       }>();
-    if (location) responderLocation = location;
-  } else if (dispatch) {
-    assignmentStatus = dispatch.status;
-    assignedAt = dispatch.dispatched_at;
-    if (dispatch.live_first_name) {
-      responder = { first_name: dispatch.live_first_name.split(/\s+/).at(0) ?? "Responder", unit_name: dispatch.vehicle_name || dispatch.target_role.toUpperCase() };
-    }
-    if (dispatch.lat != null && dispatch.lng != null && dispatch.updated_at) {
-      responderLocation = {
-        lat: dispatch.lat, lng: dispatch.lng, accuracy: dispatch.accuracy,
-        heading: dispatch.heading, updated_at: dispatch.updated_at,
-      };
-    }
+    const isActive = ["ACCEPTED", "EN_ROUTE", "ON_SCENE"].includes(assignment.assignment_status);
+    trackedUnits.push({
+      role: "tanod",
+      first_name: (assignment.first_name ?? "Responder").split(/\s+/).at(0) ?? "Responder",
+      unit_name: assignment.unit_name || "Barangay response unit",
+      status: assignment.assignment_status,
+      dispatched_at: assignment.assigned_at,
+      location: isActive && location ? location : null,
+    });
   }
+
+  for (const dispatch of dispatches.results ?? []) {
+    const isActive = ["ACCEPTED", "EN_ROUTE", "ON_SCENE"].includes(dispatch.status);
+    const loc = isActive && dispatch.lat != null && dispatch.lng != null && dispatch.updated_at
+      ? { lat: dispatch.lat, lng: dispatch.lng, accuracy: dispatch.accuracy, heading: dispatch.heading, updated_at: dispatch.updated_at }
+      : null;
+    trackedUnits.push({
+      role: dispatch.target_role,
+      first_name: (dispatch.live_first_name ?? dispatch.target_role.toUpperCase()).split(/\s+/).at(0) ?? "Responder",
+      unit_name: dispatch.vehicle_name || dispatch.target_role.toUpperCase(),
+      status: dispatch.status,
+      dispatched_at: dispatch.dispatched_at,
+      location: loc,
+    });
+  }
+
+  const primaryUnit = trackedUnits.find((u) => u.location !== null)
+    ?? trackedUnits.find((u) => ["ACCEPTED", "EN_ROUTE", "ON_SCENE"].includes(u.status))
+    ?? trackedUnits[0]
+    ?? null;
+  const responderLocation = primaryUnit?.location ?? null;
+  const responder = primaryUnit ? { first_name: primaryUnit.first_name, unit_name: primaryUnit.unit_name } : null;
+  const assignmentStatus = primaryUnit?.status ?? "";
+  const assignedAt = primaryUnit?.dispatched_at ?? assignment?.assigned_at ?? null;
+  const acceptedAt = assignment?.accepted_at ?? null;
+  const completedAt = assignment?.completed_at ?? null;
 
   const eventRows = incidentEvents.results ?? [];
   const assignmentRows = assignmentEvents.results ?? [];
@@ -198,6 +218,7 @@ route.get("/:token/status", async (c) => {
     status_label: statusLabel,
     timeline: eventTimeline,
     responder: ["OFFERED", "DISPATCHED", "ACCEPTED", "EN_ROUTE", "ON_SCENE"].includes(assignmentStatus) ? responder : null,
+    responders: trackedUnits.filter((u) => ["OFFERED", "DISPATCHED", "ACCEPTED", "EN_ROUTE", "ON_SCENE"].includes(u.status)),
     responder_location: publicLocation,
     incident_location: incidentLocation,
     eta_minutes: etaMinutes,

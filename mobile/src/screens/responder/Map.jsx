@@ -3,8 +3,10 @@ import {
   Alert,
   Image,
   Keyboard,
+  KeyboardAvoidingView,
   Linking,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -258,7 +260,6 @@ export default function ResponderMap() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [showPatientModal, setShowPatientModal] = useState(false);
-  const [forceHospitalQr, setForceHospitalQr] = useState(false);
   const [patients, setPatients] = useState(() => buildInitialPatients(route.params?.assignment));
   const [furtherInfo, setFurtherInfo] = useState('');
   const [proofPhoto, setProofPhoto] = useState(null);
@@ -570,16 +571,11 @@ export default function ResponderMap() {
     [activeAssignment, currentLocation, patientPoint, hospitalPoint],
   );
 
-  const handleOpenCompleteForm = (withQr = false) => {
+  const handleOpenCompleteForm = () => {
     if (!activeAssignment) return;
-    setForceHospitalQr(Boolean(withQr));
     setPatients((prev) =>
       prev.length > 0 && prev[0].full_name ? prev : buildInitialPatients(activeAssignment),
     );
-    const cleanedDesc = String(activeAssignment.incident_description || '')
-      .replace(/\r?\n?\s*Selected\s+details\s*:[^\r\n]*/gi, '')
-      .trim();
-    setFurtherInfo((prev) => (prev.trim() ? prev : cleanedDesc));
     setFormError('');
     setShowPatientModal(true);
   };
@@ -695,11 +691,12 @@ export default function ResponderMap() {
     }
   };
 
-  const isHospitalHandover = !isAgencyRole && (Boolean(nearestHospital) || forceHospitalQr);
+  const isTanodQrHandover = !isAgencyRole;
+  const isHospitalHandover = isTanodQrHandover && Boolean(nearestHospital);
 
   const personValidationErrors = useMemo(
-    () => (isHospitalHandover ? patients.map((p) => validatePersonEntry(p)) : []),
-    [isHospitalHandover, patients],
+    () => (isTanodQrHandover ? patients.map((p) => validatePersonEntry(p)) : []),
+    [isTanodQrHandover, patients],
   );
   const furtherInfoTrimmed = furtherInfo.trim();
   const furtherInfoError =
@@ -711,12 +708,12 @@ export default function ResponderMap() {
   const isHandoverFormValid =
     Boolean(proofPhoto) &&
     !furtherInfoError &&
-    (!isHospitalHandover || personValidationErrors.every((errs) => Object.keys(errs).length === 0));
+    (!isTanodQrHandover || personValidationErrors.every((errs) => Object.keys(errs).length === 0));
 
   const handleSubmitPatientForm = async () => {
     if (!activeAssignment || busy) return;
 
-    const normalizedPatients = isHospitalHandover
+    const normalizedPatients = isTanodQrHandover
       ? patients.map((p) => ({
         full_name: sanitizePersonName(p.full_name).trim(),
         contact: sanitizeContactNumber(p.contact).trim(),
@@ -727,7 +724,7 @@ export default function ResponderMap() {
       }))
       : [];
 
-    if (isHospitalHandover) {
+    if (isTanodQrHandover) {
       for (let i = 0; i < normalizedPatients.length; i += 1) {
         const errs = validatePersonEntry(normalizedPatients[i]);
         const firstErr = Object.values(errs)[0];
@@ -761,7 +758,7 @@ export default function ResponderMap() {
     setError('');
     setFormError('');
     try {
-      if (!isHospitalHandover) {
+      if (!isTanodQrHandover) {
         await completeAgencyDispatch(activeAssignment.id, {
           incident_id: activeAssignment.incident_id,
           summary: trimmedInfo,
@@ -781,9 +778,14 @@ export default function ResponderMap() {
         return;
       }
 
+      const hospitalName = isHospitalHandover ? (nearestHospital?.name || 'Receiving Hospital') : null;
+      const reportType = isHospitalHandover
+        ? 'Hospital Handover Summary'
+        : 'Incident Handover Summary (BFP / Police Record)';
       const res = await generateHospitalQrHandover(activeAssignment.id, {
         incident_id: activeAssignment.incident_id,
-        hospital_name: nearestHospital?.name || 'Receiving Hospital',
+        hospital_name: hospitalName,
+        report_type: reportType,
         further_info: trimmedInfo,
         proof_photo_base64: proofPhoto.base64,
         proof_photo_mime: proofPhoto.mimeType,
@@ -793,6 +795,8 @@ export default function ResponderMap() {
         ...res,
         incident_id: activeAssignment.incident_id,
         agency_role: 'tanod',
+        handover_kind: isHospitalHandover ? 'hospital' : 'incident',
+        hospital_name: hospitalName,
       });
       setIsNavigating(false);
       setCaseClosedOnMap(true);
@@ -805,9 +809,9 @@ export default function ResponderMap() {
     } catch (err) {
       if (isNetworkError(err)) {
         const queuedCount = await enqueueOfflineSubmission({
-          kind: !isHospitalHandover ? 'agency_resolution' : 'tanod_qr_handover',
+          kind: !isTanodQrHandover ? 'agency_resolution' : 'tanod_qr_handover',
           dispatchId: activeAssignment.id,
-          payload: !isHospitalHandover
+          payload: !isTanodQrHandover
             ? {
               incident_id: activeAssignment.incident_id,
               summary: trimmedInfo,
@@ -817,7 +821,10 @@ export default function ResponderMap() {
             }
             : {
               incident_id: activeAssignment.incident_id,
-              hospital_name: nearestHospital?.name || 'Receiving Hospital',
+              hospital_name: isHospitalHandover ? (nearestHospital?.name || 'Receiving Hospital') : null,
+              report_type: isHospitalHandover
+                ? 'Hospital Handover Summary'
+                : 'Incident Handover Summary (BFP / Police Record)',
               further_info: trimmedInfo,
               proof_photo_base64: proofPhoto.base64,
               proof_photo_mime: proofPhoto.mimeType,
@@ -943,10 +950,9 @@ export default function ResponderMap() {
         .catch(() => {});
     }
     if (activeAssignment?.id && currentLocation) {
-      void postResponderLocation({
-        assignment_id: activeAssignment.id,
-        lat: currentLocation.lat,
-        lng: currentLocation.lng,
+      void postResponderLocation(activeAssignment.id, {
+        latitude: currentLocation.lat,
+        longitude: currentLocation.lng,
         heading: getRouteHeading(headingPoints),
       }).catch(() => {});
     }
@@ -1538,7 +1544,11 @@ export default function ResponderMap() {
         animationType="slide"
         onRequestClose={() => setMaintenanceModalMode(null)}
       >
-        <Pressable onPress={Keyboard.dismiss} style={tw`flex-1 justify-end bg-black/45`}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={tw`flex-1 justify-end bg-black/45`}
+        >
+        <Pressable onPress={Keyboard.dismiss} style={tw`flex-1 justify-end`}>
           <View style={tw`rounded-t-3xl bg-white px-5 pb-6 pt-5`}>
             <Text style={tw`text-lg font-extrabold text-slate-900`}>
               {maintenanceModalMode === 'repair'
@@ -1625,6 +1635,7 @@ export default function ResponderMap() {
             </View>
           </View>
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal
@@ -1633,21 +1644,27 @@ export default function ResponderMap() {
         animationType="slide"
         onRequestClose={() => setShowPatientModal(false)}
       >
-        <Pressable onPress={Keyboard.dismiss} style={tw`flex-1 justify-end bg-black/40`}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={tw`flex-1 justify-end bg-black/40`}
+        >
+        <Pressable onPress={Keyboard.dismiss} style={tw`flex-1 justify-end`}>
           <View style={tw`max-h-[82%] rounded-t-3xl bg-white px-5 pb-6 pt-5`}>
             <Text style={tw`text-lg font-extrabold text-slate-900`}>
               {isHospitalHandover
                 ? 'Hospital Handover & Patient Information'
-                : userRole === 'police'
-                  ? 'Police Scene Completion Report'
-                  : userRole === 'fire'
-                    ? 'Fire Scene Completion Report'
-                    : 'Scene Completion Report'}
+                : isTanodQrHandover
+                  ? 'Incident Handover & Involved Persons'
+                  : userRole === 'police'
+                    ? 'Police Scene Completion Report'
+                    : 'Fire Scene Completion Report'}
             </Text>
             <Text style={tw`mt-1 text-xs text-slate-500`}>
               {isHospitalHandover
-                ? 'Auto-filled from the emergency report. Review or add individuals before generating the hospital handover QR code.'
-                : 'Provide additional information and capture a real-time proof of completion photo for BDRRMO.'}
+                ? 'Auto-filled from the emergency report. Review or add patients before generating the hospital handover QR code.'
+                : isTanodQrHandover
+                  ? 'Auto-filled from the emergency report. Review or add involved persons to generate a temporary QR code for BFP / Police records.'
+                  : 'Provide additional information and capture a real-time proof of completion photo for BDRRMO.'}
             </Text>
 
             <ScrollView
@@ -1656,7 +1673,7 @@ export default function ResponderMap() {
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
             >
-              {isHospitalHandover ? (
+              {isTanodQrHandover ? (
                 <>
                   {patients.map((person, index) => {
                 const errs = personValidationErrors[index] || {};
@@ -1899,13 +1916,16 @@ export default function ResponderMap() {
                   {busy
                     ? 'Submitting...'
                     : isHospitalHandover
-                      ? 'Submit & Generate QR'
-                      : 'Submit Completion Report'}
+                      ? 'Submit & Generate Hospital QR'
+                      : isTanodQrHandover
+                        ? 'Submit & Generate Handover QR'
+                        : 'Submit Completion Report'}
                 </Text>
               </Pressable>
             </View>
           </View>
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal
@@ -1922,15 +1942,15 @@ export default function ResponderMap() {
             <View style={tw`flex-row items-center gap-2`}>
               <QrCode size={20} color="#1F7A4D" />
               <Text style={tw`text-lg font-extrabold text-slate-900`}>
-                {qrResult?.agency_role === 'police'
-                  ? 'Police Incident Summary QR'
-                  : qrResult?.agency_role === 'fire'
-                    ? 'BFP Incident Summary QR'
-                    : 'Hospital Handover Summary QR'}
+                {qrResult?.handover_kind === 'hospital'
+                  ? 'Hospital Handover Summary QR'
+                  : 'Incident Handover QR (BFP / Police)'}
               </Text>
             </View>
             <Text style={tw`mt-1 text-center text-xs text-slate-500`}>
-              Scan this QR code to view or print the complete Incident Summary PDF (details, persons &amp; attached photos).
+              {qrResult?.handover_kind === 'hospital'
+                ? 'Scan this QR code at the receiving hospital to view or print the Patient & Incident Summary PDF.'
+                : 'Temporary QR for on-scene BFP or Police to scan for their official record of all involved persons, notes, and photos.'}
             </Text>
 
             {qrResult?.summary_pdf_url || qrResult?.token ? (
@@ -1946,9 +1966,9 @@ export default function ResponderMap() {
               />
             ) : null}
 
-            {nearestHospital && qrResult?.agency_role === 'tanod' ? (
+            {qrResult?.hospital_name ? (
               <Text style={tw`mt-3 text-xs font-bold text-blue-900`}>
-                Hospital: {nearestHospital.name}
+                Hospital: {qrResult.hospital_name}
               </Text>
             ) : null}
             <Text style={tw`mt-1 text-[11px] text-slate-600`}>

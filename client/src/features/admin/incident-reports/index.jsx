@@ -220,11 +220,39 @@ export default function IncidentReports() {
     setDupReport(null);
   }
 
-  function handleStrike(id) {
+  async function handleStrike(id) {
     const report = reports.find((r) => r.id === id);
+    if (!report) return;
     const current = strikes[report.reporter] ?? { count: 0 };
     const count = Math.min(STRIKE_STEPS.length, current.count + 1);
     const step = STRIKE_STEPS[count - 1];
+    const reason = `False report strike ${count} (${step})`;
+
+    if (report.serverId) {
+      try {
+        const endpoint = report.isEmergency
+          ? `/api/bdrrmo/incidents/${encodeURIComponent(report.serverId)}/reject`
+          : `/api/admin/dispatch/reports/${encodeURIComponent(report.serverId)}/verify`;
+        const payload = report.isEmergency
+          ? { false_report: true, reason }
+          : { decision: "REJECTED", reason };
+        const res = await fetch(endpoint, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          throw new Error(data?.error || "Could not record false report.");
+        }
+        updateReportData(id, { status: "Rejected" });
+      } catch (err) {
+        toast.add({ type: "error", title: "False report action failed", description: err.message });
+        return;
+      }
+    }
+
     setStrikes((s) => ({ ...s, [report.reporter]: { count, lastStep: step } }));
     logAudit({ reportId: id, actor: "Admin", action: `False report strike ${count}`, detail: `${report.reporter}: ${step}.` });
     toast.add({ type: count >= 2 ? "error" : "warning", title: `Strike ${count} recorded`, description: `${report.reporter} — ${step}.` });

@@ -1,7 +1,7 @@
 import ReportCategories from "../shared/components/ReportCategories";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { CircleMarker, MapContainer, TileLayer, useMap } from "react-leaflet";
+import { CircleMarker, MapContainer, Polyline, TileLayer, useMap } from "react-leaflet";
 import { ArrowLeft, Check, Clock3, Copy, Share2, ShieldAlert } from "lucide-react";
 import L from "leaflet";
 import { PATHS } from "../router/paths";
@@ -45,6 +45,7 @@ export default function PublicTrackingPage() {
   const [problem, setProblem] = useState("");
   const [now, setNow] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [routeCoords, setRouteCoords] = useState([]);
   const shareUrl = useMemo(() => window.location.href, []);
 
   const loadStatus = useCallback(async (signal) => {
@@ -109,6 +110,35 @@ export default function PublicTrackingPage() {
     } else await copyLink();
   };
 
+  const incident = data?.incident_location ?? null;
+  const responderPosition = data?.responder_location ?? null;
+  const incLat = incident?.lat;
+  const incLng = incident?.lng;
+  const respLat = responderPosition?.lat;
+  const respLng = responderPosition?.lng;
+
+  useEffect(() => {
+    if (!Number.isFinite(incLat) || !Number.isFinite(incLng) || !Number.isFinite(respLat) || !Number.isFinite(respLng)) {
+      return;
+    }
+    const fallback = [[respLat, respLng], [incLat, incLng]];
+    const controller = new AbortController();
+    fetch(`https://router.project-osrm.org/route/v1/driving/${respLng},${respLat};${incLng},${incLat}?overview=full&geometries=geojson`, { signal: controller.signal })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        const coords = json?.routes?.[0]?.geometry?.coordinates;
+        if (Array.isArray(coords) && coords.length > 1) {
+          setRouteCoords(coords.map(([lng, lat]) => [lat, lng]));
+        } else {
+          setRouteCoords(fallback);
+        }
+      })
+      .catch((err) => {
+        if (err?.name !== "AbortError") setRouteCoords(fallback);
+      });
+    return () => controller.abort();
+  }, [incLat, incLng, respLat, respLng]);
+
   if (problem && !data) {
     const isClosed = problem === EXPIRED_MESSAGE;
     return (
@@ -133,10 +163,11 @@ export default function PublicTrackingPage() {
     return <main className="grid min-h-dvh place-items-center bg-[#f6f3ea] px-5"><PublicLoader label="Loading incident tracking…" /></main>;
   }
 
-  const incident = data.incident_location;
-  const responderPosition = data.responder_location;
   const isStale = responderPosition && now - Date.parse(responderPosition.updated_at) > 60_000;
   const pending = !data.responder;
+  const routePath = incident && responderPosition
+    ? (routeCoords.length > 1 ? routeCoords : [[responderPosition.lat, responderPosition.lng], [incident.lat, incident.lng]])
+    : [];
 
   return (
     <main className="min-h-dvh bg-[#f4f8f5] px-4 py-5 text-[#122033] sm:px-6 sm:py-8">
@@ -172,18 +203,47 @@ export default function PublicTrackingPage() {
             <MapContainer center={[incident.lat, incident.lng]} zoom={15} scrollWheelZoom className="h-full w-full" zoomControl>
               <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>' url="https://tile.openstreetmap.org/{z}/{x}/{y}.png" />
               <FitTrackingLocations incident={incident} responder={responderPosition} />
+              {routePath.length > 1 && <Polyline positions={routePath} pathOptions={{ color: "#16834a", weight: 5, opacity: 0.85 }} />}
               <CircleMarker center={[incident.lat, incident.lng]} radius={9} pathOptions={{ color: "#fff", weight: 3, fillColor: "#dc2626", fillOpacity: 1 }} />
-              {responderPosition && <CircleMarker center={[responderPosition.lat, responderPosition.lng]} radius={9} pathOptions={{ color: "#fff", weight: 3, fillColor: "#16834a", fillOpacity: 1 }} />}
+              {Array.isArray(data.responders) && data.responders.some((u) => u.location)
+                ? data.responders
+                    .filter((u) => u.location)
+                    .map((u, idx) => (
+                      <CircleMarker
+                        key={`${u.role}-${idx}`}
+                        center={[u.location.lat, u.location.lng]}
+                        radius={9}
+                        pathOptions={{
+                          color: "#fff",
+                          weight: 3,
+                          fillColor: u.role === "fire" ? "#ea580c" : u.role === "police" ? "#2563eb" : "#16834a",
+                          fillOpacity: 1,
+                        }}
+                      />
+                    ))
+                : responderPosition && <CircleMarker center={[responderPosition.lat, responderPosition.lng]} radius={9} pathOptions={{ color: "#fff", weight: 3, fillColor: "#16834a", fillOpacity: 1 }} />}
             </MapContainer>
           </div>}
 
           {pending && <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">{WAITING_MESSAGE}</p>}
-          {data.responder && <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-slate-50 px-4 py-3">
-            <div><p className="text-xs font-semibold text-slate-500">Responder</p><p className="font-bold">{data.responder.first_name} <span className="font-normal text-slate-500">· {data.responder.unit_name}</span></p></div>
-            <div className="text-right text-xs text-slate-500">
-              <p><Clock3 className="mr-1 inline" size={13} />Last updated {timeAgo(responderPosition?.updated_at, now)}</p>
-              {isStale && <p className="mt-1 font-semibold text-amber-700">Location may be out of date.</p>}
+          {data.responder && <div className="mt-4 space-y-2 rounded-xl bg-slate-50 px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div><p className="text-xs font-semibold text-slate-500">Responding Unit(s)</p><p className="font-bold">{data.responder.first_name} <span className="font-normal text-slate-500">· {data.responder.unit_name}</span></p></div>
+              <div className="text-right text-xs text-slate-500">
+                <p><Clock3 className="mr-1 inline" size={13} />Last updated {timeAgo(responderPosition?.updated_at, now)}</p>
+                {isStale && <p className="mt-1 font-semibold text-amber-700">Location may be out of date.</p>}
+              </div>
             </div>
+            {Array.isArray(data.responders) && data.responders.length > 1 && (
+              <div className="flex flex-wrap gap-1.5 border-t border-slate-200/80 pt-2">
+                {data.responders.map((u, idx) => (
+                  <span key={`${u.role}-${idx}`} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-[11px] font-semibold text-slate-700">
+                    <span className="h-2 w-2 rounded-full" style={{ backgroundColor: u.role === "fire" ? "#ea580c" : u.role === "police" ? "#2563eb" : "#16834a" }} />
+                    {u.unit_name} ({u.status.replaceAll("_", " ")})
+                  </span>
+                ))}
+              </div>
+            )}
           </div>}
         </section>
 

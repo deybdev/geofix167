@@ -1097,16 +1097,29 @@ export default function BdrrmoIncidents() {
     setIncomingReports((prev) => prev.filter((item) => item.id !== id));
   };
 
+  const [statusTab, setStatusTab] = useState("ACTIVE");
+
+  const activeCount = useMemo(
+    () => incidents.filter((item) => item.incidentStatusCode !== "CLOSED").length,
+    [incidents],
+  );
+  const closedCount = useMemo(
+    () => incidents.filter((item) => item.incidentStatusCode === "CLOSED").length,
+    [incidents],
+  );
+
   const filtered = useMemo(
     () =>
       incidents.filter((item) => {
+        const isClosed = item.incidentStatusCode === "CLOSED";
+        if (statusTab === "ACTIVE" && isClosed) return false;
+        if (statusTab === "CLOSED" && !isClosed) return false;
         const matchesQuery = `${item.id} ${item.title} ${item.category} ${item.location}`
           .toLowerCase()
           .includes(query.toLowerCase());
-        if (!matchesQuery) return matchesQuery;
-        return true;
+        return matchesQuery;
       }),
-    [query, incidents],
+    [query, incidents, statusTab],
   );
 
   return (
@@ -1165,8 +1178,35 @@ export default function BdrrmoIncidents() {
         </div>
       )}
 
-      <section className="flex gap-2 rounded-xl border border-[#e2e8eb] bg-white p-3">
-        <label className="flex flex-1 items-center gap-2 rounded-lg border border-[#dfe7ea] px-3 focus-within:border-(--gf-green)">
+      <section className="flex flex-wrap items-center gap-2 rounded-xl border border-[#e2e8eb] bg-white p-3">
+        <div className="flex items-center gap-1 rounded-lg bg-[#f3f6f8] p-1" role="tablist" aria-label="Incident status filter">
+          {[
+            { id: "ACTIVE", label: "Active", count: activeCount },
+            { id: "CLOSED", label: "Closed", count: closedCount },
+          ].map((tab) => {
+            const active = statusTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setStatusTab(tab.id)}
+                className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-bold transition ${
+                  active
+                    ? "bg-(--gf-green) text-white shadow-xs"
+                    : "text-[#60738f] hover:text-[#263246]"
+                }`}
+              >
+                <span>{tab.label}</span>
+                <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${active ? "bg-white/20 text-white" : "bg-white text-[#60738f]"}`}>
+                  {tab.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <label className="flex min-w-[200px] flex-1 items-center gap-2 rounded-lg border border-[#dfe7ea] px-3 focus-within:border-(--gf-green)">
           <Search size={14} className="text-[#7c8ba3]" />
           <input
             value={query}
@@ -1178,7 +1218,7 @@ export default function BdrrmoIncidents() {
         <button
           type="button"
           onClick={() => setQuery("")}
-          className="flex items-center gap-1.5 rounded-lg border border-[#dfe7ea] px-3 text-xs font-bold text-[#60738f] hover:border-(--gf-green) hover:text-(--gf-green)"
+          className="flex items-center gap-1.5 rounded-lg border border-[#dfe7ea] px-3 py-2 text-xs font-bold text-[#60738f] hover:border-(--gf-green) hover:text-(--gf-green)"
         >
           <RotateCcw size={13} />
           Reset
@@ -1188,7 +1228,7 @@ export default function BdrrmoIncidents() {
       <IncidentTable
         rows={filtered}
         onOpen={setSelectedIncident}
-        emptyLabel="No emergencies match this filter."
+        emptyLabel={statusTab === "CLOSED" ? "No closed emergencies yet." : "No active emergencies match this filter."}
       />
 
       {selectedIncident && (

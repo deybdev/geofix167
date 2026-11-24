@@ -80,12 +80,7 @@ function loadModule(file, imports = {}) {
   assert.equal(homeSource.includes('sample-police-'), false, 'Home must not reference sample police IDs');
   assert.ok(homeSource.includes('getResponderDispatches'), 'Home must fetch real dispatches from API');
 
-  // 6. BDRRMO Dispatch screen uses real /reports?status_id=5&is_emergency=1 and mapUtils category aliases
-  const bdrrmoDispatchSource = fs.readFileSync(path.join(__dirname, '..', 'src/screens/bdrrmo/Dispatch.jsx'), 'utf8');
-  assert.equal(bdrrmoDispatchSource.includes('buildSampleIncidents'), false, 'BDRRMO Dispatch must not use sample incidents');
-  assert.ok(bdrrmoDispatchSource.includes("'/reports'"), 'BDRRMO Dispatch must fetch from /reports');
-  assert.ok(bdrrmoDispatchSource.includes('FORWARDED_TO_BDRRMO'), 'BDRRMO Dispatch must filter FORWARDED_TO_BDRRMO');
-
+  // 6. mapUtils category aliases map emergency categories consistently
   const mapUtils = loadModule('src/utils/map/mapUtils.js', {
     '@turf/boolean-point-in-polygon': { __esModule: true, default: () => true },
   });
