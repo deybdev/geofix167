@@ -1,14 +1,15 @@
 import { getReportDetails } from './residentService';
 
 const ACTIVE = ['ON_SCENE', 'EN_ROUTE', 'ACCEPTED', 'DISPATCHED', 'OFFERED'];
+const TRACKABLE = [...ACTIVE, 'COMPLETED'];
 const utcTime = value => Date.parse(typeof value === 'string'
   ? value.replace(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})$/, '$1T$2Z') : value);
 
 export function trackingState(report) {
-  // GPS is position data only. Completed/declined/cancelled units cannot lead
-  // an active response, and only the parent report can confirm final closure.
+  // Keep COMPLETED units visible alongside active responders so marking one unit
+  // complete doesn't hide either responder's state until the incident is closed.
   const units = (report.dispatched_units || [])
-    .filter(unit => ACTIVE.includes(unit.status))
+    .filter(unit => TRACKABLE.includes(unit.status))
     .map(unit => ({
       ...unit,
       roleCode: unit.role,
@@ -17,7 +18,7 @@ export function trackingState(report) {
       location: unit.location && Number.isFinite(unit.location.lat) && Number.isFinite(unit.location.lng)
         ? { ...unit.location, updatedAt: utcTime(unit.location.updated_at) || null } : null,
     }))
-    .sort((a, b) => ACTIVE.indexOf(a.status) - ACTIVE.indexOf(b.status));
+    .sort((a, b) => TRACKABLE.indexOf(a.status) - TRACKABLE.indexOf(b.status));
   const has = status => units.some(unit => unit.status === status);
   const status = report.status_id === 10 ? 'resolved'
     : [11, 12].includes(report.status_id) ? 'inactive'
@@ -26,8 +27,14 @@ export function trackingState(report) {
           : report.status_id === 7 || has('EN_ROUTE') ? 'on_the_way'
             : units.length || [6, 13].includes(report.status_id) ? 'dispatched'
               : [4, 5, 14].includes(report.status_id) ? 'validated' : 'received';
-  const activeUnits = ['resolved', 'inactive'].includes(status) ? [] : units;
-  const leadResponder = activeUnits.find((u) => Boolean(u.location)) || activeUnits[0] || null;
+  const visibleUnits = ['resolved', 'inactive'].includes(status) ? [] : units;
+  const activeOnly = visibleUnits.filter((u) => ACTIVE.includes(u.status));
+  const leadResponder =
+    activeOnly.find((u) => Boolean(u.location))
+    || activeOnly[0]
+    || visibleUnits.find((u) => Boolean(u.location))
+    || visibleUnits[0]
+    || null;
   return {
     report: {
       id: report.public_id, status, status_label: report.status_label,
@@ -35,7 +42,7 @@ export function trackingState(report) {
       location: Number.isFinite(report.latitude) && Number.isFinite(report.longitude)
         ? { lat: report.latitude, lng: report.longitude } : null,
     },
-    units: activeUnits,
+    units: visibleUnits,
     responder: leadResponder,
   };
 }

@@ -1226,7 +1226,15 @@ function TrackingSession({ reportId }) {
                   <Stat
                     icon={Clock}
                     label="ETA"
-                    value={responder.status === 'ON_SCENE' ? 'Arrived' : report.status === 'on_the_way' && etaMinutes ? `${etaMinutes} min` : '—'}
+                    value={
+                      responder.status === 'COMPLETED'
+                        ? 'Completed'
+                        : responder.status === 'ON_SCENE'
+                          ? 'Arrived'
+                          : report.status === 'on_the_way' && etaMinutes
+                            ? `${etaMinutes} min`
+                            : '—'
+                    }
                   />
                   <Stat
                     icon={Navigation}
@@ -1260,7 +1268,15 @@ function TrackingSession({ reportId }) {
                       {dispatchedUnits.map((unit) => {
                         const uRoute = unitRoutes[unit.id];
                         const isSelected = (activeResponder?.id || responder?.id) === unit.id;
-                        const isUnitArrived = unit.status === 'ON_SCENE' || unit.status === 'COMPLETED';
+                        const isUnitCompleted = unit.status === 'COMPLETED';
+                        const isUnitArrived = unit.status === 'ON_SCENE';
+                        const unitStatusText = isUnitCompleted
+                          ? 'Marked Completed'
+                          : isUnitArrived
+                            ? 'Arrived on Scene'
+                            : unit.status === 'EN_ROUTE'
+                              ? 'En Route'
+                              : 'Dispatched';
                         return (
                           <Pressable
                             key={unit.id}
@@ -1284,15 +1300,21 @@ function TrackingSession({ reportId }) {
                             <View style={tw`flex-1 pr-2`}>
                               <Text style={tw`text-xs font-bold text-slate-800`}>{unit.name}</Text>
                               <Text style={tw`text-[10px] text-slate-500`}>
-                                {unit.status} {unit.location ? '• Live GPS' : '• Waiting GPS'}
+                                {unitStatusText} {unit.location ? '• Live GPS' : '• Waiting GPS'}
                               </Text>
                             </View>
-                            <Text style={tw`text-xs font-extrabold text-[#1F7A4D]`}>
-                              {isUnitArrived
-                                ? 'Arrived'
-                                : uRoute
-                                  ? `${uRoute.etaMin} min • ${formatDistance(uRoute.distance)}`
-                                  : 'Calculating…'}
+                            <Text
+                              style={tw`text-xs font-extrabold ${
+                                isUnitCompleted ? 'text-emerald-700' : 'text-[#1F7A4D]'
+                              }`}
+                            >
+                              {isUnitCompleted
+                                ? 'Completed'
+                                : isUnitArrived
+                                  ? 'Arrived'
+                                  : uRoute
+                                    ? `${uRoute.etaMin} min • ${formatDistance(uRoute.distance)}`
+                                    : 'Calculating…'}
                             </Text>
                           </Pressable>
                         );
