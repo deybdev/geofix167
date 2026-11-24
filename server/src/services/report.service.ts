@@ -121,6 +121,28 @@ export async function submitIncidentReport(
   const existing = await replay();
   if (existing) return existing;
   const category = input.incident_category.trim();
+
+  // 1-minute duplicate cooldown for same user/session + same open category -> redirect to "Add Update"
+  const ownerCol = userId ? "reported_by_user_id" : input.guest_session_id ? "guest_session_id" : null;
+  const ownerVal = userId ?? input.guest_session_id ?? null;
+  if (ownerCol && ownerVal) {
+    const recentMatch = await db.prepare(`
+      SELECT incident_id FROM incident_reports
+      WHERE ${ownerCol} = ?
+        AND lower(trim(category)) = lower(?)
+        AND incident_status_id NOT IN (10, 11, 12)
+        AND submitted_at >= datetime('now', '-1 minute')
+      ORDER BY submitted_at DESC LIMIT 1
+    `).bind(ownerVal, category).first<{ incident_id: string }>();
+
+    if (recentMatch) {
+      throw new ReportError(
+        "You already submitted this report within the last minute. Add an update to your existing report instead.",
+        409,
+        { code: "DUPLICATE_RECENT", existing_incident_id: recentMatch.incident_id },
+      );
+    }
+  }
   const classification = reportCatalog.classifications.find((item) => item.value === input.classification);
   if (guestSubmission && (input.classification !== "sudden" || input.is_emergency !== 1)) {
     throw new ReportError("Guests can only report sudden incidents. Sign in as a resident to report maintenance issues.", 400);

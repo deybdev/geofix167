@@ -4,7 +4,7 @@ import { requireAuth, requireRole } from "../middleware/auth";
 import { Hono } from "hono";
 import type { AppEnv } from "../types/env";
 import { bodyLimit } from "hono/body-limit";
-import { getReportPhoto, listAttachments, uploadAttachment } from "../controllers/attachment.controller";
+import { deleteAttachment, getReportPhoto, listAttachments, uploadAttachment } from "../controllers/attachment.controller";
 import { MAX_GUEST_REPORT_UPLOAD_BYTES, MAX_UPLOAD_BYTES } from "../services/attachment.service";
 import { reverseGeocodeCoordinates } from "../services/reverseGeocode.service";
 import { ensureIncidentReportSnapshot } from "../services/incidentReportSnapshot.service";
@@ -387,6 +387,7 @@ reportRoutes.post("/:id/attachments", requireAuth, bodyLimit({
   maxSize: MAX_UPLOAD_BYTES,
   onError: c => c.json({ error: "Upload exceeds the 25 MiB video limit." }, 413),
 }), uploadAttachment);
+reportRoutes.delete("/:id/attachments/:mediaId", requireAuth, deleteAttachment);
 reportRoutes.post("/:id/resolve", requireAuth, requireRole("admin"), async (c) => {
   const incidentId = c.req.param("id")?.trim();
   if (!incidentId) return c.json({ error: "Incident ID is required." }, 400);

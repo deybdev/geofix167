@@ -293,8 +293,8 @@ export function BdrrmoDemoProvider({ children }) {
     addNotification({
       incidentId: serverIncidentId,
       type: "CLOSURE",
-      title: falseReport ? "Flagged as False Report" : "Incident rejected",
-      body: `Incident ${serverIncidentId} was ${falseReport ? "flagged as a false report" : "rejected"} by BDRRMO.`,
+      title: "Report Flagged",
+      body: `Incident ${serverIncidentId} was flagged by BDRRMO.`,
     });
     await fetchLiveOverview();
     return data;

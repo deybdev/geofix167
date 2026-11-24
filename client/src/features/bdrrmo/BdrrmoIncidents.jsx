@@ -165,7 +165,7 @@ export function IncidentDrawer({ incident: initialIncident, onClose, onOpenHando
   const [showLiveTrackingMap, setShowLiveTrackingMap] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
-  const [rejectMode, setRejectMode] = useState(null);
+  const [flagOpen, setFlagOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [rejectingPhoto, setRejectingPhoto] = useState(null);
   const [rejectCompletionReason, setRejectCompletionReason] = useState("");
@@ -319,20 +319,20 @@ export function IncidentDrawer({ incident: initialIncident, onClose, onOpenHando
     }
   }
 
-  async function handleRejectIncident() {
-    if (!rejectMode || submitting) return;
+  async function handleFlagIncident() {
+    if (submitting) return;
     setSubmitting(true);
     try {
       await rejectServerIncident(incident.incidentId, {
-        falseReport: rejectMode === "false",
+        falseReport: true,
         reason: rejectReason.trim(),
       });
-      setRejectMode(null);
+      setFlagOpen(false);
       setRejectReason("");
       toast.add({
         type: "success",
-        title: rejectMode === "false" ? "Flagged as False Report" : "Incident Rejected",
-        description: `${incident.id} has been closed and removed from active dispatch.`,
+        title: "Report Flagged",
+        description: `${incident.id} has been flagged and removed from active dispatch.`,
       });
       onClose();
     } catch (err) {
@@ -626,22 +626,22 @@ export function IncidentDrawer({ incident: initialIncident, onClose, onOpenHando
 
                 {!alreadyDispatched && (
                   <div className="border-t border-[#e2e8eb] pt-2.5">
-                    {rejectMode ? (
+                    {flagOpen ? (
                       <div className="space-y-2 rounded-md border border-[#f3d3d3] bg-[#fdecea]/60 p-2.5">
                         <p className="text-[10px] font-bold text-[#991b1b]">
-                          {rejectMode === "false" ? "Flag as False Report" : "Reject Emergency Report"}
+                          Flag Report
                         </p>
                         <input
                           value={rejectReason}
                           onChange={(e) => setRejectReason(e.target.value)}
-                          placeholder="Optional reason or remarks..."
+                          placeholder="Reason for flagging this report (optional)..."
                           className="h-8 w-full rounded border border-[#f3d3d3] bg-white px-2.5 text-[11px] text-[#263246] outline-none"
                         />
                         <div className="flex gap-2">
                           <button
                             type="button"
                             onClick={() => {
-                              setRejectMode(null);
+                              setFlagOpen(false);
                               setRejectReason("");
                             }}
                             className="flex-1 rounded border border-[#dfe7ea] bg-white py-1.5 text-[10px] font-bold text-[#60738f]"
@@ -651,30 +651,21 @@ export function IncidentDrawer({ incident: initialIncident, onClose, onOpenHando
                           <button
                             type="button"
                             disabled={submitting}
-                            onClick={handleRejectIncident}
+                            onClick={handleFlagIncident}
                             className="flex-1 rounded bg-[#dc2626] py-1.5 text-[10px] font-bold text-white disabled:opacity-40"
                           >
-                            {submitting ? "Saving..." : rejectMode === "false" ? "Confirm False Report" : "Confirm Reject"}
+                            {submitting ? "Flagging..." : "Confirm Flag Report"}
                           </button>
                         </div>
                       </div>
                     ) : (
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setRejectMode("reject")}
-                          className="flex-1 rounded-md border border-[#dfe7ea] bg-white py-1.5 text-[10px] font-bold text-[#60738f] transition hover:border-[#dc2626] hover:text-[#dc2626]"
-                        >
-                          Reject Report
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setRejectMode("false")}
-                          className="flex-1 rounded-md border border-[#f3d3d3] bg-[#fdecea] py-1.5 text-[10px] font-bold text-[#dc2626] transition hover:bg-[#dc2626] hover:text-white"
-                        >
-                          Flag as False Report
-                        </button>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setFlagOpen(true)}
+                        className="w-full rounded-md border border-[#f3d3d3] bg-[#fdecea] py-1.5 text-[10px] font-bold text-[#dc2626] transition hover:bg-[#dc2626] hover:text-white"
+                      >
+                        Flag Report
+                      </button>
                     )}
                   </div>
                 )}

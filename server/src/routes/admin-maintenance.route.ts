@@ -15,6 +15,7 @@ type MaintenanceNotesMeta = {
   inspection_at?: string | null;
   inspection_note: string;
   inspection_photo_ids: string[];
+  inspection_rejected_reason?: string | null;
   for_funding?: boolean;
   for_funding_at?: string | null;
   for_funding_note?: string;
@@ -23,6 +24,7 @@ type MaintenanceNotesMeta = {
   repair_at?: string | null;
   repair_note: string;
   repair_photo_ids: string[];
+  repair_rejected_reason?: string | null;
 };
 
 export function parseMaintenanceMeta(raw: string | null | undefined): MaintenanceNotesMeta | null {
@@ -40,6 +42,7 @@ export function parseMaintenanceMeta(raw: string | null | undefined): Maintenanc
         inspection_at: parsed.inspection_at || null,
         inspection_note: String(parsed.inspection_note || ""),
         inspection_photo_ids: Array.isArray(parsed.inspection_photo_ids) ? parsed.inspection_photo_ids : [],
+        inspection_rejected_reason: parsed.inspection_rejected_reason ? String(parsed.inspection_rejected_reason) : null,
         for_funding: Boolean(parsed.for_funding),
         for_funding_at: parsed.for_funding_at || null,
         for_funding_note: String(parsed.for_funding_note || ""),
@@ -48,6 +51,7 @@ export function parseMaintenanceMeta(raw: string | null | undefined): Maintenanc
         repair_at: parsed.repair_at || null,
         repair_note: String(parsed.repair_note || ""),
         repair_photo_ids: Array.isArray(parsed.repair_photo_ids) ? parsed.repair_photo_ids : [],
+        repair_rejected_reason: parsed.repair_rejected_reason ? String(parsed.repair_rejected_reason) : null,
       };
     }
   } catch {
@@ -383,11 +387,13 @@ route.get("/tasks", async (c) => {
       inspection_at: meta.inspection_at || null,
       inspection_note: meta.inspection_note,
       inspection_photo_ids: meta.inspection_photo_ids,
+      inspection_rejected_reason: meta.inspection_rejected_reason || "",
       admin_check_approved: Boolean(meta.admin_check_approved),
       repair_done: meta.repair_done,
       repair_at: meta.repair_at || null,
       repair_note: meta.repair_note,
       repair_photo_ids: meta.repair_photo_ids,
+      repair_rejected_reason: meta.repair_rejected_reason || "",
       fast_track_pending: Boolean(meta.repair_done && !meta.admin_check_approved && !isResolved),
       submitted_at: String(row.submitted_at || row.assigned_at || ""),
     };
@@ -510,6 +516,148 @@ route.patch("/tasks/:assignmentId", async (c) => {
   }
 
   return c.json({ ok: true, meta });
+});
+
+route.post("/intake/:incidentId/reject", async (c) => {
+  const db = c.env.geofix167_db;
+  const incidentId = c.req.param("incidentId");
+  const currentUser = c.get("user");
+  const body = (await c.req.json().catch(() => null)) as { reason?: string } | null;
+
+  const report = await db.prepare(
+    "SELECT incident_id, is_emergency, incident_status_id FROM incident_reports WHERE incident_id = ?",
+  ).bind(incidentId).first<{ incident_id: string; is_emergency: number; incident_status_id: number }>();
+
+  if (!report) return c.json({ error: "Maintenance report not found." }, 404);
+  if (report.is_emergency) return c.json({ error: "Emergency reports are handled by BDRRMO." }, 409);
+  if ([10, 11, 12].includes(Number(report.incident_status_id))) {
+    return c.json({ error: "Report is already closed or flagged." }, 409);
+  }
+
+  const reason = String(body?.reason || "").trim() || "Flagged by Admin during maintenance intake review.";
+  await db.batch([
+    db.prepare(`
+      UPDATE incident_reports
+      SET incident_status_id = 11, closed_at = datetime('now'), closed_by_user_id = ?, updated_at = datetime('now')
+      WHERE incident_id = ?
+    `).bind(currentUser.id, incidentId),
+    db.prepare(`
+      INSERT INTO incident_status_events
+        (incident_status_event_id, incident_id, from_incident_status_id, to_incident_status_id, changed_by_user_id, note)
+      VALUES (?, ?, ?, 11, ?, ?)
+    `).bind(crypto.randomUUID(), incidentId, Number(report.incident_status_id) || 1, currentUser.id, `[FALSE REPORT] ${reason}`),
+  ]);
+
+  await notifyResidentOfMaintenanceMove(
+    db,
+    incidentId,
+    "Submitted Report Flagged",
+    `Your submitted maintenance report was flagged by Admin: "${reason}" Open the report to modify and resubmit or discard it.`,
+  );
+
+  return c.json({ ok: true, status: "REJECTED", reason });
+});
+
+route.post("/tasks/:assignmentId/reject-proof", async (c) => {
+  const db = c.env.geofix167_db;
+  const assignmentId = c.req.param("assignmentId");
+  const currentUser = c.get("user");
+  const body = (await c.req.json().catch(() => null)) as {
+    stage?: "inspection" | "repair";
+    reason?: string;
+  } | null;
+
+  const stage = body?.stage === "repair" ? "repair" : body?.stage === "inspection" ? "inspection" : null;
+  if (!stage) return c.json({ error: "stage must be 'inspection' or 'repair'." }, 400);
+
+  const existing = await db.prepare(`
+    SELECT tanod_assignment_id, incident_id, notes
+    FROM tanod_assignments
+    WHERE tanod_assignment_id = ? AND EXISTS (
+      SELECT 1 FROM incident_reports r WHERE r.incident_id = tanod_assignments.incident_id AND r.is_emergency = 0
+    )
+  `).bind(assignmentId).first<{ tanod_assignment_id: string; incident_id: string; notes: string | null }>();
+
+  if (!existing) return c.json({ error: "Maintenance task not found." }, 404);
+
+  const meta = parseMaintenanceMeta(existing.notes) || {
+    type: "MAINTENANCE" as const,
+    urgency: "Standard",
+    deadline: Date.now() + 3 * 86400000,
+    admin_notes: "",
+    inspection_done: false,
+    inspection_note: "",
+    inspection_photo_ids: [],
+    admin_check_approved: false,
+    repair_done: false,
+    repair_note: "",
+    repair_photo_ids: [],
+  };
+
+  const photoIdsToDelete = stage === "inspection" ? [...meta.inspection_photo_ids] : [...meta.repair_photo_ids];
+  const reason = String(body?.reason || "").trim()
+    || (stage === "inspection"
+      ? "Inspection photo was unclear or incomplete. Please retake and resubmit."
+      : "Proof of repair photo was unclear or incomplete. Please retake and resubmit.");
+
+  if (photoIdsToDelete.length > 0) {
+    const placeholders = photoIdsToDelete.map(() => "?").join(",");
+    const mediaRows = await db.prepare(`
+      SELECT incident_media_id, storage_key FROM incident_media
+      WHERE incident_id = ? AND incident_media_id IN (${placeholders})
+    `).bind(existing.incident_id, ...photoIdsToDelete)
+      .all<{ incident_media_id: string; storage_key: string | null }>()
+      .catch(() => ({ results: [] }));
+
+    if (c.env.geofix167_uploads) {
+      for (const m of mediaRows.results ?? []) {
+        if (m.storage_key) {
+          await c.env.geofix167_uploads.delete(m.storage_key).catch(() => {});
+        }
+      }
+    }
+    await db.prepare(`
+      DELETE FROM incident_media
+      WHERE incident_id = ? AND incident_media_id IN (${placeholders})
+    `).bind(existing.incident_id, ...photoIdsToDelete).run().catch(() => {});
+  }
+
+  if (stage === "inspection") {
+    meta.inspection_done = false;
+    meta.inspection_at = null;
+    meta.inspection_note = "";
+    meta.inspection_photo_ids = [];
+    meta.for_funding = false;
+    meta.admin_check_approved = false;
+    meta.inspection_rejected_reason = reason;
+  } else {
+    meta.repair_done = false;
+    meta.repair_at = null;
+    meta.repair_note = "";
+    meta.repair_photo_ids = [];
+    meta.repair_rejected_reason = reason;
+  }
+
+  const nextAssignmentStatus = stage === "inspection" ? 2 : 4;
+  await db.batch([
+    db.prepare(`
+      UPDATE tanod_assignments
+      SET notes = ?, assignment_status_id = ?, completed_at = NULL
+      WHERE tanod_assignment_id = ?
+    `).bind(JSON.stringify(meta), nextAssignmentStatus, assignmentId),
+    db.prepare(`
+      INSERT INTO incident_status_events
+        (incident_status_event_id, incident_id, from_incident_status_id, to_incident_status_id, changed_by_user_id, note)
+      VALUES (?, ?, 6, 6, ?, ?)
+    `).bind(
+      crypto.randomUUID(),
+      existing.incident_id,
+      currentUser.id,
+      stage === "inspection" ? `[INSPECTION REJECTED] ${reason}` : `[REPAIR REJECTED] ${reason}`,
+    ),
+  ]);
+
+  return c.json({ ok: true, stage, reason, meta });
 });
 
 route.get("/false-reports", async (c) => {

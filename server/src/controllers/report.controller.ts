@@ -210,7 +210,10 @@ export async function createReportController(c: Context<AppEnv>) {
     );
   } catch (error) {
     if (error instanceof ReportError) {
-      return c.json({ error: error.message }, error.status as 400 | 401 | 403 | 404 | 409 | 413 | 415 | 500 | 503);
+      return c.json(
+        { error: error.message, ...(error.extra ?? {}) },
+        error.status as 400 | 401 | 403 | 404 | 409 | 413 | 415 | 429 | 500 | 503,
+      );
     }
 
     console.error("Failed to submit incident report:", error);

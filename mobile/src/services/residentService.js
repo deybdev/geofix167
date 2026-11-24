@@ -150,6 +150,8 @@ async function reportRequest(path = "", { method = "GET", body, signal, timeout 
         { cause: error },
       );
       requestError.status = error.response.status;
+      requestError.code = error.response.data?.code ?? null;
+      requestError.existingIncidentId = error.response.data?.existing_incident_id ?? null;
       throw requestError;
     }
     throw new Error("Could not connect to the server. Check your connection and try again.", { cause: error });
@@ -231,6 +233,10 @@ export async function uploadReportAttachment(reportId, file, uploadId) {
   body.append("file", { uri: file.uri, name: file.name, type: file.type });
   body.append("upload_id", uploadId);
   return reportRequest(`/${encodeURIComponent(reportId)}/attachments`, { method: "POST", body, timeout: 120000 });
+}
+
+export async function deleteReportAttachment(reportId, mediaId) {
+  return reportRequest(`/${encodeURIComponent(reportId)}/attachments/${encodeURIComponent(mediaId)}`, { method: "DELETE" });
 }
 
 export function buildResidentReportPayload({ category, isEmergency, description, position, address, landmark, callbackContact }) {

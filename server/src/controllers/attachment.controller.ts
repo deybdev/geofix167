@@ -120,3 +120,35 @@ export async function uploadAttachment(c: Context<AppEnv>) {
     return c.json({ attachment: response, idempotent_replay: false }, 201);
   } catch (error) { return failure(c, error); }
 }
+
+export async function deleteAttachment(c: Context<AppEnv>) {
+  try {
+    const user = c.get("user");
+    if (!user) throw new ReportError("Authentication required.", 401);
+    const db = c.env.geofix167_db;
+    const report = await getIncidentReportDetails(db, c.req.param("id") ?? "", user);
+    if (report.reported_by_user_id !== user.id) {
+      throw new ReportError("Only the reporting resident can remove attachments.", 403);
+    }
+    if (![1, 2, 3, 11].includes(Number(report.incident_status_id))) {
+      throw new ReportError("Attachments can only be removed while the report is editable.", 409);
+    }
+    const mediaId = (c.req.param("mediaId") ?? "").trim();
+    if (!mediaId) throw new ReportError("Attachment ID is required.", 400);
+
+    const existing = await db.prepare(
+      `SELECT incident_media_id, storage_key FROM incident_media WHERE incident_id = ? AND incident_media_id = ? LIMIT 1`,
+    ).bind(report.incident_id, mediaId).first<{ incident_media_id: string; storage_key: string | null }>();
+
+    if (!existing) throw new ReportError("Attachment not found.", 404);
+
+    if (existing.storage_key && c.env.geofix167_uploads) {
+      await c.env.geofix167_uploads.delete(existing.storage_key).catch(() => {});
+    }
+    await db.prepare(
+      `DELETE FROM incident_media WHERE incident_id = ? AND incident_media_id = ?`,
+    ).bind(report.incident_id, mediaId).run();
+
+    return c.json({ ok: true, deleted_id: mediaId });
+  } catch (error) { return failure(c, error); }
+}

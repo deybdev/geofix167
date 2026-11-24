@@ -1,13 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Keyboard, KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { useNavigation, usePreventRemove } from '@react-navigation/native';
-import { CheckCircle2, Clock, Wrench } from 'lucide-react-native';
+import { Camera, CheckCircle2, Clock, Image as ImageIcon, Trash2, Wrench } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
+import * as Crypto from 'expo-crypto';
 import tw from 'twrnc';
 import { useAuth } from '../../context/AuthContext';
-import { discardReport, getReportDetails, updateReportDetails } from '../../services/residentService';
+import {
+  deleteReportAttachment,
+  discardReport,
+  getReportDetails,
+  updateReportDetails,
+  uploadReportAttachment,
+} from '../../services/residentService';
 import { ReportAction } from '../../components/resident/ReportMedia';
 import api from '../../services/api';
-import { canEditReport, editPayload, formatReportTime } from '../../utils/residentReport';
+import { canEditReport, editPayload, formatReportTime, MAX_ATTACHMENTS } from '../../utils/residentReport';
 
 function resolvePhotoUri(path) {
   if (!path) return null;
@@ -30,7 +38,8 @@ function Details({ publicId, user }) {
   const [error, setError] = useState(publicId ? '' : 'Report unavailable. Return to My Reports and select a report.');
   const [editing, setEditing] = useState(false);
   const [description, setDescription] = useState('');
-  const [address, setAddress] = useState('');
+  const [removedPhotoIds, setRemovedPhotoIds] = useState([]);
+  const [newPhotos, setNewPhotos] = useState([]);
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState('');
   const [notice, setNotice] = useState('');
@@ -72,21 +81,65 @@ function Details({ publicId, user }) {
   }, [loadReport]);
 
   function startEditing() {
-    setDescription(report.description || ''); setAddress(report.address || '');
+    setDescription(report.description || '');
+    setRemovedPhotoIds([]);
+    setNewPhotos([]);
     setEditError(''); setNotice(''); setEditing(true);
+  }
+
+  async function handlePickPhoto(useCamera) {
+    setEditError('');
+    try {
+      const permission = useCamera
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        setEditError(useCamera
+          ? 'Camera permission is required to capture a photo.'
+          : 'Photo library permission is required to select a photo.');
+        return;
+      }
+      const result = useCamera
+        ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.75 })
+        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.75 });
+      if (result.canceled || !result.assets?.[0]?.uri) return;
+      const asset = result.assets[0];
+      const mimeType = asset.mimeType || 'image/jpeg';
+      const ext = mimeType === 'image/png' ? 'png' : mimeType === 'image/webp' ? 'webp' : 'jpg';
+      const id = Crypto.randomUUID();
+      setNewPhotos((prev) => [
+        ...prev,
+        {
+          id,
+          uri: asset.uri,
+          name: asset.fileName || `resubmit-${id.slice(0, 8)}.${ext}`,
+          type: mimeType,
+        },
+      ]);
+    } catch {
+      setEditError('Could not capture or select photo. Please try again.');
+    }
   }
 
   async function save() {
     if (!editable || saveLock.current || loading) return;
     let payload;
-    try { payload = editPayload(description, address); } catch (failure) { setEditError(failure.message); return; }
+    try { payload = editPayload(description, report?.address || ''); } catch (failure) { setEditError(failure.message); return; }
     saveLock.current = true; setSaving(true); setEditError('');
     try {
+      for (const mediaId of removedPhotoIds) {
+        await deleteReportAttachment(publicId, mediaId);
+      }
+      for (const photo of newPhotos) {
+        await uploadReportAttachment(publicId, photo, photo.id);
+      }
       const { data } = await updateReportDetails(publicId, payload);
       if (!alive.current) return;
       setReport(previous => ({ ...previous, ...data.report, attachments: previous.attachments,
         attachments_error: previous.attachments_error, status_events: previous.status_events }));
-      setEditing(false); setNotice('Report details saved.');
+      setRemovedPhotoIds([]);
+      setNewPhotos([]);
+      setEditing(false); setNotice(isRejected ? 'Report modified and resubmitted.' : 'Report details saved.');
       await refresh();
     } catch (failure) {
       if (!alive.current) return;
@@ -138,6 +191,17 @@ function Details({ publicId, user }) {
   const responderPhotos = (Array.isArray(report?.responder_photos) ? report.responder_photos : [])
     .map((p) => ({ ...p, uri: resolvePhotoUri(p.url) }))
     .filter((p) => Boolean(p.uri));
+  const responderPhotoIds = new Set(responderPhotos.map((p) => p.id).filter(Boolean));
+  const editableExistingPhotos = (Array.isArray(report?.attachments) && report.attachments.length > 0
+    ? report.attachments
+        .filter((a) => a.media_type === 'PHOTO' && !responderPhotoIds.has(a.id))
+        .map((a) => ({ id: a.id, uri: resolvePhotoUri(a.url) || a.source?.uri }))
+    : reporterPhotoUrls.map((uri) => {
+        const match = String(uri).match(/\/photos\/([^/?#]+)/);
+        return { id: match ? decodeURIComponent(match[1]) : null, uri };
+      })
+  ).filter((p) => p.uri && (!p.id || !removedPhotoIds.includes(p.id)));
+  const totalEditPhotos = editableExistingPhotos.length + newPhotos.length;
 
   const rejectionEvent = [...(report?.status_events ?? [])]
     .reverse()
@@ -207,12 +271,80 @@ function Details({ publicId, user }) {
         </Text>
         <Text style={tw`mt-3 text-xs font-bold uppercase text-slate-600`}>Description</Text>
         <TextInput accessibilityLabel="Description" value={description} onChangeText={setDescription} multiline maxLength={10000} editable={!saving && editable} textAlignVertical="top" style={tw`mt-1.5 min-h-28 rounded-xl border border-slate-300 bg-slate-50 p-3 text-sm text-slate-900`} />
-        <Text style={tw`mt-4 text-xs font-bold uppercase text-slate-600`}>Location / landmark</Text>
-        <TextInput accessibilityLabel="Location / landmark" value={address} onChangeText={setAddress} multiline maxLength={4000} editable={!saving && editable} textAlignVertical="top" style={tw`mt-1.5 min-h-20 rounded-xl border border-slate-300 bg-slate-50 p-3 text-sm text-slate-900`} />
+        <Text style={tw`mt-4 text-xs font-bold uppercase text-slate-600`}>Pinned Location (Read-Only)</Text>
+        <View style={tw`mt-1.5 rounded-xl border border-slate-200 bg-slate-100 p-3`}>
+          <Text style={tw`text-sm font-medium text-slate-700`}>
+            {report.address || 'Pinned via GPS'}
+          </Text>
+          <Text style={tw`mt-1 text-[11px] text-slate-500`}>
+            Location is locked to the original GPS pin and cannot be manually edited.
+          </Text>
+        </View>
+        <View style={tw`mt-4`}>
+          <View style={tw`flex-row items-center justify-between`}>
+            <Text style={tw`text-xs font-bold uppercase text-slate-600`}>
+              Report Photos ({totalEditPhotos}/{MAX_ATTACHMENTS})
+            </Text>
+          </View>
+          <View style={tw`mt-2 flex-row gap-2`}>
+            <Pressable
+              onPress={() => handlePickPhoto(true)}
+              disabled={saving || totalEditPhotos >= MAX_ATTACHMENTS}
+              style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-[#1F7A4D] bg-green-50 py-2.5 ${saving || totalEditPhotos >= MAX_ATTACHMENTS ? 'opacity-40' : ''}`}
+            >
+              <Camera size={14} color="#1F7A4D" />
+              <Text style={tw`text-xs font-bold text-[#1F7A4D]`}>Capture Photo</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => handlePickPhoto(false)}
+              disabled={saving || totalEditPhotos >= MAX_ATTACHMENTS}
+              style={tw`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white py-2.5 ${saving || totalEditPhotos >= MAX_ATTACHMENTS ? 'opacity-40' : ''}`}
+            >
+              <ImageIcon size={14} color="#334155" />
+              <Text style={tw`text-xs font-bold text-slate-700`}>Add from Gallery</Text>
+            </Pressable>
+          </View>
+          {totalEditPhotos > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={tw`mt-2.5`}>
+              <View style={tw`flex-row gap-2.5`}>
+                {editableExistingPhotos.map((photo, idx) => (
+                  <View key={photo.id || `existing-${idx}`} style={tw`w-36 overflow-hidden rounded-xl border border-slate-200 bg-slate-50`}>
+                    <Image source={{ uri: photo.uri }} style={tw`h-28 w-36 bg-slate-100`} resizeMode="cover" />
+                    {photo.id ? (
+                      <Pressable
+                        onPress={() => setRemovedPhotoIds((prev) => [...prev, photo.id])}
+                        disabled={saving}
+                        style={tw`flex-row items-center justify-center gap-1 border-t border-red-100 bg-red-50 py-1.5`}
+                      >
+                        <Trash2 size={12} color="#DC2626" />
+                        <Text style={tw`text-[11px] font-bold text-red-700`}>Remove</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                ))}
+                {newPhotos.map((photo) => (
+                  <View key={photo.id} style={tw`w-36 overflow-hidden rounded-xl border border-green-300 bg-green-50`}>
+                    <Image source={{ uri: photo.uri }} style={tw`h-28 w-36 bg-slate-100`} resizeMode="cover" />
+                    <Pressable
+                      onPress={() => setNewPhotos((prev) => prev.filter((p) => p.id !== photo.id))}
+                      disabled={saving}
+                      style={tw`flex-row items-center justify-center gap-1 border-t border-red-100 bg-red-50 py-1.5`}
+                    >
+                      <Trash2 size={12} color="#DC2626" />
+                      <Text style={tw`text-[11px] font-bold text-red-700`}>Remove New</Text>
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+          ) : (
+            <Text style={tw`mt-2 text-xs text-slate-500`}>No photos attached. Capture or add a photo above.</Text>
+          )}
+        </View>
         {!!editError && <Text accessibilityRole="alert" style={tw`mt-3 text-xs font-semibold text-red-700`}>{editError}</Text>}
         <View style={tw`mt-4 flex-row gap-2.5`}>
           <Pressable
-            onPress={() => { setEditing(false); setEditError(''); }}
+            onPress={() => { setEditing(false); setRemovedPhotoIds([]); setNewPhotos([]); setEditError(''); }}
             disabled={saving}
             style={tw`flex-1 items-center rounded-xl border border-slate-300 bg-white py-3`}
           >

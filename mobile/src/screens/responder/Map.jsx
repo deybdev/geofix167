@@ -1431,6 +1431,19 @@ export default function ResponderMap() {
               </View>
             ) : null}
 
+            {isMaint && (activeAssignment.inspection_rejected_reason || activeAssignment.repair_rejected_reason) ? (
+              <View style={tw`mt-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2`}>
+                <Text style={tw`text-[11px] font-extrabold text-red-700`}>
+                  {activeAssignment.repair_rejected_reason
+                    ? 'Proof of Repair Rejected by Admin'
+                    : 'Inspection Photo Rejected by Admin'}
+                </Text>
+                <Text style={tw`mt-0.5 text-xs text-red-800`}>
+                  {activeAssignment.repair_rejected_reason || activeAssignment.inspection_rejected_reason}
+                </Text>
+              </View>
+            ) : null}
+
             {error ? (
               <Text style={tw`mt-2 text-xs font-semibold text-red-600`}>{error}</Text>
             ) : null}

@@ -4,9 +4,9 @@ import { PATHS } from "../../router/paths";
 
 const items = [
   ["Dashboard", Grid2X2, PATHS.bdrrmo],
-  ["Incidents", ClipboardList, PATHS.bdrrmoIncidents, "5"],
-  ["Responders", Radio, PATHS.bdrrmoDispatchResponders, "2"],
-  ["Hospital Handovers", Handshake, PATHS.bdrrmoHandoverCompletion, "4"],
+  ["Incidents", ClipboardList, PATHS.bdrrmoIncidents],
+  ["Responders", Radio, PATHS.bdrrmoDispatchResponders],
+  ["Hospital Handovers", Handshake, PATHS.bdrrmoHandoverCompletion],
   ["Reports & Analytics", BarChart3, PATHS.bdrrmoReportsAnalytics],
   ["Profile & Settings", Settings, PATHS.bdrrmoSettings],
 ];
@@ -26,14 +26,15 @@ export default function BdrrmoSidebar({ open, onClose, onToggle, officerName = "
           <button onClick={onToggle} aria-label={open ? "Collapse navigation" : "Expand navigation"} className="rounded-lg p-2 text-slate-500 hover:bg-emerald-50 hover:text-emerald-800">{open ? <X size={18} /> : <Menu size={18} />}</button>
         </div>
         <nav className="max-h-[calc(100dvh-230px)] space-y-1 overflow-y-auto" aria-label="BDRRMO navigation">
-          {items.map(([label, Icon, path, defaultCount]) => {
+          {items.map(([label, Icon, path]) => {
             const active = path === PATHS.bdrrmo ? location.pathname === path : location.pathname.startsWith(path);
-            const count = counts[path] ?? defaultCount;
+            const count = counts[path];
+            const showCount = typeof count === "number" ? count > 0 : Boolean(count);
             return (
               <button key={path} title={!open ? label : undefined} onClick={() => { navigate(path); onClose?.(); }} className={`group relative flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-xs font-semibold transition-colors ${!open ? "justify-center" : ""} ${active ? "bg-emerald-800 text-white" : "text-slate-600 hover:bg-emerald-50 hover:text-emerald-900"}`}>
                 <Icon size={17} />
                 <span className={open ? "flex-1" : "hidden"}>{label}</span>
-                {open && count !== undefined && count !== null && count !== false && <span className={`rounded-full px-2 py-0.5 text-[9px] ${active ? "bg-white/20" : "bg-amber-100 text-amber-800"}`}>{count}</span>}
+                {open && showCount && <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${active ? "bg-white/20" : "bg-red-100 text-red-700"}`}>{count}</span>}
                 {!open && <span className="pointer-events-none absolute left-[calc(100%+10px)] z-50 hidden whitespace-nowrap rounded bg-slate-900 px-2 py-1 text-[10px] text-white group-hover:md:block">{label}</span>}
               </button>
             );

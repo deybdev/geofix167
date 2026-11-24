@@ -382,7 +382,7 @@ export default function Home() {
 
   const [stats, setStats] = useState(null);
   const [recentReports, setRecentReports] = useState([]);
-  const [activeEmergencyReport, setActiveEmergencyReport] = useState(null);
+  const [activeEmergencyReports, setActiveEmergencyReports] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
   const [announcementsLoading, setAnnouncementsLoading] = useState(true);
   const [announcementsError, setAnnouncementsError] = useState(false);
@@ -442,8 +442,8 @@ export default function Home() {
       const reports = reportsResult.value.data?.reports ?? [];
       setStats(summarizeReports(reports));
       setRecentReports(reports.slice(0, 3));
-      setActiveEmergencyReport(
-        reports.find((report) => report.report_type === 'emergency' && !report.is_terminal) || null
+      setActiveEmergencyReports(
+        reports.filter((report) => report.report_type === 'emergency' && !report.is_terminal)
       );
       setError(null);
     } else {
@@ -482,26 +482,26 @@ export default function Home() {
     navigation.navigate(ROUTES.myReports, status ? { status } : undefined);
 
   const openMap = () => navigation.navigate(ROUTES.map);
-  const openEmergencyTrack = () => {
-    if (!activeEmergencyReport) return;
+  const openEmergencyTrack = (report) => {
+    if (!report) return;
 
     const priority = {
       Critical: 1,
       High: 2,
       Moderate: 3,
       Low: 4,
-    }[activeEmergencyReport.urgency] ?? null;
+    }[report.urgency] ?? null;
     const location =
-      Number.isFinite(activeEmergencyReport.latitude) &&
-      Number.isFinite(activeEmergencyReport.longitude)
+      Number.isFinite(report.latitude) &&
+      Number.isFinite(report.longitude)
         ? {
-            lat: activeEmergencyReport.latitude,
-            lng: activeEmergencyReport.longitude,
+            lat: report.latitude,
+            lng: report.longitude,
           }
         : null;
 
     navigation.navigate('Track', {
-      reportId: activeEmergencyReport.public_id,
+      reportId: report.public_id,
       location,
       priority,
     });
@@ -521,34 +521,44 @@ export default function Home() {
         />
       }
     >
-      {activeEmergencyReport && (
-        <Pressable
-          onPress={openEmergencyTrack}
-          accessibilityRole="button"
-          accessibilityLabel="Continue tracking your ongoing emergency report"
-          style={({ pressed }) => [
-            tw`mb-4 rounded-2xl border border-red-200 bg-red-50 p-4`,
-            { opacity: pressed ? 0.8 : 1 },
-          ]}
-        >
-          <View style={tw`flex-row items-center`}>
-            <View style={tw`mr-3 h-11 w-11 items-center justify-center rounded-xl bg-red-100`}>
-              <AlertCircle size={22} color="#DC2626" />
-            </View>
-            <View style={tw`flex-1`}>
-              <Text style={tw`text-xs font-extrabold uppercase text-red-700`}>
-                Ongoing emergency
-              </Text>
-              <Text numberOfLines={1} style={tw`mt-0.5 text-sm font-bold text-slate-900`}>
-                {getReportTitle(activeEmergencyReport)}
-              </Text>
-              <Text numberOfLines={1} style={tw`mt-0.5 text-xs text-red-700`}>
-                {activeEmergencyReport.status_label || 'Report received'} · Tap to track
-              </Text>
-            </View>
-            <ChevronRight size={20} color="#B91C1C" />
-          </View>
-        </Pressable>
+      {activeEmergencyReports.length > 0 && (
+        <View style={tw`mb-4 gap-2.5`}>
+          {activeEmergencyReports.length > 1 && (
+            <Text style={tw`px-1 text-xs font-extrabold uppercase tracking-wider text-red-700`}>
+              Ongoing Emergencies ({activeEmergencyReports.length})
+            </Text>
+          )}
+          {activeEmergencyReports.map((report) => (
+            <Pressable
+              key={report.public_id}
+              onPress={() => openEmergencyTrack(report)}
+              accessibilityRole="button"
+              accessibilityLabel={`Continue tracking ongoing emergency ${getReportTitle(report)}`}
+              style={({ pressed }) => [
+                tw`rounded-2xl border border-red-200 bg-red-50 p-4`,
+                { opacity: pressed ? 0.8 : 1 },
+              ]}
+            >
+              <View style={tw`flex-row items-center`}>
+                <View style={tw`mr-3 h-11 w-11 items-center justify-center rounded-xl bg-red-100`}>
+                  <AlertCircle size={22} color="#DC2626" />
+                </View>
+                <View style={tw`flex-1`}>
+                  <Text style={tw`text-xs font-extrabold uppercase text-red-700`}>
+                    Ongoing emergency{report.reference_number ? ` · ${report.reference_number}` : ''}
+                  </Text>
+                  <Text numberOfLines={1} style={tw`mt-0.5 text-sm font-bold text-slate-900`}>
+                    {getReportTitle(report)}
+                  </Text>
+                  <Text numberOfLines={1} style={tw`mt-0.5 text-xs text-red-700`}>
+                    {report.status_label || 'Report received'} · Tap to track
+                  </Text>
+                </View>
+                <ChevronRight size={20} color="#B91C1C" />
+              </View>
+            </Pressable>
+          ))}
+        </View>
       )}
 
       {/* MAP PREVIEW — non-interactive; tapping anywhere opens the full map */}

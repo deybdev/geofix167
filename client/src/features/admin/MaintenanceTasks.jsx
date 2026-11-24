@@ -56,7 +56,7 @@ function FalseReportsPanel({ reports, loading, onUpdateAccount }) {
       <table className="w-full min-w-[820px] border-collapse text-left text-xs">
         <thead className="border-b border-[#e2e8eb] bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
           <tr>
-            {["Reference", "Report & Description", "Reporter", "Flag / Reason", "Rejected (PH)", "Action"].map((h) => (
+            {["Reference", "Report & Description", "Reporter", "Flag / Reason", "Flagged (PH)", "Action"].map((h) => (
               <th key={h} className="px-4 py-3">{h}</th>
             ))}
           </tr>
@@ -96,8 +96,8 @@ function FalseReportsPanel({ reports, loading, onUpdateAccount }) {
                   )}
                 </td>
                 <td className="max-w-[220px] px-4 py-3 align-top">
-                  <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold ${r.is_false_report ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-800"}`}>
-                    {r.is_false_report ? "False Report" : "Rejected"}
+                  <span className="inline-block rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700">
+                    Flagged Report
                   </span>
                   <p className="mt-1 text-[11px] text-slate-700">{r.reason}</p>
                   <p className="mt-0.5 text-[10px] text-slate-400">By {r.rejected_by}</p>
@@ -391,9 +391,12 @@ function IntakeCard({ item, onReview }) {
 /* Stage 1: Intake Review / Triage Drawer (No Evidence Closure shown here) */
 /* ----------------------------------------------------------------------- */
 
-function IntakeReviewDrawer({ item, tanods, onClose, onConfirmIngest, logAudit }) {
+function IntakeReviewDrawer({ item, tanods, onClose, onConfirmIngest, onFlagIntake, logAudit }) {
   const [urgency, setUrgency] = useState("Standard");
   const [showRaw, setShowRaw] = useState(false);
+  const [flagOpen, setFlagOpen] = useState(false);
+  const [flagReason, setFlagReason] = useState("");
+  const [flagging, setFlagging] = useState(false);
   const language = useMemo(() => languageScan(item.narration ?? ""), [item.narration]);
   const availableTanod = useMemo(
     () => tanods.find((t) => t.availability_status === "AVAILABLE") || tanods[0],
@@ -444,6 +447,16 @@ function IntakeReviewDrawer({ item, tanods, onClose, onConfirmIngest, logAudit }
       tanod: selectedTanod,
       deadline: Number.isFinite(deadlineTs) ? deadlineTs : Date.now() + 3 * 86400000,
     });
+  }
+
+  async function handleConfirmFlag() {
+    if (!onFlagIntake || flagging) return;
+    setFlagging(true);
+    try {
+      await onFlagIntake(item, flagReason.trim());
+    } finally {
+      setFlagging(false);
+    }
   }
 
   return (
@@ -625,27 +638,9 @@ function IntakeReviewDrawer({ item, tanods, onClose, onConfirmIngest, logAudit }
 
           <DrawerSection title="Assign Tanod & Inspection Deadline" icon={UserCheck} last>
             <div className="grid gap-3">
-              <label className="grid gap-1 text-[9px] font-bold uppercase tracking-wide text-[#7184a0]">
+              <p className="text-[9px] font-bold uppercase tracking-wide text-[#7184a0]">
                 Assign Tanod (with Availability Status) *
-                <select
-                  aria-label="Assign Tanod"
-                  className="h-9 w-full rounded-md border border-[#dfe7ea] bg-white px-2.5 text-[10px] font-semibold text-[#263246] outline-none focus:border-(--gf-green)"
-                  value={selectedTanodId}
-                  onChange={(e) => setSelectedTanodId(e.target.value)}
-                >
-                  <option value="">— Select a Tanod account —</option>
-                  {tanods.map((t) => (
-                    <option
-                      key={t.id}
-                      value={t.id}
-                      disabled={["UNAVAILABLE", "OUT_OF_SERVICE"].includes(t.availability_status)}
-                    >
-                      {t.display_name || t.responder_name} — {t.availability_status}
-                      {t.beat ? ` (${t.beat})` : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              </p>
 
               <div className="grid gap-1.5">
                 {tanods.map((t) => {
@@ -689,6 +684,47 @@ function IntakeReviewDrawer({ item, tanods, onClose, onConfirmIngest, logAudit }
                   Target date by which the assigned Tanod must inspect the maintenance report on-site.
                 </span>
               </label>
+
+              {onFlagIntake && (
+                <div className="border-t border-[#e2e8eb] pt-3">
+                  {flagOpen ? (
+                    <div className="space-y-2 rounded-md border border-[#f3d3d3] bg-[#fdecea]/60 p-2.5">
+                      <p className="text-[10px] font-bold text-[#991b1b]">Flag Maintenance Report</p>
+                      <input
+                        value={flagReason}
+                        onChange={(e) => setFlagReason(e.target.value)}
+                        placeholder="Reason for flagging this report (optional)..."
+                        className="h-8 w-full rounded border border-[#f3d3d3] bg-white px-2.5 text-[11px] text-[#263246] outline-none"
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => { setFlagOpen(false); setFlagReason(""); }}
+                          className="flex-1 rounded border border-[#dfe7ea] bg-white py-1.5 text-[10px] font-bold text-[#60738f]"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          disabled={flagging}
+                          onClick={handleConfirmFlag}
+                          className="flex-1 rounded bg-[#dc2626] py-1.5 text-[10px] font-bold text-white disabled:opacity-40"
+                        >
+                          {flagging ? "Flagging..." : "Confirm Flag Report"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setFlagOpen(true)}
+                      className="w-full rounded-md border border-[#f3d3d3] bg-[#fdecea] py-2 text-[10px] font-bold text-[#dc2626] transition hover:bg-[#dc2626] hover:text-white"
+                    >
+                      Flag Report
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </DrawerSection>
         </div>
@@ -803,9 +839,24 @@ function TaskTable({ tasks, emptyLabel, actionLabel, onOpen, nowTs }) {
 /* Task management slide-over drawer (Stages 2, 3, 4)                      */
 /* ----------------------------------------------------------------------- */
 
-function TaskDrawer({ task, onClose, onCompleteCheck, onToggleForFunding, onCloseTask, onUpdateInspectionPhotos, onUpdateRepairPhotos, onAddNote, onPublish, onOpenAudit }) {
+function TaskDrawer({ task, onClose, onCompleteCheck, onToggleForFunding, onCloseTask, onRejectProof, onUpdateInspectionPhotos, onUpdateRepairPhotos, onAddNote, onPublish, onOpenAudit }) {
   const [publishIntent, setPublishIntent] = useState(true);
   const [noteDraft, setNoteDraft] = useState("");
+  const [rejectStage, setRejectStage] = useState(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [rejecting, setRejecting] = useState(false);
+
+  async function handleConfirmRejectProof() {
+    if (!onRejectProof || !rejectStage || rejecting) return;
+    setRejecting(true);
+    try {
+      await onRejectProof(task.id, rejectStage, rejectReason.trim());
+      setRejectStage(null);
+      setRejectReason("");
+    } finally {
+      setRejecting(false);
+    }
+  }
 
   /* Escape closes the drawer; page scroll is locked while it is open. */
   useEffect(() => {
@@ -1119,6 +1170,46 @@ function TaskDrawer({ task, onClose, onCompleteCheck, onToggleForFunding, onClos
                       </button>
                     </div>
                   ))}
+                  {onRejectProof && (
+                    <div className="pt-1">
+                      {rejectStage === "inspection" ? (
+                        <div className="space-y-2 rounded-md border border-[#f3d3d3] bg-[#fdecea]/60 p-2.5">
+                          <p className="text-[10px] font-bold text-[#991b1b]">Reject Tanod Inspection Photo</p>
+                          <input
+                            value={rejectReason}
+                            onChange={(e) => setRejectReason(e.target.value)}
+                            placeholder="Reason for rejecting inspection photo (sent to Tanod)..."
+                            className="h-8 w-full rounded border border-[#f3d3d3] bg-white px-2.5 text-[11px] text-[#263246] outline-none"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => { setRejectStage(null); setRejectReason(""); }}
+                              className="flex-1 rounded border border-[#dfe7ea] bg-white py-1.5 text-[10px] font-bold text-[#60738f]"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              disabled={rejecting}
+                              onClick={handleConfirmRejectProof}
+                              className="flex-1 rounded bg-[#dc2626] py-1.5 text-[10px] font-bold text-white disabled:opacity-40"
+                            >
+                              {rejecting ? "Rejecting..." : "Confirm Reject Inspection"}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => { setRejectStage("inspection"); setRejectReason(""); }}
+                          className="w-full rounded-md border border-[#f3d3d3] bg-[#fdecea] py-1.5 text-[10px] font-bold text-[#dc2626] transition hover:bg-[#dc2626] hover:text-white"
+                        >
+                          Reject Inspection Photo (Request Retake from Tanod)
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <p className="mt-2 flex items-center gap-1 text-[9px] font-semibold text-[#dc2626]">
@@ -1202,6 +1293,46 @@ function TaskDrawer({ task, onClose, onCompleteCheck, onToggleForFunding, onClos
                         </button>
                       </div>
                     ))}
+                    {onRejectProof && (
+                      <div className="pt-1">
+                        {rejectStage === "repair" ? (
+                          <div className="space-y-2 rounded-md border border-[#f3d3d3] bg-[#fdecea]/60 p-2.5">
+                            <p className="text-[10px] font-bold text-[#991b1b]">Reject Tanod Proof of Repair</p>
+                            <input
+                              value={rejectReason}
+                              onChange={(e) => setRejectReason(e.target.value)}
+                              placeholder="Reason for rejecting proof of repair (sent to Tanod)..."
+                              className="h-8 w-full rounded border border-[#f3d3d3] bg-white px-2.5 text-[11px] text-[#263246] outline-none"
+                            />
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => { setRejectStage(null); setRejectReason(""); }}
+                                className="flex-1 rounded border border-[#dfe7ea] bg-white py-1.5 text-[10px] font-bold text-[#60738f]"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                disabled={rejecting}
+                                onClick={handleConfirmRejectProof}
+                                className="flex-1 rounded bg-[#dc2626] py-1.5 text-[10px] font-bold text-white disabled:opacity-40"
+                              >
+                                {rejecting ? "Rejecting..." : "Confirm Reject Proof of Repair"}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => { setRejectStage("repair"); setRejectReason(""); }}
+                            className="w-full rounded-md border border-[#f3d3d3] bg-[#fdecea] py-1.5 text-[10px] font-bold text-[#dc2626] transition hover:bg-[#dc2626] hover:text-white"
+                          >
+                            Reject Proof of Repair (Request Retake from Tanod)
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <p className="flex items-center gap-1 text-[9px] font-semibold text-[#dc2626]">
@@ -1712,11 +1843,15 @@ export default function MaintenanceTasks() {
             if (existing) syncedIds.add(existing.id);
             const serverInspectionLabels = (st.inspection_photo_ids || []).map((pid) => `tanod-inspection-${String(pid).slice(0, 6)}.jpg`);
             const serverRepairLabels = (st.repair_photo_ids || []).map((pid) => `tanod-repair-${String(pid).slice(0, 6)}.jpg`);
-            const mergedInspection = existing?.inspectionPhotos?.length
-              ? Array.from(new Set([...serverInspectionLabels, ...existing.inspectionPhotos]))
+            const mergedInspection = st.inspection_done
+              ? (existing?.inspectionPhotos?.length
+                ? Array.from(new Set([...serverInspectionLabels, ...existing.inspectionPhotos]))
+                : serverInspectionLabels)
               : serverInspectionLabels;
-            const mergedRepair = existing?.repairPhotos?.length
-              ? Array.from(new Set([...serverRepairLabels, ...existing.repairPhotos]))
+            const mergedRepair = st.repair_done
+              ? (existing?.repairPhotos?.length
+                ? Array.from(new Set([...serverRepairLabels, ...existing.repairPhotos]))
+                : serverRepairLabels)
               : serverRepairLabels;
             const submittedMs = Date.parse(st.submitted_at) || NOW();
 
@@ -1866,6 +2001,97 @@ export default function MaintenanceTasks() {
       title: `Work order ${id} created`,
       description: `Assigned to ${tanodName} (${urgency}) — now in Active Work Orders.`,
     });
+  }
+
+  /* 1b — Flag / Reject an incoming maintenance report from Intake Queue */
+  async function flagIntakeReport(item, reason) {
+    if (!item) return;
+    try {
+      if (item.incidentId) {
+        const res = await fetch(`/api/admin/maintenance/intake/${encodeURIComponent(item.incidentId)}/reject`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reason }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Could not flag maintenance report.");
+      }
+      setQueue((current) => current.filter((q) => q.queueId !== item.queueId));
+      if (item.serverBacked && item.incidentId) {
+        setDismissedIntakeIds((current) => new Set(current).add(item.incidentId));
+      }
+      setReviewingIntakeItem(null);
+      fetch("/api/admin/maintenance/false-reports", { credentials: "include", cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (Array.isArray(data?.reports)) setFalseReports(data.reports);
+        })
+        .catch(() => {});
+      logAudit({
+        taskId: item.reportId,
+        actor: "Admin — N. Villanueva",
+        system: false,
+        action: "Maintenance intake report flagged",
+        detail: reason || "Flagged by Admin during intake review.",
+      });
+      toast.add({
+        type: "warning",
+        title: "Report Flagged",
+        description: `${item.reportId} was flagged and moved to False-Report Controls.`,
+      });
+    } catch (err) {
+      toast.add({ type: "error", title: "Flag failed", description: err.message });
+    }
+  }
+
+  /* 3b — Reject Tanod's Inspection Photo or Proof of Repair and request retake */
+  async function rejectTaskProof(id, stage, reason) {
+    const task = tasks.find((t) => t.id === id);
+    if (!task) return;
+    try {
+      if (task.assignmentId) {
+        const res = await fetch(`/api/admin/maintenance/tasks/${encodeURIComponent(task.assignmentId)}/reject-proof`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stage, reason }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Could not reject Tanod proof.");
+      }
+      if (stage === "inspection") {
+        updateTask(id, {
+          status: "In Progress",
+          forFunding: false,
+          inspectionDone: false,
+          inspectionNote: "",
+          inspectionPhotos: [],
+          serverInspectionPhotoIds: [],
+        });
+      } else {
+        updateTask(id, {
+          repairDone: false,
+          repairNote: "",
+          repairPhotos: [],
+          serverRepairPhotoIds: [],
+        });
+      }
+      logAudit({
+        taskId: id,
+        actor: "Admin — N. Villanueva",
+        system: false,
+        action: stage === "inspection" ? "Inspection photo rejected" : "Proof of repair rejected",
+        detail: reason || "Tanod notified to retake and resubmit photo proof.",
+      });
+      toast.add({
+        type: "warning",
+        title: stage === "inspection" ? "Inspection photo rejected" : "Proof of repair rejected",
+        description: `${task.team} has been notified to retake and resubmit.`,
+      });
+    } catch (err) {
+      toast.add({ type: "error", title: "Reject failed", description: err.message });
+    }
   }
 
   /* 2 — Manual work-order creation. */
@@ -2181,6 +2407,7 @@ export default function MaintenanceTasks() {
           tanods={tanods}
           onClose={() => setReviewingIntakeItem(null)}
           onConfirmIngest={confirmIngest}
+          onFlagIntake={flagIntakeReport}
           logAudit={logAudit}
         />
       )}
@@ -2193,6 +2420,7 @@ export default function MaintenanceTasks() {
           onCompleteCheck={completeCheck}
           onToggleForFunding={toggleForFunding}
           onCloseTask={closeTask}
+          onRejectProof={rejectTaskProof}
           onUpdateInspectionPhotos={updateInspectionPhotos}
           onUpdateRepairPhotos={updateRepairPhotos}
           onAddNote={addNote}

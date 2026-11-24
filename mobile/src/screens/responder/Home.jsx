@@ -453,6 +453,18 @@ export default function ResponderHome() {
                     </View>
 
                     {/* Action Button */}
+                    {isMaintenance && (item.inspection_rejected_reason || item.repair_rejected_reason) ? (
+                      <View style={tw`mt-2.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2`}>
+                        <Text style={tw`text-[11px] font-extrabold text-red-700`}>
+                          {item.repair_rejected_reason
+                            ? 'Proof of Repair Rejected by Admin'
+                            : 'Inspection Photo Rejected by Admin'}
+                        </Text>
+                        <Text style={tw`mt-0.5 text-xs text-red-800`}>
+                          {item.repair_rejected_reason || item.inspection_rejected_reason}
+                        </Text>
+                      </View>
+                    ) : null}
                     {isFresh ? (
                       <TouchableOpacity
                         onPress={() => handleAccept(item)}

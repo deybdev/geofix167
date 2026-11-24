@@ -432,9 +432,11 @@ route.get("/", async (c) => {
         inspection_done: Boolean(meta?.inspection_done),
         inspection_note: meta?.inspection_note ?? "",
         inspection_photo_ids: inspectionPhotos,
+        inspection_rejected_reason: meta?.inspection_rejected_reason ?? "",
         repair_done: Boolean(meta?.repair_done),
         repair_note: meta?.repair_note ?? "",
         repair_photo_ids: repairPhotos,
+        repair_rejected_reason: meta?.repair_rejected_reason ?? "",
         reporter_photo_ids: reporterPhotos,
       };
     }).filter((item) => (!status ? true : item.status === status.data));
@@ -748,6 +750,7 @@ route.post("/:dispatchId/maintenance-inspection", async (c) => {
   meta.inspection_done = true;
   meta.inspection_at = new Date().toISOString();
   meta.inspection_note = String(body?.note || "").trim();
+  meta.inspection_rejected_reason = null;
   if (mediaId) {
     meta.inspection_photo_ids = [...meta.inspection_photo_ids, mediaId];
   }
@@ -832,6 +835,7 @@ route.post("/:dispatchId/maintenance-repair", async (c) => {
   meta.repair_done = true;
   meta.repair_at = new Date().toISOString();
   meta.repair_note = String(body.note || "").trim();
+  meta.repair_rejected_reason = null;
   if (mediaId) {
     meta.repair_photo_ids = [...meta.repair_photo_ids, mediaId];
   }

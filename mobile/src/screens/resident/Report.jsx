@@ -782,8 +782,27 @@ export default function Report({ guestMode = false, route }) {
         setPendingNotice(message);
         return;
       }
+      if (!guestMode && error?.code === 'DUPLICATE_RECENT' && error?.existingIncidentId) {
+        submissionRef.current.payload = null;
+        setSubmitError(error.message);
+        Alert.alert(
+          'Existing Report Found',
+          error.message || 'You already have an active report for this incident.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Add Update to Report',
+              onPress: () => {
+                resetForm();
+                navigation.navigate('ReportDetails', { publicId: error.existingIncidentId });
+              },
+            },
+          ],
+        );
+        return;
+      }
       if (!guestMode) {
-        setSubmitError(submissionRef.current.payload
+        setSubmitError(submissionRef.current.payload && error?.status !== 429
           ? 'We could not confirm submission. Retry safely to check or submit this same report. Your details and photos are kept.'
           : error.message || 'Could not submit report. Your details and photos are kept.');
         return;

@@ -469,10 +469,10 @@ route.post("/incidents/:incidentId/reject", async (c) => {
     false_report?: boolean;
   } | null;
 
-  const isFalseReport = Boolean(body?.false_report);
+  const isFalseReport = body?.false_report !== false;
   const reason =
     String(body?.reason || "").trim() ||
-    (isFalseReport ? "Flagged as false report by BDRRMO" : "Rejected by BDRRMO");
+    "Flagged by BDRRMO during review";
   const note = isFalseReport ? `[FALSE REPORT] ${reason}` : `[REJECTED] ${reason}`;
 
   await db.batch([
@@ -529,8 +529,8 @@ route.post("/incidents/:incidentId/reject", async (c) => {
         crypto.randomUUID().replace(/-/g, ""),
         rep.reported_by_user_id,
         incidentId,
-        isFalseReport ? "Report Flagged as False Report" : "Submitted Report Rejected",
-        `Your submitted report was rejected by BDRRMO${reason ? `: "${reason}"` : "."} Open the report to modify and resubmit or discard it.`,
+        "Submitted Report Flagged",
+        `Your submitted report was flagged by BDRRMO${reason ? `: "${reason}"` : "."} Open the report to modify and resubmit or discard it.`,
         new Date().toISOString(),
       ).run();
     }
