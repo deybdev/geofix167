@@ -453,9 +453,10 @@ export default function Report({ guestMode = false, route }) {
   const [cameraCapture, setCameraCapture] = useState(null);
   const [fade] = useState(() => new Animated.Value(1));
 
-  const [step, setStep] = useState(0);
+  const isEmergencyParam = route?.params?.reportType === 'emergency';
+  const [step, setStep] = useState(isEmergencyParam ? 1 : 0);
   const [reportType, setReportType] = useState(
-    route?.params?.reportType === 'emergency' ? 'emergency' : null
+    isEmergencyParam ? 'emergency' : null
   ); // 'emergency' | 'infrastructure'
   const [checks, setChecks] = useState([]); // quick-detail check ids
   const [description, setDescription] = useState('');
@@ -496,6 +497,13 @@ export default function Report({ guestMode = false, route }) {
 
   const currentError = errors[stepKey];
   const showError = attempted ? currentError : null;
+
+  useEffect(() => {
+    if (route?.params?.reportType === 'emergency') {
+      setReportType('emergency');
+      setStep((prev) => (prev === 0 ? 1 : prev));
+    }
+  }, [route?.params?.reportType, route?.params?.sosTriggeredAt]);
 
   useEffect(() => {
     if (!successNotice) return;

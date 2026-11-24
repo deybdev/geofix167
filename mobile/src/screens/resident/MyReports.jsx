@@ -169,9 +169,33 @@ export default function MyReports() {
     loadReports();
   };
 
-  const openReport = (publicId) => {
+  const isOngoingEmergency = (report) =>
+    report?.report_type === "emergency" && !report?.is_terminal;
+
+  const openReport = (report) => {
+    if (isOngoingEmergency(report)) {
+      const priority =
+        {
+          Critical: 1,
+          High: 2,
+          Moderate: 3,
+          Low: 4,
+        }[report.urgency] ?? null;
+      const location =
+        Number.isFinite(report.latitude) && Number.isFinite(report.longitude)
+          ? { lat: report.latitude, lng: report.longitude }
+          : null;
+
+      navigation.navigate("Track", {
+        reportId: report.public_id,
+        location,
+        priority,
+      });
+      return;
+    }
+
     navigation.navigate("ReportDetails", {
-      publicId,
+      publicId: report.public_id,
     });
   };
 
@@ -342,9 +366,13 @@ export default function MyReports() {
               return (
                 <Pressable
                   key={report.public_id}
-                  onPress={() => openReport(report.public_id)}
+                  onPress={() => openReport(report)}
                   accessibilityRole="button"
-                  accessibilityLabel={`View report ${report.public_id}`}
+                  accessibilityLabel={
+                    isOngoingEmergency(report)
+                      ? `Track ongoing emergency report ${report.public_id}`
+                      : `View report ${report.public_id}`
+                  }
                   style={({ pressed }) => [
                     tw`flex-row items-start gap-3 rounded-2xl border border-slate-100 bg-white p-4`,
                     {

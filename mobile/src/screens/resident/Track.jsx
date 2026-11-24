@@ -53,7 +53,6 @@ const COLORS = {
 };
 
 const HOTLINE = '668-338-3141';
-const NATIONAL_EMERGENCY = '911';
 const STALE_MS = 30000; // responder position older than this is flagged
 const MAX_MESSAGE = 300;
 
@@ -468,45 +467,6 @@ function ProgressList({ currentIndex }) {
   );
 }
 
-function EmergencyCallRow() {
-  return (
-    <View style={tw`mt-3 flex-row`}>
-      <Pressable
-        onPress={() => callNumber(HOTLINE)}
-        accessibilityRole="button"
-        accessibilityLabel={`Call Barangay Hall hotline ${HOTLINE}`}
-        style={({ pressed }) => [
-          tw`mr-2 h-12 flex-1 flex-row items-center justify-center rounded-2xl`,
-          { backgroundColor: COLORS.emergency, opacity: pressed ? 0.8 : 1 },
-        ]}
-      >
-        <Phone size={15} color="#FFFFFF" />
-        <Text style={tw`ml-2 text-xs font-extrabold text-white`}>Barangay {HOTLINE}</Text>
-      </Pressable>
-
-      <Pressable
-        onPress={() => callNumber(NATIONAL_EMERGENCY)}
-        accessibilityRole="button"
-        accessibilityLabel={`Call ${NATIONAL_EMERGENCY}`}
-        style={({ pressed }) => [
-          tw`h-12 flex-row items-center justify-center rounded-2xl px-6`,
-          {
-            backgroundColor: '#FFFFFF',
-            borderWidth: 1.5,
-            borderColor: COLORS.emergency,
-            opacity: pressed ? 0.8 : 1,
-          },
-        ]}
-      >
-        <Phone size={15} color={COLORS.emergency} />
-        <Text style={[tw`ml-2 text-xs font-extrabold`, { color: COLORS.emergency }]}>
-          {NATIONAL_EMERGENCY}
-        </Text>
-      </Pressable>
-    </View>
-  );
-}
-
 function MessageBubble({ message, onRetry }) {
   const mine = message.from === 'resident';
 
@@ -790,7 +750,7 @@ function TrackingSession({ reportId }) {
             },
           }));
         })
-        .catch(() => {});
+        .catch(() => { });
     });
     return () => {
       active = false;
@@ -1129,42 +1089,35 @@ function TrackingSession({ reportId }) {
 
             {/* no responder yet */}
             {!responder && !resolved && (
-              <View style={[tw`mt-3 rounded-2xl p-3.5`, { backgroundColor: COLORS.emergencyTint }]}>
-                <Text style={[tw`text-xs font-bold`, { color: COLORS.emergencyDark }]}>
-                  In immediate danger? Don’t wait, call now.
+              <Pressable
+                disabled={!chatAvailable}
+                onPress={openChat}
+                accessibilityRole="button"
+                accessibilityLabel="Message BDRRMO Dispatcher"
+                style={({ pressed }) => [
+                  tw`mt-3 h-12 flex-row items-center justify-center rounded-2xl bg-white`,
+                  {
+                    borderWidth: 1.5,
+                    borderColor: COLORS.primary,
+                    opacity: !chatAvailable ? 0.4 : pressed ? 0.8 : 1,
+                  },
+                ]}
+              >
+                <MessageCircle size={16} color={COLORS.primary} />
+                <Text style={[tw`ml-2 text-xs font-extrabold`, { color: COLORS.primary }]}>
+                  Message BDRRMO / Dispatcher
                 </Text>
-                <EmergencyCallRow />
-
-                <Pressable
-                  disabled={!chatAvailable}
-                  onPress={openChat}
-                  accessibilityRole="button"
-                  accessibilityLabel="Message BDRRMO Dispatcher"
-                  style={({ pressed }) => [
-                    tw`mt-2.5 h-11 flex-row items-center justify-center rounded-2xl bg-white`,
-                    {
-                      borderWidth: 1.5,
-                      borderColor: COLORS.primary,
-                      opacity: pressed ? 0.8 : 1,
-                    },
-                  ]}
-                >
-                  <MessageCircle size={16} color={COLORS.primary} />
-                  <Text style={[tw`ml-2 text-xs font-extrabold`, { color: COLORS.primary }]}>
-                    Message BDRRMO / Dispatcher
-                  </Text>
-                  {unread > 0 && (
-                    <View
-                      style={[
-                        tw`ml-2 h-5 min-w-5 items-center justify-center rounded-full px-1`,
-                        { backgroundColor: COLORS.emergency },
-                      ]}
-                    >
-                      <Text style={tw`text-[11px] font-extrabold text-white`}>{unread}</Text>
-                    </View>
-                  )}
-                </Pressable>
-              </View>
+                {unread > 0 && (
+                  <View
+                    style={[
+                      tw`ml-2 h-5 min-w-5 items-center justify-center rounded-full px-1`,
+                      { backgroundColor: COLORS.emergency },
+                    ]}
+                  >
+                    <Text style={tw`text-[11px] font-extrabold text-white`}>{unread}</Text>
+                  </View>
+                )}
+              </Pressable>
             )}
 
             {resolved && (
@@ -1277,9 +1230,8 @@ function TrackingSession({ reportId }) {
                                 lastRouteFetchRef.current = 0;
                               }
                             }}
-                            style={tw`flex-row items-center justify-between rounded-xl px-2.5 py-2 ${
-                              isSelected ? 'border border-[#1F7A4D] bg-green-50' : 'bg-white'
-                            }`}
+                            style={tw`flex-row items-center justify-between rounded-xl px-2.5 py-2 ${isSelected ? 'border border-[#1F7A4D] bg-green-50' : 'bg-white'
+                              }`}
                           >
                             <View style={tw`flex-1 pr-2`}>
                               <Text style={tw`text-xs font-bold text-slate-800`}>{unit.name}</Text>
